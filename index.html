@@ -184,6 +184,12 @@ code, .math { font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
 .note { border-left: 3px solid var(--series-4); padding: 6px 10px;
   background: var(--surface-0); border-radius: 4px; }
 .status { font-size: 0.78rem; color: var(--text-muted); }
+.tabs { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-bottom: 8px; }
+.tab { font: inherit; font-size: 0.85rem; padding: 4px 12px; border-radius: 999px;
+  border: 1px solid var(--border); background: var(--surface-0); color: var(--text-secondary); cursor: pointer; }
+.tab.active { color: var(--text-primary); border-color: var(--series-1); box-shadow: inset 0 0 0 1px var(--series-1); }
+table.maths td, table.maths th { text-align: left; vertical-align: top; }
+table.maths td:nth-child(2) { white-space: nowrap; }
 .zoombar { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 6px; }
 .zoombar button { font: inherit; font-size: 0.8rem; padding: 3px 8px; border-radius: 6px;
   border: 1px solid var(--border); background: var(--surface-0); color: var(--text-primary); cursor: pointer; }
@@ -203,6 +209,38 @@ code, .math { font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
     (<a href="https://github.com/InsightNet-US/BDBV-Modeling-Hub/issues/61">issue #61</a>).
     Are there potential issues with that or similar approaches?
   </p>
+
+  <section class="card" style="margin-top:14px">
+    <div class="tabs" role="tablist">
+      <h2 style="margin:0 12px 0 0">How the methods work</h2>
+      <button type="button" role="tab" class="tab active" data-tab="demo" aria-selected="true">Demo</button>
+      <button type="button" role="tab" class="tab" data-tab="maths" aria-selected="false">Maths</button>
+    </div>
+    <div class="tabpanel" id="tab-demo">
+      <p class="sub">A case is reported on day t with no onset date. Where does each method put its onset? Ink is where it truly falls, given the simulated epidemic. Uses the scenario set below.</p>
+      <div class="ctl" style="max-width:520px">
+        <label for="tSel">Report day t <output id="tSelOut"></output></label>
+        <input type="range" id="tSel" min="0" max="180" step="1" value="120">
+      </div>
+      <div class="legend" id="legendD"></div>
+      <div class="chart" id="chartD"></div>
+    </div>
+    <div class="tabpanel prose" id="tab-maths" hidden>
+      <p>Notation: a case reported on day <i>t</i> has unknown onset day <i>s</i>. <i>C</i>(<i>s</i>) is expected confirmed onsets, <i>f</i>(<i>d</i>) the forward onset-to-report delay, <i>F</i> its CDF, π(<i>t</i>, <i>d</i>) the chance an onset is missing, and <i>T</i> the data cut-off.</p>
+      <table class="maths">
+        <tr><th>Method</th><th>Where a missing onset goes</th><th>In words</th></tr>
+        <tr><td>Truth</td><td>P(<i>s</i> | <i>t</i>) ∝ <i>C</i>(<i>s</i>) <i>f</i>(<i>t</i>−<i>s</i>) π(<i>t</i>, <i>t</i>−<i>s</i>)</td><td>Depends on how many onsets there were on each earlier day.</td></tr>
+        <tr><td>Hub</td><td>P(<i>s</i> | <i>t</i>) = <i>g</i>(<i>t</i>−<i>s</i>), &nbsp; <i>g</i>(<i>d</i>) ∝ <i>f</i>(<i>d</i>) Σ<sub><i>u</i> ≤ <i>T</i>−<i>d</i></sub> <i>C</i>(<i>u</i>)(1−π)</td><td>Pooled delays of complete cases reported by <i>T</i>. The same for every <i>t</i>.</td></tr>
+        <tr><td>Mean shift</td><td><i>s</i> = <i>t</i> − round(Σ<sub><i>d</i></sub> <i>d</i> <i>g</i>(<i>d</i>))</td><td>Every missing case moves back by the same amount.</td></tr>
+        <tr><td>Forward draw</td><td>P(<i>s</i> | <i>t</i>) = <i>f</i>(<i>t</i>−<i>s</i>)</td><td>The delay from onset, ignoring how many onsets there were.</td></tr>
+        <tr><td>Generative</td><td>P(<i>s</i> | <i>t</i>) ∝ λ(<i>s</i>) <i>f</i>(<i>t</i>−<i>s</i>), &nbsp; λ(<i>s</i>) = [<i>n</i><sub>complete</sub>(<i>s</i>) + <i>n</i><sub>allocated</sub>(<i>s</i>)] / <i>F</i>(<i>T</i>−<i>s</i>)</td><td>EM back-projection: share missing cases by the current onset curve, re-estimate the curve, repeat.</td></tr>
+      </table>
+      <p><b>Steady growth.</b> If <i>C</i>(<i>s</i>) ∝ e<sup><i>rs</i></sup> and π is constant, the truth is ∝ <i>f</i>(<i>d</i>) e<sup>−<i>rd</i></sup>. The sum in <i>g</i> is also ∝ e<sup>−<i>rd</i></sup>, so the hub draw matches the truth. When growth changes, the two differ.</p>
+      <p><b>Delays.</b> <i>f</i> is a double interval censored daily Gamma (primarycensored form): <i>f</i>(<i>d</i>) = <i>G</i>(<i>d</i>+1) − 2<i>G</i>(<i>d</i>) + <i>G</i>(<i>d</i>−1), with <i>G</i>(<i>x</i>) = ∫<sub>0</sub><sup><i>x</i></sup> <i>F</i>(<i>u</i>) d<i>u</i>.</p>
+      <p><b>Rt.</b> From the weekly growth rate <i>r</i> with a Gamma generation interval (shape <i>k</i>, scale θ): <i>R</i> = (1 + <i>r</i>θ)<sup><i>k</i></sup>.</p>
+      <p><b>A proper model.</b> Here the generative method is given the true delay, and that is fine for this demonstration. A full model would estimate a time-varying delay jointly with a smoothed onset curve (for example a renewal process) and could model ascertainment, as epinowcast does.</p>
+    </div>
+  </section>
 
   <div id="verdict" class="verdict" style="margin-top:14px"></div>
 
@@ -249,17 +287,6 @@ code, .math { font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
         <h2>Summary by method</h2>
         
         <div class="table-wrap"><table id="summary"></table></div>
-      </section>
-
-      <section class="card">
-        <h2>Delay used vs delay needed</h2>
-        <p class="sub">For cases reported on the chosen day.</p>
-        <div class="ctl" style="max-width:420px">
-          <label for="tSel">Report day <output id="tSelOut"></output></label>
-          <input type="range" id="tSel" min="0" max="180" step="1" value="90">
-        </div>
-        <div class="legend" id="legendD"></div>
-        <div class="chart" id="chartD"></div>
       </section>
 
       <section class="card prose">
@@ -404,6 +431,11 @@ function lineChart(el, o) {
   for (const v of xt) svg += `<g class="tick"><text x="${sx(v)}" y="${m.t + ih + 16}" text-anchor="middle">${v}</text></g>`;
   if (o.zero && y0 < 0 && y1 > 0) svg += `<line class="zero" x1="${m.l}" x2="${m.l + iw}" y1="${sy(0)}" y2="${sy(0)}"/>`;
   if (o.refY !== undefined && y0 < o.refY && y1 > o.refY) svg += `<line class="zero" x1="${m.l}" x2="${m.l + iw}" y1="${sy(o.refY)}" y2="${sy(o.refY)}"/>`;
+  for (const v of (o.vlines || [])) {
+    if (v.x < x0 || v.x > x1) continue;
+    svg += `<line x1="${sx(v.x)}" x2="${sx(v.x)}" y1="${m.t}" y2="${m.t + ih}" stroke="${v.color}" stroke-width="2" stroke-dasharray="5 3"/>`;
+    svg += `<text class="axis-label" x="${sx(v.x) - 4}" y="${m.t + 10}" text-anchor="end">${v.label}</text>`;
+  }
   if (o.vline !== undefined && o.vline >= x0 && o.vline <= x1) svg += `<line class="cross" x1="${sx(o.vline)}" x2="${sx(o.vline)}" y1="${m.t}" y2="${m.t + ih}"/><text class="axis-label" x="${sx(o.vline) - 4}" y="${m.t + 10}" text-anchor="end">cut-off</text>`;
   svg += `<text class="axis-label" x="${m.l + iw / 2}" y="${height - 4}" text-anchor="middle">${o.xlab}</text>`;
   svg += `<text class="axis-label" transform="translate(12 ${m.t + ih / 2}) rotate(-90)" text-anchor="middle">${o.ylab}</text>`;
@@ -609,23 +641,37 @@ function render() {
   html += `</tbody>`;
   document.getElementById("summary").innerHTML = html;
 
-  // chart D: delay distributions for a chosen report day
+  // chart D: where each method puts a missing onset reported on day t
   const tSel = document.getElementById("tSel");
   tSel.max = sc.Td; if (+tSel.value > sc.Td) tSel.value = sc.Td;
-  const t = +tSel.value, ti = t + sc.B;
-  const back = new Float64Array(D + 1);
-  for (let d = 0; d <= D; d++) { const s = ti - d; if (s >= 0 && s < sc.S) back[d] = sc.C[s] * sc.f[s][d] * sc.pim(ti, d); }
-  const bn = normalise(back);
-  document.getElementById("tSelOut").textContent = `${t} (onset growth rate that day ${(sc.r[Math.min(ti, sc.S - 1)]).toFixed(3)}/day)`;
+  const t = +tSel.value, ti = t + sc.B, span = 40;
+  const truthW = new Float64Array(D + 1), genW = new Float64Array(D + 1);
+  for (let d = 0; d <= D; d++) {
+    const s = ti - d;
+    if (s < 0 || s >= sc.S) continue;
+    truthW[d] = sc.C[s] * sc.f[s][d] * sc.pim(ti, d);
+    // the generative method's onset curve: imputed onsets over fraction reported
+    genW[d] = R.gen[s] / Math.max(sc.cover[s], 1e-4) * sc.f[s][d];
+  }
+  const tn = normalise(truthW), gn = normalise(genW);
+  const mshift = Math.round(pmfMean(R.g));
+  const onsetSeries = (w, name, M, extra = {}) => ({ name, color: M ? col[M] : ink,
+    dash: M ? METHODS.find(m => m.key === M).dash : undefined,
+    width: M ? METHODS.find(m => m.key === M).width : 3, ...extra,
+    data: Array.from({ length: span + 1 }, (_, d) => ({ x: t - d, y: w[d] })) });
   const sD = [
-    { name: `Correct backward for day ${t} (mean ${pmfMean(bn).toFixed(1)})`, color: ink, width: 2.5, data: Array.from(bn, (y, d) => ({ x: d, y })).filter(p => p.x <= 40) },
-    { name: `Pooled empirical, used by hub (mean ${pmfMean(R.g).toFixed(1)})`, color: col.hub, data: Array.from(R.g, (y, d) => ({ x: d, y })).filter(p => p.x <= 40) },
-    { name: `Forward (mean ${pmfMean(sc.fbar).toFixed(1)})`, color: col.fwd, data: Array.from(sc.fbar, (y, d) => ({ x: d, y })).filter(p => p.x <= 40) }
+    onsetSeries(tn, "Truth", null),
+    onsetSeries(R.g, "Hub: pooled empirical delays", "hub"),
+    onsetSeries(sc.fbar, "Forward delay", "fwd"),
+    onsetSeries(gn, "Generative (EM)", "gen")
   ];
-  legend(document.getElementById("legendD"), sD.map(s => ({ name: s.name, color: s.color })));
-  lineChart(document.getElementById("chartD"), { series: sD, xlab: "Delay from onset to report (days)", ylab: "Probability",
-    includeZero: true, xmin: 0, xmax: 40, height: 230, xtip: x => `Delay ${x} days`, vfmt: v => v.toFixed(4),
-    yfmt: v => v.toFixed(2), aria: "Delay distributions" });
+  document.getElementById("tSelOut").textContent = `${t} (growth that day ${(sc.r[Math.min(ti, sc.S - 1)]).toFixed(3)}/day)`;
+  legend(document.getElementById("legendD"), [...sD.map(s => ({ name: s.name, color: s.color, dash: !!s.dash })),
+    { name: `Mean shift: day ${t - mshift}`, color: col.mean }]);
+  lineChart(document.getElementById("chartD"), { series: sD, xlab: "Onset day", ylab: "Probability",
+    includeZero: true, xmin: t - span, xmax: t, height: 240, xtip: x => `Onset day ${x} (delay ${t - x})`,
+    vfmt: v => v.toFixed(4), yfmt: v => v.toFixed(2), aria: "Where each method places a missing onset",
+    vlines: [{ x: t - mshift, color: col.mean, label: "mean shift" }, { x: t, color: ink, label: "report day" }] });
 
   const tot = tw.reduce((a, b) => a + b, 0);
   document.getElementById("status").textContent =
@@ -751,6 +797,14 @@ function syncEnabled() {
 let timer = null;
 function schedule() { clearTimeout(timer); timer = setTimeout(render, 40); }
 document.getElementById("tSel").addEventListener("input", schedule);
+for (const b of document.querySelectorAll(".tab")) b.addEventListener("click", () => {
+  for (const o of document.querySelectorAll(".tab")) {
+    const on = o === b;
+    o.classList.toggle("active", on); o.setAttribute("aria-selected", on);
+    document.getElementById("tab-" + o.dataset.tab).hidden = !on;
+  }
+  schedule();
+});
 document.getElementById("zoomReset").addEventListener("click", () => setZoom(null));
 document.getElementById("logA").addEventListener("change", schedule);
 document.getElementById("themeToggle").addEventListener("click", () => {
