@@ -49,7 +49,9 @@ def linelist():
     keep = report <= 140
     onset, report, missing = onset[keep], report[keep], missing[keep]
     return {
-        "onset": [None if m else int(o) for o, m in zip(onset, missing)],
+        "onset": [
+            None if m else int(o) for o, m in zip(onset, missing, strict=True)
+        ],
         "report": [int(r) for r in report],
         "cutoff": 140,
     }
