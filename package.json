@@ -1,0 +1,55 @@
+{
+  "name": "onset-imputation",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Compare methods for imputing missing symptom-onset dates in a simulated epidemic.",
+  "keywords": [
+    "epidemiology",
+    "imputation",
+    "symptom onset",
+    "reporting delay",
+    "nowcasting",
+    "back-projection"
+  ],
+  "homepage": "https://seabbs.github.io/epidemic-imputation-demonstration/",
+  "bugs": {
+    "url": "https://github.com/seabbs/epidemic-imputation-demonstration/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/seabbs/epidemic-imputation-demonstration.git"
+  },
+  "license": "MIT",
+  "author": "Sam Abbott",
+  "type": "commonjs",
+  "main": "onset-imputation.js",
+  "exports": {
+    ".": "./onset-imputation.js",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "onset-imputation.js",
+    "LICENSE",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "test": "node --test \"tests/*.test.mjs\"",
+    "coverage": "node --test --experimental-test-coverage \"tests/*.test.mjs\"",
+    "lint": "eslint .",
+    "format": "prettier --write onset-imputation.js page.js tests/*.mjs eslint.config.mjs package.json jsconfig.json .prettierrc",
+    "format:check": "prettier --check onset-imputation.js page.js tests/*.mjs eslint.config.mjs package.json jsconfig.json .prettierrc",
+    "typecheck": "tsc -p jsconfig.json"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/node": "^22.20.5",
+    "eslint": "^10.13.0",
+    "eslint-config-prettier": "^10.1.8",
+    "globals": "^17.13.0",
+    "prettier": "^3.9.10",
+    "typescript": "^7.0.2"
+  }
+}

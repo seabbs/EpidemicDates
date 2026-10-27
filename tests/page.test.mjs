@@ -8,39 +8,57 @@ import { createRequire } from "node:module";
 import vm from "node:vm";
 
 const page = readFileSync(new URL("../page.js", import.meta.url), "utf8");
-const OnsetImputation = createRequire(import.meta.url)("../onset-imputation.js");
+const OnsetImputation = createRequire(import.meta.url)(
+  "../onset-imputation.js"
+);
 
 // an element stub that accepts any property access, call or assignment
-const stub = () => new Proxy(function () {}, {
-  get: (_, k) => {
-    if (k === "clientWidth") return 600;
-    if (k === "value") return "90";
-    if (k === "checked") return false;
-    if (k === "dataset") return {};
-    if (k === Symbol.toPrimitive) return () => 0;
-    if (k === "querySelectorAll") return () => [];
-    return stub();
-  },
-  set: () => true,
-  apply: () => stub(),
-  construct: () => stub()
-});
+const stub = () =>
+  new Proxy(function () {}, {
+    get: (_, k) => {
+      if (k === "clientWidth") return 600;
+      if (k === "value") return "90";
+      if (k === "checked") return false;
+      if (k === "dataset") return {};
+      if (k === Symbol.toPrimitive) return () => 0;
+      if (k === "querySelectorAll") return () => [];
+      return stub();
+    },
+    set: () => true,
+    apply: () => stub(),
+    construct: () => stub()
+  });
 
 function loadPage() {
   const ctx = {
-    OnsetImputation, Math, JSON, Array, Float64Array, Number, Set, Map,
-    Object, String, console,
+    OnsetImputation,
+    Math,
+    JSON,
+    Array,
+    Float64Array,
+    Number,
+    Set,
+    Map,
+    Object,
+    String,
+    console,
     document: {
-      getElementById: () => stub(), createElement: () => stub(),
-      createElementNS: () => stub(), querySelector: () => stub(),
-      querySelectorAll: () => [], documentElement: stub()
+      getElementById: () => stub(),
+      createElement: () => stub(),
+      createElementNS: () => stub(),
+      querySelector: () => stub(),
+      querySelectorAll: () => [],
+      documentElement: stub()
     },
     getComputedStyle: () => ({ getPropertyValue: () => "#000" }),
     matchMedia: () => ({ matches: false, addEventListener() {} }),
-    ResizeObserver: class { observe() {} },
+    ResizeObserver: class {
+      observe() {}
+    },
     window: { addEventListener() {}, removeEventListener() {} },
     performance: { now: () => 0 },
-    setTimeout: () => 0, clearTimeout() {}
+    setTimeout: () => 0,
+    clearTimeout() {}
   };
   vm.createContext(ctx);
   vm.runInContext(page, ctx);
@@ -54,11 +72,14 @@ test("page script loads and renders the default scenario", () => {
 
 test("every preset renders", () => {
   const ctx = loadPage();
-  vm.runInContext(`for (const pr of PRESETS) {
+  vm.runInContext(
+    `for (const pr of PRESETS) {
     P = { ...DEFAULTS, ...pr.set };
     P.knots = P.knots.slice(); P.asc = P.asc.slice();
     render();
-  }`, ctx);
+  }`,
+    ctx
+  );
 });
 
 test("stochastic replicates render", () => {
@@ -68,9 +89,30 @@ test("stochastic replicates render", () => {
 
 test("every step of the step-through renders for every method", () => {
   const ctx = loadPage();
-  vm.runInContext(`for (const m of METHODS) for (let s = 0; s < NSTEP; s++) {
+  vm.runInContext(
+    `for (const m of METHODS) for (let s = 0; s < NSTEP; s++) {
     STEP.method = m.key; STEP.step = s; drawSteps();
   }
   STEP.method = "gen"; STEP.step = NSTEP - 1;
-  for (let i = 1; i <= 40; i++) { STEP.iter = i; drawSteps(); }`, ctx);
+  for (let i = 1; i <= 40; i++) { STEP.iter = i; drawSteps(); }`,
+    ctx
+  );
+});
+
+test("editing the curves does not change the module's constants", () => {
+  const ctx = loadPage();
+  vm.runInContext("P.knots[0] = 0.1; P.asc[0] = 2; P.seed = 3; render();", ctx);
+  assert.equal(OnsetImputation.DEFAULTS.knots[0], 0.05);
+  assert.equal(OnsetImputation.PRESETS[0].set.asc[0], 0.5);
+});
+
+test("stochastic replicates on the page are seeded", () => {
+  const ctx = loadPage();
+  const bands = () =>
+    vm.runInContext(
+      "cache = { key: null }; P.stoch = true; P.reps = 5; " +
+        "JSON.stringify(compute().st)",
+      ctx
+    );
+  assert.equal(bands(), bands());
 });

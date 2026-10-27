@@ -1,43 +1,48 @@
 // Copyright (c) 2026 Sam Abbott. MIT licence, see LICENSE.
-// ESLint flat config. No plugins, so `npx eslint@10 .` needs nothing installed.
-const browser = {
-  window: "readonly", document: "readonly", getComputedStyle: "readonly",
-  matchMedia: "readonly", ResizeObserver: "readonly", performance: "readonly",
-  setTimeout: "readonly", clearTimeout: "readonly", console: "readonly"
-};
-const node = {
-  require: "readonly", module: "writable", process: "readonly",
-  console: "readonly", globalThis: "readonly", URL: "readonly"
-};
+// ESLint flat config: the recommended rules plus a few stricter ones.
+// eslint-config-prettier turns off rules that clash with prettier.
+import js from "@eslint/js";
+import prettier from "eslint-config-prettier";
+import globals from "globals";
+
 const rules = {
-  "no-undef": "error",
   "no-unused-vars": ["error", { args: "none", caughtErrors: "none" }],
-  "no-redeclare": "error",
-  "no-dupe-keys": "error",
-  "no-unreachable": "error",
   "no-var": "error",
   "prefer-const": "error",
   eqeqeq: ["error", "smart"]
 };
 
 export default [
-  { ignores: ["_site/**", ".venv/**", "node_modules/**"] },
+  {
+    ignores: ["_site/**", ".venv/**", "node_modules/**", "docs/**"]
+  },
+  js.configs.recommended,
   {
     files: ["onset-imputation.js"],
-    languageOptions: { ecmaVersion: 2022, sourceType: "script", globals: { ...node } },
+    languageOptions: {
+      ecmaVersion: 2022,
+      sourceType: "script",
+      globals: { module: "writable" }
+    },
     rules
   },
   {
     files: ["page.js"],
     languageOptions: {
-      ecmaVersion: 2022, sourceType: "script",
-      globals: { ...browser, OnsetImputation: "readonly" }
+      ecmaVersion: 2022,
+      sourceType: "script",
+      globals: { ...globals.browser, OnsetImputation: "readonly" }
     },
     rules
   },
   {
     files: ["**/*.mjs"],
-    languageOptions: { ecmaVersion: 2022, sourceType: "module", globals: { ...node } },
+    languageOptions: {
+      ecmaVersion: 2022,
+      sourceType: "module",
+      globals: { ...globals.node }
+    },
     rules
-  }
+  },
+  prettier
 ];

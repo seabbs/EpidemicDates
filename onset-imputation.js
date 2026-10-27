@@ -103,9 +103,24 @@
 (function (root, factory) {
   const api = factory();
   if (typeof module === "object" && module.exports) module.exports = api;
-  else root.OnsetImputation = api;
-})(typeof globalThis !== "undefined" ? globalThis : this, function () {
+  else Object.assign(root, { OnsetImputation: api });
+})(globalThis, function () {
   "use strict";
+
+  /**
+   * Freeze an object and every object or array inside it.
+   * @template T
+   * @param {T} obj Object to freeze.
+   * @returns {Readonly<T>} The same object, frozen.
+   * @private
+   */
+  function deepFreeze(obj) {
+    if (obj && typeof obj === "object" && !ArrayBuffer.isView(obj)) {
+      for (const v of Object.values(obj)) deepFreeze(v);
+      Object.freeze(obj);
+    }
+    return obj;
+  }
 
   // ---------- parameters ----------
   /**
@@ -119,11 +134,11 @@
   /**
    * Knot days for growth rate and ascertainment curves: 0, 15, ..., 240.
    * Curves are linear between knots and flat beyond the last.
-   * @type {number[]}
+   * @type {ReadonlyArray<number>}
    * @constant
    * @alias module:onset-imputation.KNOTS
    */
-  const KNOTS = Array.from({ length: 17 }, (_, j) => 15 * j);
+  const KNOTS = deepFreeze(Array.from({ length: 17 }, (_, j) => 15 * j));
   /**
    * Lower limit of the growth rate (per day) used by the page for drawing
    * and axes. Not enforced by this module.
@@ -142,9 +157,11 @@
   const R_MAX = 0.12;
   /**
    * Value of a knot curve at day `t`. Linear between knots, flat before the
-   * first and after the last. Assumes the 15-day spacing of
+   * first and after the last. Finds the knot interval by search, so it does
+   * not depend on the spacing of
    * {@link module:onset-imputation.KNOTS KNOTS}.
-   * @param {number[]} vals Values at each knot (same length as `KNOTS`).
+   * @param {ArrayLike<number>} vals Values at each knot (same length as
+   *   `KNOTS`).
    * @param {number} t Day.
    * @returns {number} Interpolated value.
    * @alias module:onset-imputation.curveAt
@@ -152,29 +169,33 @@
   const curveAt = (vals, t) => {
     if (t <= KNOTS[0]) return vals[0];
     if (t >= KNOTS[KNOTS.length - 1]) return vals[vals.length - 1];
-    const j = Math.floor(t / 15);
-    return vals[j] + (vals[j + 1] - vals[j]) * (t - KNOTS[j]) / 15;
+    const j = KNOTS.findIndex(k => k > t) - 1;
+    const span = KNOTS[j + 1] - KNOTS[j];
+    return vals[j] + ((vals[j + 1] - vals[j]) * (t - KNOTS[j])) / span;
   };
   /**
    * Knot values from a few anchor points. Linear between anchors, flat
    * outside them, rounded to 4 decimal places.
-   * @param {Array<Array<number>>} pts `[day, value]` pairs, sorted by day.
+   * @param {Array<Array<number>>} pts `[day, value]`
+   *   pairs, sorted by day.
    * @returns {number[]} One value per entry of
    *   {@link module:onset-imputation.KNOTS KNOTS}.
    * @example
    * knotsFrom([[0, 0.05], [60, 0.05], [120, -0.01]]);
    * @alias module:onset-imputation.knotsFrom
    */
-  const knotsFrom = pts => KNOTS.map(t => {
-    if (t <= pts[0][0]) return pts[0][1];
-    for (let j = 1; j < pts.length; j++) {
-      if (t <= pts[j][0]) {
-        const [a, ra] = pts[j - 1], [b, rb] = pts[j];
-        return +(ra + (rb - ra) * (t - a) / (b - a)).toFixed(4);
+  const knotsFrom = pts =>
+    KNOTS.map(t => {
+      if (t <= pts[0][0]) return pts[0][1];
+      for (let j = 1; j < pts.length; j++) {
+        if (t <= pts[j][0]) {
+          const [a, ra] = pts[j - 1],
+            [b, rb] = pts[j];
+          return +(ra + ((rb - ra) * (t - a)) / (b - a)).toFixed(4);
+        }
       }
-    }
-    return pts[pts.length - 1][1];
-  });
+      return pts[pts.length - 1][1];
+    });
   /**
    * Scenario parameters. Any subset can be passed to
    * {@link module:onset-imputation.run run}; missing fields come from
@@ -190,8 +211,9 @@
    *   {@link module:onset-imputation.KNOTS KNOTS} day.
    * @property {number} rwSd SD of daily AR(1) noise (coefficient 0.95) added
    *   to the growth rate from day 0. 0 for none.
-   * @property {number} seed Seed for the growth rate noise. Nothing else is
-   *   seeded.
+   * @property {number} seed Seed for the growth rate noise. Also the
+   *   default seed for {@link module:onset-imputation.stochastic stochastic}
+   *   replicates.
    * @property {number} mu0 Mean onset-to-report delay (days) for onsets on
    *   day 0.
    * @property {number} mu1 Mean delay for onsets on day `days - 1`. Linear in
@@ -203,14 +225,18 @@
    *   reported on day `days - 1`. Linear in report day between, capped at
    *   0.999.
    * @property {number} beta Dependence of missingness on delay `d`:
-   *   `logit(p) = logit(base) + beta * (d - mu0) / mu0`. 0 means missing at
-   *   random given report day.
+   *   `logit(p) = logit(base) + beta * (d - μ) / μ`, where `μ` is the mean
+   *   delay for the case's onset day (from `mu0` and `mu1`). 0 means missing
+   *   at random given report day.
    * @property {number[]} asc Ascertainment multiplier at each
    *   {@link module:onset-imputation.KNOTS KNOTS} day, applied to onsets.
    * @property {boolean} retro If true, use all cases eventually reported
    *   (cut-off at `days - 1 + D`). If false, cut the data at `cutoff`.
-   * @property {number} cutoff Report day of the data cut when `retro` is
-   *   false. Capped at `days - 1`.
+   * @property {?number} cutoff Report day of the data cut when `retro` is
+   *   false. Capped at `days - 1`. Null for the last day shown.
+   * @property {boolean} nowcast In real time, correct every method for right
+   *   truncation with the true delay and compare with all onsets that will
+   *   eventually be reported.
    * @property {boolean} stoch Show stochastic replicates. Used by the page
    *   only; {@link module:onset-imputation.run run} ignores it.
    * @property {number} reps Number of stochastic replicates. Used by the
@@ -220,63 +246,223 @@
    * @memberof module:onset-imputation
    */
   /**
-   * Default scenario parameters. A gently slowing then rising epidemic with
-   * an 8-day mean delay and 40% of onsets missing, viewed retrospectively.
-   * @type {module:onset-imputation.ScenarioParams}
+   * Default scenario parameters. Growth slows then picks up again, with a
+   * 6.6-day mean delay and 15% of onsets missing, viewed in real time with
+   * a nowcast. Frozen: copy it before changing a field.
+   * @type {ScenarioParams}
    * @constant
    * @alias module:onset-imputation.DEFAULTS
    */
-  const DEFAULTS = {
-    days: 180, O0: 1, knots: knotsFrom([[0, 0.05], [60, 0.05], [110, -0.01], [140, -0.01], [175, 0.03]]), rwSd: 0, seed: 1,
-    mu0: 6.6, mu1: 6.6, cv: 0.92, pi0: 0.15, pi1: 0.15, beta: 0,
-    asc: KNOTS.map(() => 1), retro: false, cutoff: null, nowcast: true,
-    stoch: false, reps: 30, ended: false
-  };
+  const DEFAULTS = deepFreeze({
+    days: 180,
+    O0: 1,
+    knots: knotsFrom([
+      [0, 0.05],
+      [60, 0.05],
+      [110, -0.01],
+      [140, -0.01],
+      [175, 0.03]
+    ]),
+    rwSd: 0,
+    seed: 1,
+    mu0: 6.6,
+    mu1: 6.6,
+    cv: 0.92,
+    pi0: 0.15,
+    pi1: 0.15,
+    beta: 0,
+    asc: KNOTS.map(() => 1),
+    retro: false,
+    cutoff: null,
+    nowcast: true,
+    stoch: false,
+    reps: 30,
+    ended: false
+  });
   const LONG8 = { mu0: 8, mu1: 8, cv: 1, pi0: 0.4, pi1: 0.4 };
   const LONG14 = { mu0: 14, mu1: 14, cv: 1, pi0: 0.7, pi1: 0.7 };
   // baseline: growth slows then picks up again, with wobble; delay and missingness from the
   // hub's data (mean 6.6 days, CV 0.92, 15% of onsets missing)
   // ascertainment rises as surveillance scales up, dips around day 140
   // (for example insecurity), then partly recovers
-  const BASE_ASC = knotsFrom([[0, 0.5], [40, 1], [110, 1], [140, 0.75], [180, 0.85]]);
+  const BASE_ASC = knotsFrom([
+    [0, 0.5],
+    [40, 1],
+    [110, 1],
+    [140, 0.75],
+    [180, 0.85]
+  ]);
   const BASE = { rwSd: 0.003, seed: 2, asc: BASE_ASC };
-  const PRESETS = [
-    { name: "Baseline", note: "Growth slows after the response, then picks up again, with random wobble. Ascertainment rises early, dips around day 140, then partly recovers. Delay (mean 6.6 days) and missing onsets (15%) as in the BDBV hub's data.",
-      set: { ...BASE } },
-    { name: "Baseline, all reported", note: "The baseline looked at after every case has been reported, so no nowcast is needed.",
-      set: { ...BASE, retro: true } },
-    { name: "Late cases miss onsets", note: "Baseline, but cases with long delays are more likely to lack an onset date. Public data cannot rule this out.",
-      set: { ...BASE, beta: 1.5 } },
-    { name: "Missing rises 5% to 25%", note: "Baseline with the fraction missing rising over the outbreak.",
-      set: { ...BASE, pi0: 0.05, pi1: 0.25 } },
-    { name: "Delays shorten", note: "Baseline with the mean delay falling from 12 to 6 days.",
-      set: { ...BASE, mu0: 12, mu1: 6 } },
-    { name: "Ascertainment falls", note: "Baseline, but detection halves over days 110 to 130 and stays low.",
-      set: { ...BASE, asc: knotsFrom([[0, 0.5], [40, 1], [110, 1], [130, 0.5], [180, 0.5]]) } },
-    { name: "Longer delays: 8 days, 40% missing", note: "The baseline, with longer delays and more missing onsets than BDBV has.",
-      set: { ...BASE, ...LONG8 } },
-    { name: "Longer delays: 14 days, 70% missing", note: "The baseline, with much longer delays and far more missing onsets than BDBV has.",
-      set: { ...BASE, ...LONG14 } },
-    { name: "Two waves", note: "Growth, control, resurgence, control. BDBV delays and missingness.",
-      set: { knots: knotsFrom([[0, 0.06], [30, 0.06], [50, -0.03], [90, -0.03], [105, 0.05], [135, 0.05], [150, -0.04]]), O0: 3, days: 180 } },
-    { name: "Oscillating", note: "Growth swings up and down every few weeks.",
-      set: { knots: KNOTS.map(t => +(0.01 + 0.035 * Math.sin(2 * Math.PI * t / 60)).toFixed(4)), O0: 5, days: 180 } },
-    { name: "Sharp turnaround", note: "Fast growth reversed within a week by a strong intervention.",
-      set: { knots: knotsFrom([[0, 0.06], [75, 0.06], [90, -0.04]]), O0: 0.5, days: 180 } },
-    { name: "Sharp turnaround, 8 days, 40% missing", note: "As above with an 8-day delay and 40% missing.",
-      set: { knots: knotsFrom([[0, 0.06], [75, 0.06], [90, -0.04]]), O0: 0.5, days: 180, ...LONG8 } },
-    { name: "Isiro 2012: slow, noisy", note: "Slow growth around 0.008/day with wobble. Few cases.",
-      set: { knots: knotsFrom([[0, 0.01], [120, 0.005], [180, -0.01]]), rwSd: 0.003, seed: 7, O0: 1.5, stoch: true, days: 180 } },
-    { name: "Steady growth", note: "Constant growth at 0.05/day.",
-      set: { knots: KNOTS.map(() => 0.05), days: 180 } },
-    { name: "Steady, no growth", note: "Constant incidence, Rt = 1.",
-      set: { knots: KNOTS.map(() => 0), O0: 20, days: 180 } },
-    { name: "Steady decline", note: "Constant decline at −0.03/day.",
-      set: { knots: KNOTS.map(() => -0.03), O0: 40, days: 180 } }
-  ];
+  /**
+   * A named scenario shown as a button on the page.
+   * @typedef {Object} Preset
+   * @property {string} name Short label.
+   * @property {string} note One or two sentences describing the scenario.
+   * @property {Partial<ScenarioParams>} set Parameters that differ from
+   *   {@link module:onset-imputation.DEFAULTS DEFAULTS}.
+   * @memberof module:onset-imputation
+   */
+  /**
+   * The scenarios on the page, in display order. The first is the baseline.
+   * Frozen: copy a preset's `set` before changing it.
+   * @type {ReadonlyArray<Preset>}
+   * @constant
+   * @alias module:onset-imputation.PRESETS
+   */
+  const PRESETS = deepFreeze(
+    /** @type {Preset[]} */ ([
+      {
+        name: "Baseline",
+        note: "Growth slows after the response, then picks up again, with random wobble. Ascertainment rises early, dips around day 140, then partly recovers. Delay (mean 6.6 days) and missing onsets (15%) as in the BDBV hub's data.",
+        set: { ...BASE }
+      },
+      {
+        name: "Baseline, all reported",
+        note: "The baseline looked at after every case has been reported, so no nowcast is needed.",
+        set: { ...BASE, retro: true }
+      },
+      {
+        name: "Late cases miss onsets",
+        note: "Baseline, but cases with long delays are more likely to lack an onset date. Public data cannot rule this out.",
+        set: { ...BASE, beta: 1.5 }
+      },
+      {
+        name: "Missing rises 5% to 25%",
+        note: "Baseline with the fraction missing rising over the outbreak.",
+        set: { ...BASE, pi0: 0.05, pi1: 0.25 }
+      },
+      {
+        name: "Delays shorten",
+        note: "Baseline with the mean delay falling from 12 to 6 days.",
+        set: { ...BASE, mu0: 12, mu1: 6 }
+      },
+      {
+        name: "Ascertainment falls",
+        note: "Baseline, but detection halves over days 110 to 130 and stays low.",
+        set: {
+          ...BASE,
+          asc: knotsFrom([
+            [0, 0.5],
+            [40, 1],
+            [110, 1],
+            [130, 0.5],
+            [180, 0.5]
+          ])
+        }
+      },
+      {
+        name: "Longer delays: 8 days, 40% missing",
+        note: "The baseline, with longer delays and more missing onsets than BDBV has.",
+        set: { ...BASE, ...LONG8 }
+      },
+      {
+        name: "Longer delays: 14 days, 70% missing",
+        note: "The baseline, with much longer delays and far more missing onsets than BDBV has.",
+        set: { ...BASE, ...LONG14 }
+      },
+      {
+        name: "Two waves",
+        note: "Growth, control, resurgence, control. BDBV delays and missingness.",
+        set: {
+          knots: knotsFrom([
+            [0, 0.06],
+            [30, 0.06],
+            [50, -0.03],
+            [90, -0.03],
+            [105, 0.05],
+            [135, 0.05],
+            [150, -0.04]
+          ]),
+          O0: 3,
+          days: 180
+        }
+      },
+      {
+        name: "Oscillating",
+        note: "Growth swings up and down every few weeks.",
+        set: {
+          knots: KNOTS.map(
+            t => +(0.01 + 0.035 * Math.sin((2 * Math.PI * t) / 60)).toFixed(4)
+          ),
+          O0: 5,
+          days: 180
+        }
+      },
+      {
+        name: "Sharp turnaround",
+        note: "Fast growth reversed within a week by a strong intervention.",
+        set: {
+          knots: knotsFrom([
+            [0, 0.06],
+            [75, 0.06],
+            [90, -0.04]
+          ]),
+          O0: 0.5,
+          days: 180
+        }
+      },
+      {
+        name: "Sharp turnaround, 8 days, 40% missing",
+        note: "As above with an 8-day delay and 40% missing.",
+        set: {
+          knots: knotsFrom([
+            [0, 0.06],
+            [75, 0.06],
+            [90, -0.04]
+          ]),
+          O0: 0.5,
+          days: 180,
+          ...LONG8
+        }
+      },
+      {
+        name: "Isiro 2012: slow, noisy",
+        note: "Slow growth around 0.008/day with wobble. Few cases.",
+        set: {
+          knots: knotsFrom([
+            [0, 0.01],
+            [120, 0.005],
+            [180, -0.01]
+          ]),
+          rwSd: 0.003,
+          seed: 7,
+          O0: 1.5,
+          stoch: true,
+          days: 180
+        }
+      },
+      {
+        name: "Steady growth",
+        note: "Constant growth at 0.05/day.",
+        set: { knots: KNOTS.map(() => 0.05), days: 180 }
+      },
+      {
+        name: "Steady, no growth",
+        note: "Constant incidence, Rt = 1.",
+        set: { knots: KNOTS.map(() => 0), O0: 20, days: 180 }
+      },
+      {
+        name: "Steady decline",
+        note: "Constant decline at −0.03/day.",
+        set: { knots: KNOTS.map(() => -0.03), O0: 40, days: 180 }
+      }
+    ])
+  );
 
   /**
-   * OnsetImputation methods, by key:
+   * Key of an imputation method.
+   * @typedef {"hub" | "mean" | "fwd" | "gen"} MethodKey
+   * @memberof module:onset-imputation
+   */
+  /**
+   * An imputation method.
+   * @typedef {Object} Method
+   * @property {MethodKey} key Short key used in results.
+   * @property {string} name Label used on the page.
+   * @memberof module:onset-imputation
+   */
+  /**
+   * Imputation methods, by key:
    *
    * - `hub`: draw a delay from the pooled empirical delays of cases with
    *   both dates and subtract it from the report day.
@@ -286,52 +472,77 @@
    *   estimated with a truncation adjustment.
    * - `gen`: EM back-projection of missing-onset cases (see
    *   {@link module:onset-imputation.emImpute emImpute}).
-   * @type {Array<{key: string, name: string}>}
+   * @type {ReadonlyArray<Method>}
    * @constant
    * @alias module:onset-imputation.METHODS
    */
-  const METHODS = [
+  const METHODS = deepFreeze([
     { key: "hub", name: "Hub: draw from pooled empirical delays" },
     { key: "mean", name: "Mean shift" },
     { key: "fwd", name: "Draw from forward delay" },
     { key: "gen", name: "Generative (EM back-projection)" }
-  ];
+  ]);
 
   // ---------- maths helpers ----------
+  /**
+   * Log of the Gamma function (Lanczos approximation).
+   * @param {number} xx Positive argument.
+   * @returns {number}
+   * @private
+   */
   function gammln(xx) {
-    const cof = [76.18009172947146, -86.50532032941677, 24.01409824083091,
-      -1.231739572450155, 0.1208650973866179e-2, -0.5395239384953e-5];
+    const cof = [
+      76.18009172947146, -86.50532032941678, 24.01409824083091,
+      -1.231739572450155, 0.1208650973866179e-2, -0.5395239384953e-5
+    ];
     const x = xx;
-    let y = xx, tmp = x + 5.5;
+    let y = xx,
+      tmp = x + 5.5;
     tmp -= (x + 0.5) * Math.log(tmp);
     let ser = 1.000000000190015;
     for (let j = 0; j < 6; j++) ser += cof[j] / ++y;
-    return -tmp + Math.log(2.5066282746310005 * ser / x);
+    return -tmp + Math.log((2.5066282746310007 * ser) / x);
   }
+  /**
+   * Regularised lower incomplete Gamma function `P(a, x)`.
+   * @param {number} a Shape.
+   * @param {number} x Upper limit.
+   * @returns {number}
+   * @private
+   */
   function gammp(a, x) {
     if (x <= 0) return 0;
     const lead = -x + a * Math.log(x) - gammln(a);
     if (x < a + 1) {
-      let ap = a, sum = 1 / a, del = sum;
+      let ap = a,
+        sum = 1 / a,
+        del = sum;
       for (let n = 0; n < 1000; n++) {
-        ap += 1; del *= x / ap; sum += del;
+        ap += 1;
+        del *= x / ap;
+        sum += del;
         if (Math.abs(del) < Math.abs(sum) * 1e-13) break;
       }
       return sum * Math.exp(lead);
     }
-    let b = x + 1 - a, c = 1e300, d = 1 / b, h = d;
+    let b = x + 1 - a,
+      c = 1e300,
+      d = 1 / b,
+      h = d;
     for (let i = 1; i < 1000; i++) {
       const an = -i * (i - a);
       b += 2;
-      d = an * d + b; if (Math.abs(d) < 1e-300) d = 1e-300;
-      c = b + an / c; if (Math.abs(c) < 1e-300) c = 1e-300;
+      d = an * d + b;
+      if (Math.abs(d) < 1e-300) d = 1e-300;
+      c = b + an / c;
+      if (Math.abs(c) < 1e-300) c = 1e-300;
       d = 1 / d;
-      const del = d * c; h *= del;
+      const del = d * c;
+      h *= del;
       if (Math.abs(del - 1) < 1e-13) break;
     }
     return 1 - Math.exp(lead) * h;
   }
-  const pmfCache = new Map();
   /**
    * Daily onset-to-report delay pmf, double interval censored
    * (primarycensored form). The primary event is uniform within its day and
@@ -340,18 +551,21 @@
    * `G(x) = x F(x; k, θ) − k θ F(x; k + 1, θ)`, the integral of the Gamma
    * CDF `F` from 0 to `x`. Shape `k = 1 / cv²`, scale `θ = μ cv²`.
    * Truncated at {@link module:onset-imputation.D D} and renormalised, so its
-   * mean is close to `mu`. Results are cached.
+   * mean is close to `mu`.
    * @param {number} mu Mean delay of the underlying Gamma (days).
    * @param {number} cv Coefficient of variation of the Gamma.
-   * @returns {Float64Array} Probabilities for delays `0..D`. Shared with the
-   *   cache, so do not modify it.
+   * @returns {Float64Array} Probabilities for delays `0..D`. A new array on
+   *   each call.
    * @alias module:onset-imputation.delayPmf
    */
   function delayPmf(mu, cv) {
-    const key = mu.toFixed(3) + "|" + cv.toFixed(3);
-    if (pmfCache.has(key)) return pmfCache.get(key);
-    const k = 1 / (cv * cv), theta = mu * cv * cv;
-    const G = x => x <= 0 ? 0 : x * gammp(k, x / theta) - k * theta * gammp(k + 1, x / theta);
+    const k = 1 / (cv * cv),
+      theta = mu * cv * cv;
+    /** @param {number} x */
+    const G = x =>
+      x <= 0
+        ? 0
+        : x * gammp(k, x / theta) - k * theta * gammp(k + 1, x / theta);
     const pmf = new Float64Array(D + 1);
     let tot = 0;
     for (let d = 0; d <= D; d++) {
@@ -359,19 +573,23 @@
       tot += pmf[d];
     }
     for (let d = 0; d <= D; d++) pmf[d] /= tot;
-    pmfCache.set(key, pmf);
     return pmf;
   }
+  /**
+   * @private
+   * @param {number} x
+   */
   const logistic = x => 1 / (1 + Math.exp(-x));
   /**
    * Gamma generation interval used for Rt, in days. Ebola-like mean 15 days
    * and SD 9.
-   * @type {{mean: number, sd: number}}
+   * @type {Readonly<{mean: number, sd: number}>}
    * @constant
    * @alias module:onset-imputation.GI
    */
-  const GI = { mean: 15, sd: 9 };
-  const GI_SHAPE = (GI.mean / GI.sd) ** 2, GI_SCALE = GI.sd ** 2 / GI.mean;
+  const GI = deepFreeze({ mean: 15, sd: 9 });
+  const GI_SHAPE = (GI.mean / GI.sd) ** 2,
+    GI_SCALE = GI.sd ** 2 / GI.mean;
   /**
    * Whether two growth rates are on opposite sides of 0 (Rt on opposite
    * sides of 1). Ignored when both are within 0.0005/day of 0.
@@ -380,7 +598,18 @@
    * @returns {boolean}
    * @alias module:onset-imputation.wrongSideOf1
    */
-  const wrongSideOf1 = (a, b) => (a > 0) !== (b > 0) && Math.max(Math.abs(a), Math.abs(b)) > 5e-4;
+  const wrongSideOf1 = (a, b) =>
+    a > 0 !== b > 0 && Math.max(Math.abs(a), Math.abs(b)) > 5e-4;
+  /**
+   * @overload
+   * @param {number} r
+   * @returns {number}
+   */
+  /**
+   * @overload
+   * @param {?number} r
+   * @returns {?number}
+   */
   /**
    * Rt from a growth rate with the Gamma generation interval
    * {@link module:onset-imputation.GI GI} (Wallinga and Lipsitch):
@@ -390,7 +619,14 @@
    * @returns {?number} Rt, or null if `r` is null.
    * @alias module:onset-imputation.rToR
    */
-  const rToR = r => r === null ? null : Math.pow(Math.max(1 + r * GI_SCALE, 1e-6), GI_SHAPE);
+  function rToR(r) {
+    if (r === null) return null;
+    return Math.pow(Math.max(1 + r * GI_SCALE, 1e-6), GI_SHAPE);
+  }
+  /**
+   * @private
+   * @param {number} p
+   */
   const logit = p => Math.log(p / (1 - p));
   /**
    * Restrict `x` to the interval `[a, b]`.
@@ -407,9 +643,47 @@
    * @returns {number} `sum(d * f[d])`. Not renormalised.
    * @alias module:onset-imputation.pmfMean
    */
-  const pmfMean = f => { let m = 0; for (let d = 0; d < f.length; d++) m += d * f[d]; return m; };
+  const pmfMean = f => {
+    let m = 0;
+    for (let d = 0; d < f.length; d++) m += d * f[d];
+    return m;
+  };
+
+  /**
+   * A uniform random number generator.
+   * @callback Rng
+   * @returns {number} A draw on `[0, 1)`.
+   * @memberof module:onset-imputation
+   */
+  /**
+   * A seeded uniform generator (mulberry32). The same seed and stream always
+   * give the same sequence.
+   * @param {number} seed Integer seed.
+   * @param {number} [stream=0] Integer stream number, so one seed can give
+   *   several independent sequences.
+   * @returns {Rng} Function returning uniforms on `[0, 1)`.
+   * @alias module:onset-imputation.makeRng
+   */
+  function makeRng(seed, stream = 0) {
+    let state = (seed * 2654435761 + stream * 0x85ebca6b) >>> 0;
+    return () => {
+      state = (state + 0x6d2b79f5) >>> 0;
+      let z = state;
+      z = Math.imul(z ^ (z >>> 15), z | 1);
+      z ^= z + Math.imul(z ^ (z >>> 7), z | 61);
+      return ((z ^ (z >>> 14)) >>> 0) / 4294967296;
+    };
+  }
 
   // ---------- scenario ----------
+  /**
+   * Probability that an onset is missing.
+   * @callback MissingProb
+   * @param {number} i Internal report day.
+   * @param {number} d Delay in days.
+   * @returns {number}
+   * @memberof module:onset-imputation
+   */
   /**
    * A simulated scenario in expectation. Arrays are indexed by internal day
    * `i = display day + B`.
@@ -424,27 +698,32 @@
    * @property {Float64Array} C Expected onsets per day, after ascertainment.
    * @property {Float64Array[]} f Delay pmf for each onset day.
    * @property {Float64Array[]} F Delay CDF for each onset day.
-   * @property {function(number, number): number} pim Probability an onset
-   *   is missing given internal report day and delay.
+   * @property {MissingProb} pim Probability an onset is missing given
+   *   internal report day and delay.
    * @property {Float64Array} fbar Forward delay: true delay pmf averaged
    *   over displayed onsets up to the cut-off, weighted by onsets.
    * @property {Float64Array} cover Expected fraction of each onset day's
    *   cases reported by the cut-off.
+   * @property {number} wk0 Display day on which week 0 starts. Weeks are
+   *   counted back from the cut-off, so the last week ends on it.
+   * @property {number} seed Seed from the parameters, the default seed for
+   *   {@link module:onset-imputation.stochastic stochastic}.
    * @memberof module:onset-imputation
    */
   /**
    * Build a scenario: growth rate, expected onsets, delays and missingness.
    * Onsets grow as `exp(cumsum(r))` from `O0` on day 0, after a burn-in of
    * `D` days at the first knot growth rate, and are scaled by ascertainment.
-   * @param {module:onset-imputation.ScenarioParams} p Full parameter set (merge
+   * @param {ScenarioParams} p Full parameter set (merge
    *   with {@link module:onset-imputation.DEFAULTS DEFAULTS} first).
-   * @returns {module:onset-imputation.Scenario}
+   * @returns {Scenario}
    * @alias module:onset-imputation.scenario
    */
   function scenario(p) {
     // Internal day index i = display day + B. The burn-in of B days at the
     // initial growth rate avoids an artificial start at day 0.
-    const N = p.days, B = D;
+    const N = p.days,
+      B = D;
     const cut = p.cutoff === null || p.cutoff === undefined ? N - 1 : p.cutoff;
     const Td = p.retro ? N - 1 + D : Math.min(cut, N - 1);
     // weeks are counted back from the last day shown, so the final week
@@ -452,30 +731,21 @@
     const wk0 = Math.min(N, Td + 1) % 7;
     const T = Td + B;
     const S = T + 1;
-    const r = new Float64Array(S), C = new Float64Array(S);
+    const r = new Float64Array(S),
+      C = new Float64Array(S);
     // piecewise-linear r(t) through the knots plus mean-reverting noise
     const kv = p.knots;
-    let seed = p.seed * 2654435761 >>> 0;
-    const unif = () => {
-      seed = (seed + 0x6D2B79F5) >>> 0;
-      let z = seed;
-      z = Math.imul(z ^ (z >>> 15), z | 1);
-      z ^= z + Math.imul(z ^ (z >>> 7), z | 61);
-      return ((z ^ (z >>> 14)) >>> 0) / 4294967296;
-    };
+    const unif = makeRng(p.seed);
     let noise = 0;
     for (let i = 0; i < S; i++) {
       const t = i - B;
-      let rt;
-      if (t <= KNOTS[0]) rt = kv[0];
-      else if (t >= KNOTS[KNOTS.length - 1]) rt = kv[kv.length - 1];
-      else {
-        const j = KNOTS.findIndex(k => k > t) - 1;
-        rt = kv[j] + (kv[j + 1] - kv[j]) * (t - KNOTS[j]) / (KNOTS[j + 1] - KNOTS[j]);
-      }
+      const rt = curveAt(kv, t);
       if (t >= 0 && p.rwSd > 0) {
-        const u1 = Math.max(unif(), 1e-12), u2 = unif();
-        noise = 0.95 * noise + p.rwSd * Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2);
+        const u1 = Math.max(unif(), 1e-12),
+          u2 = unif();
+        noise =
+          0.95 * noise +
+          p.rwSd * Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2);
       }
       r[i] = rt + noise;
     }
@@ -486,24 +756,46 @@
       const over = p.retro && p.ended && i - B >= N;
       C[i] = over ? 0 : Math.exp(logO) * asc;
     }
-    const f = [], F = [];
+    // mean delay by internal onset day
+    /** @param {number} i */
+    const muAt = i => p.mu0 + (p.mu1 - p.mu0) * clamp((i - B) / (N - 1), 0, 1);
+    /** @type {Float64Array[]} */
+    const f = [];
+    /** @type {Float64Array[]} */
+    const F = [];
+    // delay pmfs are shared between days with the same mean delay
+    /** @type {Map<number, {pmf: Float64Array, cdf: Float64Array}>} */
+    const memo = new Map();
     for (let i = 0; i < S; i++) {
-      const mu = p.mu0 + (p.mu1 - p.mu0) * clamp((i - B) / (N - 1), 0, 1);
-      const pmf = delayPmf(mu, p.cv);
-      f.push(pmf);
-      const cdf = new Float64Array(D + 1);
-      let acc = 0;
-      for (let d = 0; d <= D; d++) { acc += pmf[d]; cdf[d] = acc; }
-      F.push(cdf);
+      const mu = muAt(i);
+      let hit = memo.get(mu);
+      if (!hit) {
+        const pmf = delayPmf(mu, p.cv);
+        const cdf = new Float64Array(D + 1);
+        let acc = 0;
+        for (let d = 0; d <= D; d++) {
+          acc += pmf[d];
+          cdf[d] = acc;
+        }
+        hit = { pmf, cdf };
+        memo.set(mu, hit);
+      }
+      f.push(hit.pmf);
+      F.push(hit.cdf);
     }
-    const muRef = p.mu0;
-    // probability onset is missing, by internal report day and delay
+    // probability onset is missing, by internal report day and delay. With
+    // beta, the delay is scaled by the mean delay for the onset day.
+    /**
+     * @param {number} i Internal report day.
+     * @param {number} d Delay in days.
+     */
     const pim = (i, d) => {
       const frac = clamp((i - B) / (N - 1), 0, 1);
       const base = clamp(p.pi0 + (p.pi1 - p.pi0) * frac, 0, 0.999);
       if (base <= 0) return 0;
       if (p.beta === 0) return base;
-      return logistic(logit(base) + p.beta * (d - muRef) / muRef);
+      const mu = muAt(i - d);
+      return logistic(logit(base) + (p.beta * (d - mu)) / mu);
     };
     // true onset-weighted forward delay over the displayed onsets, standing in
     // for a delay estimated with a truncation adjustment
@@ -517,32 +809,44 @@
     // expected fraction of each onset day's cases reported by the cut-off
     const cover = new Float64Array(S);
     for (let i = 0; i < S; i++) cover[i] = F[i][Math.min(T - i, D)];
-    return { N, B, T, Td, S, r, C, f, F, pim, fbar, cover, wk0 };
+    return { N, B, T, Td, S, r, C, f, F, pim, fbar, cover, wk0, seed: p.seed };
   }
 
   // ---------- expected-value data ----------
   /**
+   * Output of {@link module:onset-imputation.expectedData expectedData}.
+   * Arrays use the internal day index.
+   * @typedef {Object} ExpectedData
+   * @property {Float64Array} truth Onsets of reported cases by onset day.
+   * @property {Float64Array} comp Onsets of cases with a known onset.
+   * @property {Float64Array} miss Cases with a missing onset by report day.
+   * @property {Float64Array} rep All cases by report day.
+   * @property {Float64Array} empCounts Delays of complete cases, length
+   *   `D + 1`.
+   * @memberof module:onset-imputation
+   */
+  /**
    * Expected observed data for a scenario, counting only cases reported by
    * the cut-off.
-   * @param {module:onset-imputation.Scenario} sc Scenario.
-   * @returns {{truth: Float64Array, comp: Float64Array, miss: Float64Array,
-   *   rep: Float64Array, empCounts: Float64Array}} `truth`: onsets of
-   *   reported cases by onset day. `comp`: onsets of cases with a known
-   *   onset. `miss`: cases with a missing onset by report day. `rep`: all
-   *   cases by report day. `empCounts`: delays of complete cases, length
-   *   `D + 1`.
+   * @param {Scenario} sc Scenario.
+   * @returns {ExpectedData}
    * @alias module:onset-imputation.expectedData
    */
   function expectedData(sc) {
     const { T, S, C, f, pim } = sc;
-    const truth = new Float64Array(S), comp = new Float64Array(S);
-    const miss = new Float64Array(T + 1), rep = new Float64Array(T + 1);
+    const truth = new Float64Array(S),
+      comp = new Float64Array(S);
+    const miss = new Float64Array(T + 1),
+      rep = new Float64Array(T + 1);
     const empCounts = new Float64Array(D + 1);
     for (let s = 0; s < S; s++) {
       for (let d = 0; d <= D && s + d <= T; d++) {
-        const x = C[s] * f[s][d], pm = pim(s + d, d);
-        truth[s] += x; rep[s + d] += x;
-        comp[s] += x * (1 - pm); miss[s + d] += x * pm;
+        const x = C[s] * f[s][d],
+          pm = pim(s + d, d);
+        truth[s] += x;
+        rep[s + d] += x;
+        comp[s] += x * (1 - pm);
+        miss[s + d] += x * pm;
         empCounts[d] += x * (1 - pm);
       }
     }
@@ -557,7 +861,8 @@
    * @alias module:onset-imputation.normalise
    */
   function normalise(a) {
-    let s = 0; for (const v of a) s += v;
+    let s = 0;
+    for (let i = 0; i < a.length; i++) s += a[i];
     const out = new Float64Array(a.length);
     if (s > 0) for (let i = 0; i < a.length; i++) out[i] = a[i] / s;
     return out;
@@ -612,6 +917,15 @@
     return out;
   }
   /**
+   * Called after each EM iteration.
+   * @callback EmCallback
+   * @param {number} iteration Iteration number, from 1.
+   * @param {Float64Array} imputed `comp` plus the allocated cases.
+   * @param {Float64Array} lambda The current onset curve `λ`.
+   * @returns {void}
+   * @memberof module:onset-imputation
+   */
+  /**
    * EM back-projection of missing-onset cases (`gen`), 80 iterations.
    *
    * Missing cases reported on day `t` are shared over onset days `s` with
@@ -633,14 +947,12 @@
    * acceptable for this demonstration.
    * @param {ArrayLike<number>} comp Complete cases by onset day.
    * @param {ArrayLike<number>} miss Missing-onset cases by report day.
-   * @param {module:onset-imputation.Scenario} sc Scenario, for `f`, `F`, `S`, `T`.
+   * @param {Scenario} sc Scenario, for `f`, `F`, `S`, `T`.
    * @param {ArrayLike<number>} start Starting onset curve, for example the
    *   `hub` result.
    * @param {number} [iterations=80] Number of EM iterations.
-   * @param {?function(number, Float64Array, Float64Array)} [onIter=null]
-   *   Called after each iteration with the iteration number, `comp` plus
-   *   the allocated cases, and the current onset curve `λ`. Used by the
-   *   page to show the iterations.
+   * @param {?EmCallback} [onIter=null] Called after each iteration. Used by
+   *   the page to show the iterations.
    * @returns {Float64Array} `comp` plus the allocated cases, by onset day.
    *   Not truncation adjusted.
    * @alias module:onset-imputation.emImpute
@@ -648,7 +960,8 @@
   function emImpute(comp, miss, sc, start, iterations = 80, onIter = null) {
     const { S, T, f, F } = sc;
     const trunc = new Float64Array(S);
-    for (let s = 0; s < S; s++) trunc[s] = Math.max(F[s][Math.min(T - s, D)], 1e-4);
+    for (let s = 0; s < S; s++)
+      trunc[s] = Math.max(F[s][Math.min(T - s, D)], 1e-4);
     const lam = new Float64Array(S);
     for (let s = 0; s < S; s++) lam[s] = (start[s] + 1e-6) / trunc[s];
     let alloc = new Float64Array(S);
@@ -657,29 +970,49 @@
       for (let t = 0; t < miss.length; t++) {
         if (!miss[t]) continue;
         let den = 0;
-        for (let d = 0; d <= D; d++) { const s = t - d; if (s >= 0 && s < S) den += lam[s] * f[s][d]; }
+        for (let d = 0; d <= D; d++) {
+          const s = t - d;
+          if (s >= 0 && s < S) den += lam[s] * f[s][d];
+        }
         if (den <= 0) continue;
         for (let d = 0; d <= D; d++) {
           const s = t - d;
-          if (s >= 0 && s < S) alloc[s] += miss[t] * lam[s] * f[s][d] / den;
+          if (s >= 0 && s < S) alloc[s] += (miss[t] * lam[s] * f[s][d]) / den;
         }
       }
-      for (let s = 0; s < S; s++) lam[s] = (comp[s] + alloc[s] + 1e-9) / trunc[s];
-      if (onIter) onIter(it + 1, Float64Array.from(comp, (v, s) => v + alloc[s]), Float64Array.from(lam));
+      for (let s = 0; s < S; s++)
+        lam[s] = (comp[s] + alloc[s] + 1e-9) / trunc[s];
+      if (onIter)
+        onIter(
+          it + 1,
+          Float64Array.from(comp, (v, s) => v + alloc[s]),
+          Float64Array.from(lam)
+        );
     }
     const out = new Float64Array(S);
     for (let s = 0; s < S; s++) out[s] = comp[s] + alloc[s];
     return out;
   }
   /**
+   * Output of {@link module:onset-imputation.runMethods runMethods}: daily
+   * onsets by method on the internal day index, plus the pooled empirical
+   * delay and its rounded mean.
+   * @typedef {Object} MethodResults
+   * @property {Float64Array} hub Hub method.
+   * @property {Float64Array} mean Mean shift.
+   * @property {Float64Array} fwd Forward draw.
+   * @property {Float64Array} gen EM back-projection.
+   * @property {Float64Array} g Pooled empirical delay pmf.
+   * @property {number} m Rounded mean of `g`.
+   * @memberof module:onset-imputation
+   */
+  /**
    * Apply all four methods.
-   * @param {module:onset-imputation.Scenario} sc Scenario.
+   * @param {Scenario} sc Scenario.
    * @param {ArrayLike<number>} comp Complete cases by onset day.
    * @param {ArrayLike<number>} miss Missing-onset cases by report day.
    * @param {ArrayLike<number>} empCounts Delays of complete cases.
-   * @returns {{hub: Float64Array, mean: Float64Array, fwd: Float64Array,
-   *   gen: Float64Array, g: Float64Array, m: number}} Daily onsets by
-   *   method, the pooled empirical delay `g` and its rounded mean `m`.
+   * @returns {MethodResults}
    * @alias module:onset-imputation.runMethods
    */
   function runMethods(sc, comp, miss, empCounts) {
@@ -691,7 +1024,8 @@
       mean: shiftImpute(comp, miss, m, sc.S),
       fwd: convImpute(comp, miss, sc.fbar, sc.S),
       gen: emImpute(comp, miss, sc, hub),
-      g, m
+      g,
+      m
     };
   }
 
@@ -707,7 +1041,8 @@
    */
   function weekly(daily, W, off) {
     const out = new Float64Array(W);
-    for (let w = 0; w < W; w++) for (let d = 0; d < 7; d++) out[w] += daily[off + 7 * w + d] || 0;
+    for (let w = 0; w < W; w++)
+      for (let d = 0; d < 7; d++) out[w] += daily[off + 7 * w + d] || 0;
     return out;
   }
   /**
@@ -721,12 +1056,17 @@
    * @alias module:onset-imputation.growth
    */
   function growth(wk, off = 0) {
-    const n = wk.length, out = new Array(n).fill(null);
-    const lg = w => wk[w] + off > 0 ? Math.log(wk[w] + off) : null;
+    const n = wk.length;
+    /** @type {Array<?number>} */
+    const out = new Array(n).fill(null);
+    /** @param {number} w */
+    const lg = w => (wk[w] + off > 0 ? Math.log(wk[w] + off) : null);
     for (let w = 0; w < n; w++) {
-      const a = Math.max(w - 1, 0), b = Math.min(w + 1, n - 1);
+      const a = Math.max(w - 1, 0),
+        b = Math.min(w + 1, n - 1);
       if (b === a) continue;
-      const la = lg(a), lb = lg(b);
+      const la = lg(a),
+        lb = lg(b);
       if (la === null || lb === null) continue;
       out[w] = (lb - la) / (7 * (b - a));
     }
@@ -734,144 +1074,268 @@
   }
 
   // ---------- stochastic replicates ----------
-  function rpois(lam) {
-    if (lam <= 0) return 0;
-    if (lam > 40) return Math.max(0, Math.round(lam + Math.sqrt(lam) * randn()));
-    const L = Math.exp(-lam); let k = 0, p = 1;
-    do { k++; p *= Math.random(); } while (p > L);
-    return k - 1;
-  }
-  function randn() {
-    let u = 0, v = 0;
-    while (u === 0) u = Math.random();
-    v = Math.random();
+  // Random draws take the generator `rng` as an argument, so the module
+  // holds no random state of its own.
+  /**
+   * Standard normal draw (Box-Muller).
+   * @param {Rng} rng Uniform generator.
+   * @returns {number}
+   * @private
+   */
+  function randn(rng) {
+    let u = 0;
+    while (u === 0) u = rng();
+    const v = rng();
     return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
   }
-
-  function cumsum(a) { const c = new Float64Array(a.length); let s = 0; for (let i = 0; i < a.length; i++) { s += a[i]; c[i] = s; } return c; }
-  function rbinom(n, p) {
+  /**
+   * Poisson draw. Normal approximation above a mean of 40.
+   * @param {number} lam Mean.
+   * @param {Rng} rng Uniform generator.
+   * @returns {number}
+   * @private
+   */
+  function rpois(lam, rng) {
+    if (lam <= 0) return 0;
+    if (lam > 40) {
+      return Math.max(0, Math.round(lam + Math.sqrt(lam) * randn(rng)));
+    }
+    const L = Math.exp(-lam);
+    let k = 0,
+      p = 1;
+    do {
+      k++;
+      p *= rng();
+    } while (p > L);
+    return k - 1;
+  }
+  /**
+   * Cumulative sum.
+   * @param {ArrayLike<number>} a Values.
+   * @returns {Float64Array}
+   * @private
+   */
+  function cumsum(a) {
+    const c = new Float64Array(a.length);
+    let s = 0;
+    for (let i = 0; i < a.length; i++) {
+      s += a[i];
+      c[i] = s;
+    }
+    return c;
+  }
+  /**
+   * Binomial draw. Exact below 40 trials, otherwise a Poisson or normal
+   * approximation.
+   * @param {number} n Trials.
+   * @param {number} p Success probability.
+   * @param {Rng} rng Uniform generator.
+   * @returns {number}
+   * @private
+   */
+  function rbinom(n, p, rng) {
     if (n <= 0 || p <= 0) return 0;
     if (p >= 1) return n;
-    if (n < 40) { let k = 0; for (let i = 0; i < n; i++) if (Math.random() < p) k++; return k; }
-    const m = n * p, v = n * p * (1 - p);
-    if (m < 10) return Math.min(n, rpois(m));
-    return clamp(Math.round(m + Math.sqrt(v) * randn()), 0, n);
+    if (n < 40) {
+      let k = 0;
+      for (let i = 0; i < n; i++) if (rng() < p) k++;
+      return k;
+    }
+    const m = n * p,
+      v = n * p * (1 - p);
+    if (m < 10) return Math.min(n, rpois(m, rng));
+    return clamp(Math.round(m + Math.sqrt(v) * randn(rng)), 0, n);
   }
-  // multinomial allocation of n cases over the probabilities in prob
-  function rmultinom(n, prob) {
+  /**
+   * Multinomial allocation of `n` cases over the probabilities in `prob`.
+   * @param {number} n Number of cases.
+   * @param {ArrayLike<number>} prob Probabilities summing to 1.
+   * @param {Rng} rng Uniform generator.
+   * @returns {Float64Array} Counts per category.
+   * @private
+   */
+  function rmultinom(n, prob, rng) {
     const out = new Float64Array(prob.length);
-    let left = n, rest = 1;
+    let left = n,
+      rest = 1;
     for (let k = 0; k < prob.length && left > 0; k++) {
-      const x = k === prob.length - 1 ? left : rbinom(left, rest > 0 ? clamp(prob[k] / rest, 0, 1) : 0);
-      out[k] = x; left -= x; rest -= prob[k];
+      const x =
+        k === prob.length - 1
+          ? left
+          : rbinom(left, rest > 0 ? clamp(prob[k] / rest, 0, 1) : 0, rng);
+      out[k] = x;
+      left -= x;
+      rest -= prob[k];
     }
     return out;
   }
   /**
    * A 90% interval with `x` the mid-week display day.
    * @typedef {Object} Band
-   * @property {number} x Day (`7 w + 3.5`).
+   * @property {number} x Day (`wk0 + 7 w + 3.5`).
    * @property {number} lo 5% quantile.
    * @property {number} hi 95% quantile.
+   * @memberof module:onset-imputation
+   */
+  /**
+   * Output of {@link module:onset-imputation.stochastic stochastic}. Objects
+   * are keyed by method.
+   * @typedef {Object} StochasticResult
+   * @property {Record<MethodKey, Band[]>} bands Weekly relative error.
+   * @property {Record<MethodKey, Band[]>} gbands Growth rate per day.
+   * @property {Record<MethodKey, Band[]>} ebands Rt error.
+   * @property {Band[]} truthBand Growth rate of the true onsets.
    * @memberof module:onset-imputation
    */
   /**
    * Poisson replicates of a scenario. Each replicate draws complete and
    * missing cases for every (onset, delay) cell, then imputes. `hub` and
    * `fwd` draw delays multinomially. `mean` and `gen` are as in expectation.
-   * Uses `Math.random`, so results are not reproducible.
+   * Draws come from a generator seeded with `seed`, so the same inputs give
+   * the same bands.
    *
    * Weeks are left out of a band when fewer than `max(3, reps / 3)`
    * replicates give a value. Relative errors need at least 5 true cases in
    * the week.
-   * @param {module:onset-imputation.Scenario} sc Scenario.
+   * @param {Scenario} sc Scenario.
    * @param {number} W Number of weeks.
    * @param {number} reps Number of replicates.
-   * @returns {{bands: Object<string, module:onset-imputation.Band[]>,
-   *   gbands: Object<string, module:onset-imputation.Band[]>,
-   *   ebands: Object<string, module:onset-imputation.Band[]>,
-   *   truthBand: module:onset-imputation.Band[]}} By method key: `bands` for
-   *   weekly relative error, `gbands` for growth rate and `ebands` for Rt
-   *   error. `truthBand` is the growth rate of the true onsets.
+   * @param {boolean} [nowcast=false] Correct each method for right
+   *   truncation and compare with all onsets that will eventually be
+   *   reported, as in
+   *   {@link module:onset-imputation.comparisonSeries comparisonSeries}.
+   * @param {number} [seed=sc.seed] Seed for the replicates. Defaults to the
+   *   scenario seed, drawn on a separate stream from the growth rate noise.
+   * @returns {StochasticResult}
    * @alias module:onset-imputation.stochastic
    */
-  function stochastic(sc, W, reps, nowcast = false) {
+  function stochastic(sc, W, reps, nowcast = false, seed = sc.seed) {
     const { S, T, C, f, pim } = sc;
-    const relErr = {}, gr = {}, gerr = {};
-    for (const M of METHODS) { relErr[M.key] = []; gr[M.key] = []; gerr[M.key] = []; }
+    const rng = makeRng(seed, 1);
+    /** @returns {Record<MethodKey, Array<Array<?number>>>} */
+    const byMethod = () => ({ hub: [], mean: [], fwd: [], gen: [] });
+    const relErr = byMethod(),
+      gr = byMethod(),
+      gerr = byMethod();
+    /** @type {Array<Array<?number>>} */
     const grTruth = [];
     for (let rep = 0; rep < reps; rep++) {
       // Poisson thinning of each (onset, delay) cell keeps the cost at O(S * D)
-      const truth = new Float64Array(S), comp = new Float64Array(S);
-      const miss = new Float64Array(T + 1), empCounts = new Float64Array(D + 1);
+      const truth = new Float64Array(S),
+        comp = new Float64Array(S);
+      const miss = new Float64Array(T + 1),
+        empCounts = new Float64Array(D + 1);
       for (let s = 0; s < S; s++) {
         for (let d = 0; d <= D; d++) {
           if (s + d > T) {
             // not yet reported: counts only towards the eventual truth
-            if (nowcast) truth[s] += rpois(C[s] * f[s][d]);
+            if (nowcast) truth[s] += rpois(C[s] * f[s][d], rng);
             continue;
           }
           const x = C[s] * f[s][d];
           if (x <= 0) continue;
           const pm = pim(s + d, d);
-          const nc = rpois(x * (1 - pm)), nm = rpois(x * pm);
-          truth[s] += nc + nm; comp[s] += nc; miss[s + d] += nm; empCounts[d] += nc;
+          const nc = rpois(x * (1 - pm), rng),
+            nm = rpois(x * pm, rng);
+          truth[s] += nc + nm;
+          comp[s] += nc;
+          miss[s + d] += nm;
+          empCounts[d] += nc;
         }
       }
       const nEmp = empCounts.reduce((a, b) => a + b, 0);
       const g = normalise(empCounts);
-      const res = {};
       // hub and forward: each missing case gets an independent delay draw
-      res.hub = Float64Array.from(comp);
-      res.fwd = Float64Array.from(comp);
+      const hub = Float64Array.from(comp);
+      const fwd = Float64Array.from(comp);
       for (let t = 0; t <= T; t++) {
         if (!miss[t]) continue;
-        const ah = nEmp ? rmultinom(miss[t], g) : new Float64Array(D + 1);
-        const af = rmultinom(miss[t], sc.fbar);
+        const ah = nEmp ? rmultinom(miss[t], g, rng) : new Float64Array(D + 1);
+        const af = rmultinom(miss[t], sc.fbar, rng);
         for (let d = 0; d <= D; d++) {
           const s = t - d;
           if (s < 0 || s >= S) continue;
-          res.hub[s] += ah[d]; res.fwd[s] += af[d];
+          hub[s] += ah[d];
+          fwd[s] += af[d];
         }
       }
-      res.mean = shiftImpute(comp, miss, Math.round(pmfMean(g)), S);
-      res.gen = emImpute(comp, miss, sc, res.hub);
-      if (nowcast) for (const k of Object.keys(res)) res[k] = correctTruncation(res[k], sc);
+      /** @type {Record<MethodKey, Float64Array>} */
+      const res = {
+        hub,
+        fwd,
+        mean: shiftImpute(comp, miss, Math.round(pmfMean(g)), S),
+        gen: emImpute(comp, miss, sc, hub)
+      };
+      if (nowcast) {
+        for (const M of METHODS) res[M.key] = correctTruncation(res[M.key], sc);
+      }
       const tw = weekly(truth, W, sc.B + sc.wk0);
       const gtw = growth(tw, 0.5);
       grTruth.push(gtw);
       for (const M of METHODS) {
         const mw = weekly(res[M.key], W, sc.B + sc.wk0);
-        relErr[M.key].push(Array.from(mw, (v, w) => tw[w] >= 5 ? v / tw[w] - 1 : null));
+        relErr[M.key].push(
+          Array.from(mw, (v, w) => (tw[w] >= 5 ? v / tw[w] - 1 : null))
+        );
         const gmw = growth(mw, 0.5);
         gr[M.key].push(gmw);
-        gerr[M.key].push(gmw.map((v, w) => v === null || gtw[w] === null ? null : rToR(v) - rToR(gtw[w])));
+        gerr[M.key].push(
+          gmw.map((v, w) => {
+            const gt = gtw[w];
+            return v === null || gt === null ? null : rToR(v) - rToR(gt);
+          })
+        );
       }
     }
+    /**
+     * Quantile of week `w` over replicates, or null with too few values.
+     * @param {Array<Array<?number>>} arrs Values by replicate then week.
+     * @param {number} w Week.
+     * @param {number} p Probability.
+     * @returns {?number}
+     */
     const q = (arrs, w, p) => {
-      const v = arrs.map(a => a[w]).filter(x => x !== null && isFinite(x)).sort((a, b) => a - b);
+      const v = /** @type {number[]} */ (
+        arrs.map(a => a[w]).filter(x => x !== null && Number.isFinite(x))
+      ).sort((a, b) => a - b);
       if (v.length < Math.max(3, reps / 3)) return null;
-      const i = (v.length - 1) * p, lo = Math.floor(i), hi = Math.ceil(i);
+      const i = (v.length - 1) * p,
+        lo = Math.floor(i),
+        hi = Math.ceil(i);
       return v[lo] + (v[hi] - v[lo]) * (i - lo);
     };
-    const bands = {}, gbands = {}, ebands = {};
-    for (const M of METHODS) {
-      bands[M.key] = []; gbands[M.key] = []; ebands[M.key] = [];
+    /**
+     * 90% bands over weeks, skipping weeks without enough values.
+     * @param {Array<Array<?number>>} arrs Values by replicate then week.
+     * @returns {Band[]}
+     */
+    const band = arrs => {
+      /** @type {Band[]} */
+      const out = [];
       for (let w = 0; w < W; w++) {
-        const lo = q(relErr[M.key], w, 0.05), hi = q(relErr[M.key], w, 0.95);
-        if (lo !== null) bands[M.key].push({ x: sc.wk0 + 7 * w + 3.5, lo, hi });
-        const glo = q(gr[M.key], w, 0.05), ghi = q(gr[M.key], w, 0.95);
-        if (glo !== null) gbands[M.key].push({ x: sc.wk0 + 7 * w + 3.5, lo: glo, hi: ghi });
-        const elo = q(gerr[M.key], w, 0.05), ehi = q(gerr[M.key], w, 0.95);
-        if (elo !== null) ebands[M.key].push({ x: sc.wk0 + 7 * w + 3.5, lo: elo, hi: ehi });
+        const lo = q(arrs, w, 0.05),
+          hi = q(arrs, w, 0.95);
+        if (lo !== null && hi !== null)
+          out.push({ x: sc.wk0 + 7 * w + 3.5, lo, hi });
       }
-    }
-    const tb = [];
-    for (let w = 0; w < W; w++) {
-      const lo = q(grTruth, w, 0.05), hi = q(grTruth, w, 0.95);
-      if (lo !== null) tb.push({ x: sc.wk0 + 7 * w + 3.5, lo, hi });
-    }
-    return { bands, gbands, ebands, truthBand: tb };
+      return out;
+    };
+    /**
+     * @param {Record<MethodKey, Array<Array<?number>>>} src By method.
+     * @returns {Record<MethodKey, Band[]>}
+     */
+    const bandsOf = src => ({
+      hub: band(src.hub),
+      mean: band(src.mean),
+      fwd: band(src.fwd),
+      gen: band(src.gen)
+    });
+    return {
+      bands: bandsOf(relErr),
+      gbands: bandsOf(gr),
+      ebands: bandsOf(gerr),
+      truthBand: band(grTruth)
+    };
   }
 
   // ---------- metrics ----------
@@ -915,86 +1379,181 @@
    *   {@link module:onset-imputation.completeWeeks completeWeeks}.
    * @param {number} W Number of weeks.
    * @param {boolean} retro Whether the view is retrospective.
-   * @returns {module:onset-imputation.Metrics}
+   * @returns {Metrics}
    * @alias module:onset-imputation.metrics
    */
   function metrics(tw, mw, gT, gM, ok, W, retro) {
-    let maxRel = 0, maxRelW = -1, maxG = 0, maxR = 0, wrongSide = 0, sumAbs = 0, nAbs = 0;
+    let maxRel = 0,
+      maxRelW = -1,
+      maxG = 0,
+      maxR = 0,
+      wrongSide = 0,
+      sumAbs = 0,
+      nAbs = 0;
     for (let w = 0; w < W; w++) {
       if (tw[w] < 10) continue;
       const rel = mw[w] / tw[w] - 1;
-      sumAbs += Math.abs(rel); nAbs++;
-      if (Math.abs(rel) > Math.abs(maxRel)) { maxRel = rel; maxRelW = w; }
+      sumAbs += Math.abs(rel);
+      nAbs++;
+      if (Math.abs(rel) > Math.abs(maxRel)) {
+        maxRel = rel;
+        maxRelW = w;
+      }
     }
     for (let w = 0; w < W; w++) {
-      if (!ok[w] || gT[w] === null || gM[w] === null || tw[w] < 10) continue;
-      if (Math.abs(gM[w] - gT[w]) > Math.abs(maxG)) maxG = gM[w] - gT[w];
-      const dR = rToR(gM[w]) - rToR(gT[w]);
+      const gt = gT[w],
+        gm = gM[w];
+      if (!ok[w] || gt === null || gm === null || tw[w] < 10) continue;
+      if (Math.abs(gm - gt) > Math.abs(maxG)) maxG = gm - gt;
+      const dR = rToR(gm) - rToR(gt);
       if (Math.abs(dR) > Math.abs(maxR)) maxR = dR;
-      if (wrongSideOf1(gM[w], gT[w])) wrongSide++;
+      if (wrongSideOf1(gm, gt)) wrongSide++;
     }
+    /**
+     * Day the growth rate first falls below 0 after being positive.
+     * @param {Array<?number>} g Weekly growth rates.
+     * @returns {?number}
+     */
     const firstNeg = g => {
-      let lastPos = null;
+      let lastPos = -1,
+        gPos = 0;
       for (let w = 0; w < g.length; w++) {
-        if (!ok[w] || g[w] === null) continue;
-        if (g[w] > 0) lastPos = w;
-        else if (lastPos !== null && g[w] < 0) {
+        const gw = g[w];
+        if (!ok[w] || gw === null) continue;
+        if (gw > 0) {
+          lastPos = w;
+          gPos = gw;
+        } else if (lastPos >= 0 && gw < 0) {
           // linear interpolation of the zero crossing, in days
-          const frac = g[lastPos] / (g[lastPos] - g[w]);
+          const frac = gPos / (gPos - gw);
           return 7 * (lastPos + frac * (w - lastPos)) + 3.5;
         }
       }
       return null;
     };
-    const zT = firstNeg(gT), zM = firstNeg(gM);
+    const zT = firstNeg(gT),
+      zM = firstNeg(gM);
     const lag = zT !== null && zM !== null ? zM - zT : null;
     // peak metrics only when the true curve has an interior peak among
     // complete weeks, with a clear fall after it
     const nOk = ok.reduce((a, v, i) => (v ? i + 1 : a), 0);
-    const argmax = a => { let b = 0; for (let i = 1; i < nOk; i++) if (a[i] > a[b]) b = i; return b; };
+    /** @param {ArrayLike<number>} a */
+    const argmax = a => {
+      let b = 0;
+      for (let i = 1; i < nOk; i++) if (a[i] > a[b]) b = i;
+      return b;
+    };
     const pT = argmax(tw);
     const hasPeak = nOk > 2 && pT < nOk - 2 && tw[nOk - 1] < 0.8 * tw[pT];
     const peakShift = hasPeak ? 7 * (argmax(mw) - pT) : null;
     const peakHeight = hasPeak ? mw[argmax(mw)] / tw[pT] - 1 : null;
     let last = null;
     if (!retro) {
-      let s = 0, n = 0;
-      for (let w = W - 3; w < W; w++) if (w >= 0 && tw[w] > 0) { s += mw[w] / tw[w] - 1; n++; }
+      let s = 0,
+        n = 0;
+      for (let w = W - 3; w < W; w++)
+        if (w >= 0 && tw[w] > 0) {
+          s += mw[w] / tw[w] - 1;
+          n++;
+        }
       last = n ? s / n : null;
     }
-    return { maxRel, maxRelW, maxG, maxR, wrongSide, meanAbs: nAbs ? sumAbs / nAbs : 0, lag, zT, zM, peakShift, peakHeight, last };
+    return {
+      maxRel,
+      maxRelW,
+      maxG,
+      maxR,
+      wrongSide,
+      meanAbs: nAbs ? sumAbs / nAbs : 0,
+      lag,
+      zT,
+      zM,
+      peakShift,
+      peakHeight,
+      last
+    };
   }
 
   // ---------- convenience wrappers ----------
   /**
    * Onset weeks at least 80% reported by the cut-off, in expectation.
-   * @param {module:onset-imputation.Scenario} sc Scenario.
+   * @param {Scenario} sc Scenario.
    * @param {number} W Number of weeks.
+   * @param {number} [threshold=0.8] Smallest expected fraction reported for
+   *   a week to count as complete.
    * @returns {boolean[]} One flag per week. Weeks with no onsets count as
    *   complete.
    * @alias module:onset-imputation.completeWeeks
    */
   function completeWeeks(sc, W, threshold = 0.8) {
     return Array.from({ length: W }, (_, w) => {
-      let num = 0, den = 0;
+      let num = 0,
+        den = 0;
       for (let d = 0; d < 7; d++) {
         const i = sc.B + sc.wk0 + 7 * w + d;
-        num += sc.C[i] * sc.cover[i]; den += sc.C[i];
+        num += sc.C[i] * sc.cover[i];
+        den += sc.C[i];
       }
       return den > 0 ? num / den >= threshold : true;
     });
   }
 
   /**
-   * Weekly results of {@link module:onset-imputation.run run}. Series are indexed by
-   * week. Objects keyed by method hold one entry per
-   * {@link module:onset-imputation.METHODS METHODS} key (`hub`, `mean`, `fwd`,
-   * `gen`).
+   * Correct daily onset counts for right truncation by dividing by the
+   * expected fraction of each day's cases reported by the cut-off,
+   * F_s(T − s), using the true delay. Days with less than `minCover`
+   * reported are set to 0.
+   * @param {ArrayLike<number>} daily Daily onset counts, internal day index.
+   * @param {Scenario} sc Scenario.
+   * @param {number} [minCover=0.05] Smallest fraction reported to correct.
+   * @returns {Float64Array} Corrected daily counts.
+   * @alias module:onset-imputation.correctTruncation
+   */
+  function correctTruncation(daily, sc, minCover = 0.05) {
+    return Float64Array.from(daily, (v, i) =>
+      sc.cover[i] >= minCover ? v / sc.cover[i] : 0
+    );
+  }
+
+  /**
+   * The daily series a method is compared on. Without a nowcast, the truth
+   * is the onsets of cases reported by the cut-off and each method's
+   * imputation is used as is. With `p.nowcast` in real time, every method
+   * is corrected for right truncation with the true delay
+   * ({@link module:onset-imputation.correctTruncation correctTruncation})
+   * and compared with all onsets that will eventually be reported.
+   * @param {Pick<ScenarioParams, "nowcast" | "retro">} p Scenario
+   *   parameters.
+   * @param {Scenario} sc Scenario.
+   * @param {ExpectedData} ex Output of
+   *   {@link module:onset-imputation.expectedData expectedData}.
+   * @param {MethodResults} R Output of
+   *   {@link module:onset-imputation.runMethods runMethods}.
+   * @returns {{truth: Float64Array, methods: Object<string, Float64Array>,
+   *   nowcast: boolean}} Daily series on the internal day index.
+   * @alias module:onset-imputation.comparisonSeries
+   */
+  function comparisonSeries(p, sc, ex, R) {
+    const nowcast = !!p.nowcast && !p.retro;
+    /** @type {Object<string, Float64Array>} */
+    const methods = {};
+    for (const m of METHODS) {
+      methods[m.key] = nowcast ? correctTruncation(R[m.key], sc) : R[m.key];
+    }
+    const truth = nowcast ? Float64Array.from(sc.C) : ex.truth;
+    return { truth, methods, nowcast };
+  }
+
+  /**
+   * Weekly results of {@link module:onset-imputation.run run}. Series are
+   * indexed by week. Objects keyed by method hold one entry per
+   * {@link module:onset-imputation.METHODS METHODS} key (`hub`, `mean`,
+   * `fwd`, `gen`).
    * @typedef {Object} RunResult
-   * @property {module:onset-imputation.ScenarioParams} params Parameters used.
+   * @property {ScenarioParams} params Parameters used.
    * @property {number[]} weekStart First display day of each week.
-   * @property {boolean[]} complete Weeks at least 80% reported by the
-   *   cut-off.
+   * @property {boolean[]} complete Weeks counted as complete: at least 80%
+   *   reported by the cut-off, or 30% with a nowcast.
    * @property {number[]} truth True onsets of cases reported by the cut-off.
    * @property {number[]} reported All cases by report week.
    * @property {Object<string, Array<?number>>} growth Growth rate per day,
@@ -1003,7 +1562,7 @@
    *   method.
    * @property {Object<string, number[]>} imputed Onsets after imputation, by
    *   method.
-   * @property {Object<string, module:onset-imputation.Metrics>} metrics Error
+   * @property {Object<string, Metrics>} metrics Error
    *   metrics, by method.
    * @property {number[]} pooledDelay Pooled empirical delay pmf of complete
    *   cases (used by `hub` and `mean`).
@@ -1013,9 +1572,9 @@
   /**
    * Run one scenario end to end, in expectation. Only whole weeks within
    * `days` and the cut-off are returned.
-   * @param {Partial<module:onset-imputation.ScenarioParams>} [params={}] Any subset
+   * @param {Partial<ScenarioParams>} [params={}] Any subset
    *   of {@link module:onset-imputation.DEFAULTS DEFAULTS}.
-   * @returns {module:onset-imputation.RunResult}
+   * @returns {RunResult}
    * @example
    * const OnsetImputation = require("./onset-imputation.js");
    * const res = OnsetImputation.run({
@@ -1029,48 +1588,8 @@
    * OnsetImputation.run({ ...p, retro: false, cutoff: 120 }).rt.gen;
    * @alias module:onset-imputation.run
    */
-  /**
-   * Correct daily onset counts for right truncation by dividing by the
-   * expected fraction of each day's cases reported by the cut-off,
-   * F_s(T − s), using the true delay. Days with less than `minCover`
-   * reported are set to 0.
-   * @param {ArrayLike<number>} daily Daily onset counts, internal day index.
-   * @param {module:onset-imputation.Scenario} sc Scenario.
-   * @param {number} [minCover=0.05] Smallest fraction reported to correct.
-   * @returns {Float64Array} Corrected daily counts.
-   * @alias module:onset-imputation.correctTruncation
-   */
-  function correctTruncation(daily, sc, minCover = 0.05) {
-    return Float64Array.from(daily, (v, i) =>
-      sc.cover[i] >= minCover ? v / sc.cover[i] : 0);
-  }
-
-  /**
-   * The daily series a method is compared on. Without a nowcast, the truth
-   * is the onsets of cases reported by the cut-off and each method's
-   * imputation is used as is. With `p.nowcast` in real time, every method
-   * is corrected for right truncation with the true delay
-   * ({@link module:onset-imputation.correctTruncation correctTruncation})
-   * and compared with all onsets that will eventually be reported.
-   * @param {Object} p Scenario parameters.
-   * @param {module:onset-imputation.Scenario} sc Scenario.
-   * @param {Object} ex Output of expectedData.
-   * @param {Object} R Output of runMethods.
-   * @returns {{truth: Float64Array, methods: Object<string, Float64Array>,
-   *   nowcast: boolean}} Daily series on the internal day index.
-   * @alias module:onset-imputation.comparisonSeries
-   */
-  function comparisonSeries(p, sc, ex, R) {
-    const nowcast = !!p.nowcast && !p.retro;
-    const methods = {};
-    for (const m of METHODS) {
-      methods[m.key] = nowcast ? correctTruncation(R[m.key], sc) : R[m.key];
-    }
-    const truth = nowcast ? Float64Array.from(sc.C) : ex.truth;
-    return { truth, methods, nowcast };
-  }
-
   function run(params = {}) {
+    /** @type {ScenarioParams} */
     const p = { ...DEFAULTS, ...params };
     const sc = scenario(p);
     const ex = expectedData(sc);
@@ -1080,6 +1599,7 @@
     const ok = completeWeeks(sc, W, cs.nowcast ? 0.3 : 0.8);
     const truth = weekly(cs.truth, W, sc.B + sc.wk0);
     const gT = growth(truth);
+    /** @type {RunResult} */
     const out = {
       params: p,
       weekStart: Array.from({ length: W }, (_, w) => sc.wk0 + 7 * w),
@@ -1131,6 +1651,13 @@
    * @property {number} dropped Cases dropped: report day not a whole number
    *   in `0..cutoff`, or a known onset that is not a whole number, before
    *   day 0, after the report or with a delay over `maxDelay`.
+   * @property {{hub: number, mean: number, fwd: ?number,
+   *   gen: number}} droppedImputed Missing-onset cases each method could not
+   *   place, in expected cases. For `hub`, `mean` and `fwd` these are
+   *   imputed onsets before day 0, or all missing-onset cases for `hub` when
+   *   there are no complete cases. For `gen` they are cases reported on a
+   *   day with no possible onset under the delay. `fwd` is null without
+   *   `delay`.
    * @property {number[]} complete Complete cases by onset day.
    * @property {number[]} missingByReport Missing-onset cases by report day.
    * @property {number[]} empiricalDelay Pooled empirical delay pmf of
@@ -1162,8 +1689,8 @@
    * smooth `λ` (for example with a renewal process) and could model
    * ascertainment, as epinowcast does. Here the delay is given or estimated
    * as static, which is acceptable for this demonstration.
-   * @param {module:onset-imputation.LinelistInput} input Line list and options.
-   * @returns {module:onset-imputation.LinelistResult}
+   * @param {LinelistInput} input Line list and options.
+   * @returns {LinelistResult}
    * @throws {Error} If `onset` and `report` differ in length.
    * @example
    * const { imputeLinelist } = require("./onset-imputation.js");
@@ -1177,9 +1704,16 @@
    * res.generativeDelay; // estimated delay pmf
    * @alias module:onset-imputation.imputeLinelist
    */
-  function imputeLinelist({ onset, report, cutoff = null, delay = null,
-    maxDelay = D, iterations = 300 }) {
-    if (onset.length !== report.length) throw new Error("onset and report must have the same length");
+  function imputeLinelist({
+    onset,
+    report,
+    cutoff = null,
+    delay = null,
+    maxDelay = D,
+    iterations = 300
+  }) {
+    if (onset.length !== report.length)
+      throw new Error("onset and report must have the same length");
     let T = cutoff;
     if (T === null || T === undefined) {
       T = -1;
@@ -1187,38 +1721,85 @@
       if (T < 0) throw new Error("no valid report days");
     }
     const S = T + 1;
-    const comp = new Float64Array(S), miss = new Float64Array(S);
+    const comp = new Float64Array(S),
+      miss = new Float64Array(S);
     const emp = new Float64Array(maxDelay + 1);
     const Nc = Array.from({ length: S }, () => new Float64Array(maxDelay + 1));
     let dropped = 0;
     for (let i = 0; i < report.length; i++) {
-      const t = report[i], o = onset[i];
-      if (!Number.isInteger(t) || t < 0 || t > T) { dropped++; continue; }
-      if (o === null || o === undefined) { miss[t]++; continue; }
+      const t = report[i],
+        o = onset[i];
+      if (!Number.isInteger(t) || t < 0 || t > T) {
+        dropped++;
+        continue;
+      }
+      if (o === null || o === undefined) {
+        miss[t]++;
+        continue;
+      }
       const d = t - o;
-      if (!Number.isInteger(o) || o < 0 || d < 0 || d > maxDelay) { dropped++; continue; }
-      comp[o]++; emp[d]++; Nc[o][d]++;
+      if (!Number.isInteger(o) || o < 0 || d < 0 || d > maxDelay) {
+        dropped++;
+        continue;
+      }
+      comp[o]++;
+      emp[d]++;
+      Nc[o][d]++;
     }
     const g = normalise(emp);
+    const m = Math.round(pmfMean(g));
+    const fd = delay ? normalise(Float64Array.from(delay)) : null;
     const hub = convImpute(comp, miss, g, S);
-    const mean = shiftImpute(comp, miss, Math.round(pmfMean(g)), S);
-    const fwd = delay ? convImpute(comp, miss, normalise(Float64Array.from(delay)), S) : null;
+    const mean = shiftImpute(comp, miss, m, S);
+    const fwd = fd ? convImpute(comp, miss, fd, S) : null;
+    // expected missing-onset cases a delay pmf cannot place: onsets before
+    // day 0, or every case when the pmf is all zeros (no complete cases)
+    /** @param {ArrayLike<number>} pmf Normalised or all-zero delay pmf. */
+    const unplaced = pmf => {
+      let total = 0;
+      for (let d = 0; d < pmf.length; d++) total += pmf[d];
+      let lost = 0;
+      for (let t = 0; t < S; t++) {
+        if (!miss[t]) continue;
+        if (total <= 0) {
+          lost += miss[t];
+          continue;
+        }
+        let tail = 0;
+        for (let d = t + 1; d < pmf.length; d++) tail += pmf[d];
+        lost += miss[t] * tail;
+      }
+      return lost;
+    };
+    let lostMean = 0;
+    for (let t = 0; t < Math.min(m, S); t++) lostMean += miss[t];
+    let lostGen = 0;
+    for (let t = 0; t < S; t++) lostGen += miss[t];
     // EM back-projection, optionally estimating a static delay
-    let f = delay ? normalise(Float64Array.from({ length: maxDelay + 1 }, (_, d) => delay[d] ?? 0)) : Float64Array.from(g);
+    let f = delay
+      ? normalise(
+          Float64Array.from({ length: maxDelay + 1 }, (_, d) => delay[d] ?? 0)
+        )
+      : Float64Array.from(g);
     const lam = Float64Array.from(hub, v => v + 1e-6);
     let alloc = new Float64Array(S);
     for (let it = 0; it < iterations; it++) {
       const Fc = cumsum(f);
       const A = Array.from({ length: S }, () => new Float64Array(maxDelay + 1));
       alloc = new Float64Array(S);
+      lostGen = 0;
       for (let t = 0; t < S; t++) {
         if (!miss[t]) continue;
         let den = 0;
         for (let d = 0; d <= maxDelay && d <= t; d++) den += lam[t - d] * f[d];
-        if (den <= 0) continue;
+        if (den <= 0) {
+          lostGen += miss[t];
+          continue;
+        }
         for (let d = 0; d <= maxDelay && d <= t; d++) {
-          const a = miss[t] * lam[t - d] * f[d] / den;
-          A[t - d][d] += a; alloc[t - d] += a;
+          const a = (miss[t] * lam[t - d] * f[d]) / den;
+          A[t - d][d] += a;
+          alloc[t - d] += a;
         }
       }
       for (let s = 0; s < S; s++) {
@@ -1241,21 +1822,60 @@
     }
     const gen = Float64Array.from(comp, (v, s) => v + alloc[s]);
     return {
-      days: S, cutoff: T, dropped,
-      complete: Array.from(comp), missingByReport: Array.from(miss),
-      empiricalDelay: Array.from(g), generativeDelay: Array.from(f),
+      days: S,
+      cutoff: T,
+      dropped,
+      droppedImputed: {
+        hub: unplaced(g),
+        mean: lostMean,
+        fwd: fd ? unplaced(fd) : null,
+        gen: lostGen
+      },
+      complete: Array.from(comp),
+      missingByReport: Array.from(miss),
+      empiricalDelay: Array.from(g),
+      generativeDelay: Array.from(f),
       imputed: {
-        hub: Array.from(hub), mean: Array.from(mean),
-        fwd: fwd ? Array.from(fwd) : null, gen: Array.from(gen)
+        hub: Array.from(hub),
+        mean: Array.from(mean),
+        fwd: fwd ? Array.from(fwd) : null,
+        gen: Array.from(gen)
       }
     };
   }
 
-  return {
-    D, KNOTS, R_MIN, R_MAX, GI, DEFAULTS, PRESETS, METHODS,
-    knotsFrom, curveAt, delayPmf, pmfMean, rToR, wrongSideOf1, clamp, normalise,
-    scenario, expectedData, runMethods, convImpute, shiftImpute, emImpute,
-    weekly, growth, stochastic, metrics, completeWeeks, correctTruncation,
-    comparisonSeries, run, imputeLinelist
-  };
+  return Object.freeze({
+    D,
+    KNOTS,
+    R_MIN,
+    R_MAX,
+    GI,
+    DEFAULTS,
+    PRESETS,
+    METHODS,
+    knotsFrom,
+    curveAt,
+    delayPmf,
+    pmfMean,
+    rToR,
+    wrongSideOf1,
+    clamp,
+    normalise,
+    scenario,
+    expectedData,
+    runMethods,
+    convImpute,
+    shiftImpute,
+    emImpute,
+    weekly,
+    growth,
+    stochastic,
+    metrics,
+    completeWeeks,
+    correctTruncation,
+    comparisonSeries,
+    run,
+    imputeLinelist,
+    makeRng
+  });
 });
