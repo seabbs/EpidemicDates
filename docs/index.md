@@ -145,4 +145,44 @@ Run them from the repository root.
     gen 4.2 0.0 2.5 7.8 7.0 10.1 20.0 27.3 35.9 43.7 41.0 65.7 54.2 50.1 37.5 24.8 5.1
     ```
 
+=== "R"
+
+    ```r
+    library(epidemicdates)
+
+    ll <- read.csv("docs/data/example-linelist.csv")
+    onset <- as.Date(ifelse(ll$onset_date == "", NA_character_, ll$onset_date))
+    report <- as.Date(ll$report_date)
+    res <- impute_linelist(onset, report, cutoff = max(report))
+    for (m in c("backsampling", "mean", "em")) {
+      cat(m, round(weekly(res$imputed[[m]]), 1), "\n")
+    }
+    ```
+
+    ```text
+    backsampling 4.2 0.5 3.2 6.8 7.2 10.6 19.8 27.3 35.5 43.4 41.9 63.2 54 50.5 38.6 25.4 5
+    mean 4 0 5 6 6 11 19 29 34 43 43 62 55 53 38 25 4
+    em 4.2 0 2.5 7.8 7 10.1 20 27.3 35.9 43.7 41 65.7 54.2 50.1 37.5 24.8 5.1
+    ```
+
+=== "Julia"
+
+    ```julia
+    using EpidemicDates, Dates
+
+    rows = split.(readlines("docs/data/example-linelist.csv")[2:end], ",")
+    onset = [isempty(r[2]) ? missing : Date(r[2]) for r in rows]
+    report = [Date(r[3]) for r in rows]
+    res = impute_linelist(onset, report; cutoff = maximum(report))
+    for m in (:backsampling, :mean, :em)
+        println(m, " ", join(round.(weekly(res.imputed[m]); digits = 1), " "))
+    end
+    ```
+
+    ```text
+    backsampling 4.2 0.5 3.2 6.8 7.2 10.6 19.8 27.3 35.5 43.4 41.9 63.2 54.0 50.5 38.6 25.4 5.0
+    mean 4.0 0.0 5.0 6.0 6.0 11.0 19.0 29.0 34.0 43.0 43.0 62.0 55.0 53.0 38.0 25.0 4.0
+    em 4.2 0.0 2.5 7.8 7.0 10.1 20.0 27.3 35.9 43.7 41.0 65.7 54.2 50.1 37.5 24.8 5.1
+    ```
+
 The [worked example](real-linelist.md) goes through each step and explains the output.
