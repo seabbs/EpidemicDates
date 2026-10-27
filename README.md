@@ -7,8 +7,12 @@
 
 **Comparing methods for imputing missing symptom onsets.**
 
-[![test](https://github.com/seabbs/EpidemicDates/actions/workflows/test.yml/badge.svg)](https://github.com/seabbs/EpidemicDates/actions/workflows/test.yml)
-[![docs](https://github.com/seabbs/EpidemicDates/actions/workflows/pages.yml/badge.svg)](https://seabbs.github.io/EpidemicDates/)
+[![Tests](https://github.com/seabbs/EpidemicDates/actions/workflows/test.yml/badge.svg)](https://github.com/seabbs/EpidemicDates/actions/workflows/test.yml)
+[![Lint](https://github.com/seabbs/EpidemicDates/actions/workflows/lint.yml/badge.svg)](https://github.com/seabbs/EpidemicDates/actions/workflows/lint.yml)
+[![R package](https://github.com/seabbs/EpidemicDates/actions/workflows/r.yml/badge.svg)](https://github.com/seabbs/EpidemicDates/actions/workflows/r.yml)
+[![Julia package](https://github.com/seabbs/EpidemicDates/actions/workflows/julia.yml/badge.svg)](https://github.com/seabbs/EpidemicDates/actions/workflows/julia.yml)
+[![Docs build](https://github.com/seabbs/EpidemicDates/actions/workflows/docs.yml/badge.svg)](https://github.com/seabbs/EpidemicDates/actions/workflows/docs.yml)
+[![Pages](https://github.com/seabbs/EpidemicDates/actions/workflows/pages.yml/badge.svg)](https://seabbs.github.io/EpidemicDates/)
 [![licence: MIT](https://img.shields.io/badge/licence-MIT-blue.svg)](LICENSE)
 
 > [!WARNING]
