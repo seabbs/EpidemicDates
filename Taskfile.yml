@@ -45,7 +45,7 @@ tasks:
     cmds:
       - uv run epidemic-dates {{.CLI_ARGS}}
   lint:
-    desc: Lint the JavaScript and Python code
+    desc: Lint all four packages (JavaScript, Python, R and Julia)
     cmds:
       - npm run lint
       - npm run format:check
@@ -53,6 +53,8 @@ tasks:
       - uv run ruff check src tests
       - uv run ruff format --check src tests
       - uv run mypy src
+      - task: r-lint
+      - task: julia-lint
   docs:
     desc: Build the docs site into _site/, with the interactive page at _site/interactive/
     cmds:
@@ -75,19 +77,35 @@ tasks:
     desc: R CMD check the R package
     cmds:
       - Rscript -e 'devtools::check("r", document = TRUE, args = "--no-manual")'
-  r-lint:
-    desc: Style and lint the R package
+  r-format:
+    desc: Format the R code with Air
     cmds:
-      - Rscript -e 'styler::style_pkg("r")'
-      - Rscript -e 'pkgload::load_all("r"); lintr::lint_package("r")'
+      - uvx --from air-formatter@0.12.0 air format r docs/r
+  r-lint:
+    desc: Check R formatting with Air and lint with Jarl
+    cmds:
+      - uvx --from air-formatter@0.12.0 air format --check r docs/r
+      - uvx --from jarl-linter@0.7.1 jarl check r docs/r
   julia-test:
     desc: Test the Julia package
     cmds:
       - julia --project=julia -e 'using Pkg; Pkg.test()'
-  julia-format:
-    desc: Format the Julia package
+  julia-runic:
+    internal: true
     cmds:
-      - julia -e 'using Pkg; Pkg.activate(temp=true); Pkg.add("JuliaFormatter"); using JuliaFormatter; format("julia")'
+      - >-
+        julia --startup-file=no --project=@runic -e 'using Pkg;
+        Pkg.add(name = "Runic", version = "1.13.0")'
+  julia-format:
+    desc: Format the Julia code with Runic
+    deps: [julia-runic]
+    cmds:
+      - julia --startup-file=no --project=@runic -m Runic --inplace julia docs/julia
+  julia-lint:
+    desc: Check Julia formatting with Runic
+    deps: [julia-runic]
+    cmds:
+      - julia --startup-file=no --project=@runic -m Runic --check --diff julia docs/julia
   serve:
     desc: Serve the page locally
     cmds:

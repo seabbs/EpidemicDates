@@ -1,0 +1,21 @@
+# Format and lint the R and Julia code on commit.
+# Install the hooks once with `pre-commit install`.
+# Air and Runic format files in place; rerun the commit after they do.
+repos:
+  - repo: https://github.com/posit-dev/air-pre-commit
+    rev: 0.12.0
+    hooks:
+      - id: air-format
+        files: ^(r|docs/r)/
+  - repo: https://github.com/etiennebacher/jarl-pre-commit
+    rev: 1.0.0
+    hooks:
+      - id: jarl-check
+        files: ^(r|docs/r)/.*\.R$
+  - repo: https://github.com/fredrikekre/runic-pre-commit
+    rev: v2.2.0
+    hooks:
+      - id: runic
+        files: ^(julia|docs/julia)/
+        additional_dependencies:
+          - "Runic@1.13.0"
