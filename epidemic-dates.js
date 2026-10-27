@@ -132,13 +132,13 @@
    */
   const D = 100;
   /**
-   * Knot days for growth rate and ascertainment curves: 0, 15, ..., 240.
-   * Curves are linear between knots and flat beyond the last.
+   * Knot days for growth rate and ascertainment curves: 0, 15, ..., 360
+   * (25 knots). Curves are linear between knots and flat beyond the last.
    * @type {ReadonlyArray<number>}
    * @constant
    * @alias module:epidemic-dates.KNOTS
    */
-  const KNOTS = deepFreeze(Array.from({ length: 17 }, (_, j) => 15 * j));
+  const KNOTS = deepFreeze(Array.from({ length: 25 }, (_, j) => 15 * j));
   /**
    * Lower limit of the growth rate (per day) used by the page for drawing
    * and axes. Not enforced by this module.
@@ -215,19 +215,26 @@
    *   default seed for {@link module:epidemic-dates.stochastic stochastic}
    *   replicates.
    * @property {number} mu0 Mean onset-to-report delay (days) for onsets on
-   *   day 0.
+   *   day 0. Ignored when `muKnots` is set.
    * @property {number} mu1 Mean delay for onsets on day `days - 1`. Linear in
-   *   onset day between, flat outside.
+   *   onset day between, flat outside. Ignored when `muKnots` is set.
+   * @property {?number[]} muKnots Mean delay (days) by onset day at each
+   *   {@link module:epidemic-dates.KNOTS KNOTS} day, read with
+   *   {@link module:epidemic-dates.curveAt curveAt}. Null to use `mu0` and
+   *   `mu1`.
    * @property {number} cv Coefficient of variation of the Gamma delay.
    * @property {number} pi0 Probability that an onset is missing for cases
-   *   reported on day 0.
+   *   reported on day 0. Ignored when `piKnots` is set.
    * @property {number} pi1 Probability that an onset is missing for cases
-   *   reported on day `days - 1`. Linear in report day between, capped at
-   *   0.999.
+   *   reported on day `days - 1`. Linear in report day between. Ignored
+   *   when `piKnots` is set.
+   * @property {?number[]} piKnots Probability that an onset is missing, by
+   *   report day, at each {@link module:epidemic-dates.KNOTS KNOTS} day.
+   *   Null to use `pi0` and `pi1`. Either way capped to `[0, 0.999]`.
    * @property {number} beta Dependence of missingness on delay `d`:
    *   `logit(p) = logit(base) + beta * (d - μ) / μ`, where `μ` is the mean
-   *   delay for the case's onset day (from `mu0` and `mu1`). 0 means missing
-   *   at random given report day.
+   *   delay for the case's onset day. 0 means missing at random given
+   *   report day.
    * @property {number[]} asc Ascertainment multiplier at each
    *   {@link module:epidemic-dates.KNOTS KNOTS} day, applied to onsets.
    * @property {boolean} retro If true, use all cases eventually reported
@@ -246,30 +253,38 @@
    * @memberof module:epidemic-dates
    */
   /**
-   * Default scenario parameters. Growth slows then picks up again, with a
-   * 6.6-day mean delay and 15% of onsets missing, viewed in real time with
-   * a nowcast. Frozen: copy it before changing a field.
+   * Default scenario parameters: 175 days shown, growth as in the baseline
+   * preset, a constant 6.6-day mean delay and 15% of onsets missing, viewed
+   * in real time with a nowcast. The baseline preset (the first of
+   * {@link module:epidemic-dates.PRESETS PRESETS}) adds time-varying delay,
+   * missingness and ascertainment. Frozen: copy it before changing a field.
    * @type {ScenarioParams}
    * @constant
    * @alias module:epidemic-dates.DEFAULTS
    */
   const DEFAULTS = deepFreeze({
-    days: 180,
-    O0: 1,
+    days: 175,
+    O0: 4,
+    // steep start, plateau, slight decline, then a sharp recent rise
     knots: knotsFrom([
-      [0, 0.05],
-      [60, 0.05],
-      [110, -0.01],
-      [140, -0.01],
-      [175, 0.03]
+      [0, 0.15],
+      [21, 0.035],
+      [45, 0.03],
+      [70, 0],
+      [120, 0],
+      [135, -0.01],
+      [150, -0.015],
+      [165, 0.03]
     ]),
     rwSd: 0,
     seed: 1,
     mu0: 6.6,
     mu1: 6.6,
+    muKnots: null,
     cv: 0.92,
     pi0: 0.15,
     pi1: 0.15,
+    piKnots: null,
     beta: 0,
     asc: KNOTS.map(() => 1),
     retro: false,
@@ -279,20 +294,60 @@
     reps: 30,
     ended: false
   });
-  const LONG8 = { mu0: 8, mu1: 8, cv: 1, pi0: 0.4, pi1: 0.4 };
-  const LONG14 = { mu0: 14, mu1: 14, cv: 1, pi0: 0.7, pi1: 0.7 };
-  // baseline: growth slows then picks up again, with wobble; delay and missingness from the
-  // hub's data (mean 6.6 days, CV 0.92, 15% of onsets missing)
-  // ascertainment rises as surveillance scales up, dips around day 140
-  // (for example insecurity), then partly recovers
-  const BASE_ASC = knotsFrom([
-    [0, 0.5],
-    [40, 1],
-    [110, 1],
-    [140, 0.75],
-    [180, 0.85]
+  // Baseline shapes read roughly from the BDBV hub's data as of
+  // 24 October 2026 (day 174 from 3 May), not fitted. The rise at the end
+  // is assumed.
+  // mean delay: about 11 days at first, 7.5 by day 35, then 6.5 to 7
+  const BASE_MU = knotsFrom([
+    [0, 11],
+    [35, 7.5],
+    [50, 7],
+    [120, 7],
+    [135, 6.5]
   ]);
-  const BASE = { rwSd: 0.003, seed: 2, asc: BASE_ASC };
+  // fraction missing: 2% at first, a peak of about 24% in mid-June, then
+  // 15% and falling to 10%
+  const BASE_PI = knotsFrom([
+    [0, 0.02],
+    [42, 0.24],
+    [70, 0.15],
+    [140, 0.15],
+    [175, 0.1]
+  ]);
+  // ascertainment (unknown in the data): rises as surveillance scales up,
+  // dips, then partly recovers
+  const BASE_ASC = knotsFrom([
+    [0, 0.6],
+    [40, 1],
+    [90, 1],
+    [120, 0.8],
+    [160, 0.9]
+  ]);
+  const BASE = {
+    rwSd: 0.002,
+    seed: 2,
+    cv: 0.95,
+    muKnots: BASE_MU,
+    piKnots: BASE_PI,
+    asc: BASE_ASC
+  };
+  /**
+   * Knot values from `vals` multiplied by a factor that changes linearly
+   * from `a` on day 0 to `b` on day `to`, flat after.
+   * @param {ReadonlyArray<number>} vals Knot values.
+   * @param {number} a Factor on day 0.
+   * @param {number} b Factor on day `to`.
+   * @param {number} to Day the factor reaches `b`.
+   * @param {number} [cap=Infinity] Upper limit on the result.
+   * @returns {number[]}
+   * @private
+   */
+  const scaleKnots = (vals, a, b, to, cap = Infinity) =>
+    vals.map((v, j) => {
+      const frac = Math.min(Math.max(KNOTS[j] / to, 0), 1);
+      return +Math.min(v * (a + (b - a) * frac), cap).toFixed(4);
+    });
+  const LONG8 = { mu0: 8, mu1: 8, cv: 1, pi0: 0.4, pi1: 0.4 };
   /**
    * A named scenario shown as a button on the page.
    * @typedef {Object} Preset
@@ -312,8 +367,8 @@
   const PRESETS = deepFreeze(
     /** @type {Preset[]} */ ([
       {
-        name: "Baseline",
-        note: "Growth slows after the response, then picks up again, with random wobble. Ascertainment rises early, dips around day 140, then partly recovers. Delay (mean 6.6 days) and missing onsets (15%) as in the BDBV hub's data.",
+        name: "Baseline (BDBV-like)",
+        note: "Delays, fraction missing and growth read roughly from the BDBV hub's data as of 24 October 2026, not fitted. A steep start, a plateau, a slight decline, then a sharp change point: growth turns from −0.015 to +0.03 per day around days 155 to 168. The rise at the end is assumed. The mean delay falls from 11 to about 7 days (CV 0.95). The real delay has a heavier tail (99th centile 33 days). Missing onsets peak at 24% in mid-June. Ascertainment is unknown, so it varies gently.",
         set: { ...BASE }
       },
       {
@@ -327,42 +382,51 @@
         set: { ...BASE, beta: 1.5 }
       },
       {
-        name: "Missing rises 5% to 25%",
-        note: "Baseline with the fraction missing rising over the outbreak.",
-        set: { ...BASE, pi0: 0.05, pi1: 0.25 }
+        name: "More missing later",
+        note: "Baseline, with the fraction missing scaled from 0.5 times the baseline curve at the start to 2 times by day 175.",
+        set: { ...BASE, piKnots: scaleKnots(BASE_PI, 0.5, 2, 175, 0.95) }
       },
       {
-        name: "Delays shorten",
-        note: "Baseline with the mean delay falling from 12 to 6 days.",
-        set: { ...BASE, mu0: 12, mu1: 6 }
+        name: "Delays shorten more",
+        note: "Baseline, with the mean delay scaled from 1.4 times the baseline curve at the start to 0.8 times by day 175 (about 15 days falling to 5).",
+        set: { ...BASE, muKnots: scaleKnots(BASE_MU, 1.4, 0.8, 175) }
       },
       {
         name: "Ascertainment falls",
-        note: "Baseline, but detection halves over days 110 to 130 and stays low.",
+        note: "Baseline, but detection halves over days 120 to 140 and stays low.",
         set: {
           ...BASE,
           asc: knotsFrom([
-            [0, 0.5],
+            [0, 0.6],
             [40, 1],
-            [110, 1],
-            [130, 0.5],
-            [180, 0.5]
+            [120, 1],
+            [140, 0.5]
           ])
         }
       },
       {
-        name: "Longer delays: 8 days, 40% missing",
-        note: "The baseline, with longer delays and more missing onsets than BDBV has.",
-        set: { ...BASE, ...LONG8 }
+        name: "Longer delays, more missing",
+        note: "The baseline, with the mean delay curve 1.2 times longer (CV 1) and 2.5 times as many missing onsets as BDBV has.",
+        set: {
+          ...BASE,
+          cv: 1,
+          muKnots: scaleKnots(BASE_MU, 1.2, 1.2, 1),
+          piKnots: scaleKnots(BASE_PI, 2.5, 2.5, 1, 0.95)
+        }
       },
       {
-        name: "Longer delays: 14 days, 70% missing",
-        note: "The baseline, with much longer delays and far more missing onsets than BDBV has.",
-        set: { ...BASE, ...LONG14 }
+        name: "Much longer delays, far more missing",
+        note: "The baseline, with the mean delay curve twice as long (CV 1) and 4 times as many missing onsets as BDBV has, up to 95%.",
+        set: {
+          ...BASE,
+          cv: 1,
+          muKnots: scaleKnots(BASE_MU, 2, 2, 1),
+          piKnots: scaleKnots(BASE_PI, 4, 4, 1, 0.95)
+        }
       },
       {
         name: "Two waves",
-        note: "Growth, control, resurgence, control. BDBV delays and missingness.",
+        note: "Growth, control, resurgence, control. A constant 6.6-day mean delay and 15% missing.",
         set: {
           knots: knotsFrom([
             [0, 0.06],
@@ -434,7 +498,7 @@
       {
         name: "Steady growth",
         note: "Constant growth at 0.05/day.",
-        set: { knots: KNOTS.map(() => 0.05), days: 180 }
+        set: { knots: KNOTS.map(() => 0.05), O0: 1, days: 180 }
       },
       {
         name: "Steady, no growth",
@@ -708,6 +772,7 @@
    *   counted back from the cut-off, so the last week ends on it.
    * @property {number} seed Seed from the parameters, the default seed for
    *   {@link module:epidemic-dates.stochastic stochastic}.
+   * @property {boolean} retro Whether the view is retrospective (`p.retro`).
    * @memberof module:epidemic-dates
    */
   /**
@@ -715,7 +780,10 @@
    * Onsets grow as `exp(cumsum(r))` from `O0` on day 0, after a burn-in of
    * `D` days at the first knot growth rate, and are scaled by ascertainment.
    * @param {ScenarioParams} p Full parameter set (merge
-   *   with {@link module:epidemic-dates.DEFAULTS DEFAULTS} first).
+   *   with {@link module:epidemic-dates.DEFAULTS DEFAULTS} first). The mean
+   *   delay comes from `muKnots` if set, else linear from `mu0` to `mu1`.
+   *   The fraction missing comes from `piKnots` if set, else linear from
+   *   `pi0` to `pi1`.
    * @returns {Scenario}
    * @alias module:epidemic-dates.scenario
    */
@@ -758,7 +826,11 @@
     }
     // mean delay by internal onset day
     /** @param {number} i */
-    const muAt = i => p.mu0 + (p.mu1 - p.mu0) * clamp((i - B) / (N - 1), 0, 1);
+    const muKnots = p.muKnots;
+    const muAt = muKnots
+      ? (/** @type {number} */ i) => Math.max(curveAt(muKnots, i - B), 0.1)
+      : (/** @type {number} */ i) =>
+          p.mu0 + (p.mu1 - p.mu0) * clamp((i - B) / (N - 1), 0, 1);
     /** @type {Float64Array[]} */
     const f = [];
     /** @type {Float64Array[]} */
@@ -791,7 +863,10 @@
      */
     const pim = (i, d) => {
       const frac = clamp((i - B) / (N - 1), 0, 1);
-      const base = clamp(p.pi0 + (p.pi1 - p.pi0) * frac, 0, 0.999);
+      const raw = p.piKnots
+        ? curveAt(p.piKnots, i - B)
+        : p.pi0 + (p.pi1 - p.pi0) * frac;
+      const base = clamp(raw, 0, 0.999);
       if (base <= 0) return 0;
       if (p.beta === 0) return base;
       const mu = muAt(i - d);
@@ -809,7 +884,23 @@
     // expected fraction of each onset day's cases reported by the cut-off
     const cover = new Float64Array(S);
     for (let i = 0; i < S; i++) cover[i] = F[i][Math.min(T - i, D)];
-    return { N, B, T, Td, S, r, C, f, F, pim, fbar, cover, wk0, seed: p.seed };
+    return {
+      N,
+      B,
+      T,
+      Td,
+      S,
+      r,
+      C,
+      f,
+      F,
+      pim,
+      fbar,
+      cover,
+      wk0,
+      seed: p.seed,
+      retro: !!p.retro
+    };
   }
 
   // ---------- expected-value data ----------
@@ -1196,7 +1287,9 @@
    *
    * Weeks are left out of a band when fewer than `max(3, reps / 3)`
    * replicates give a value. Relative errors need at least 5 true cases in
-   * the week.
+   * the week. In real time the mean shift has no value in weeks that
+   * include days after `T − m` (see
+   * {@link module:epidemic-dates.maskWeeks maskWeeks}).
    * @param {Scenario} sc Scenario.
    * @param {number} W Number of weeks.
    * @param {number} reps Number of replicates.
@@ -1259,11 +1352,12 @@
           fwd[s] += af[d];
         }
       }
+      const mRep = Math.round(pmfMean(g));
       /** @type {Record<MethodKey, Float64Array>} */
       const res = {
         hub,
         fwd,
-        mean: shiftImpute(comp, miss, Math.round(pmfMean(g)), S),
+        mean: shiftImpute(comp, miss, mRep, S),
         gen: emImpute(comp, miss, sc, hub)
       };
       if (nowcast) {
@@ -1273,9 +1367,12 @@
       const gtw = growth(tw, 0.5);
       grTruth.push(gtw);
       for (const M of METHODS) {
-        const mw = weekly(res[M.key], W, sc.B + sc.wk0);
+        const last = M.key === "mean" && !sc.retro ? sc.Td - mRep : null;
+        const mw = maskWeeks(weekly(res[M.key], W, sc.B + sc.wk0), sc, last);
         relErr[M.key].push(
-          Array.from(mw, (v, w) => (tw[w] >= 5 ? v / tw[w] - 1 : null))
+          Array.from(mw, (v, w) =>
+            tw[w] >= 5 && Number.isFinite(v) ? v / tw[w] - 1 : null
+          )
         );
         const gmw = growth(mw, 0.5);
         gr[M.key].push(gmw);
@@ -1362,17 +1459,26 @@
    *   least 20% after it.
    * @property {?number} peakHeight Relative error of the imputed peak height.
    *   Null as for `peakShift`.
-   * @property {?number} last Mean relative error over the last 3 weeks in
-   *   real time. Null when retrospective.
+   * @property {number[]} lastWeeks Relative error in each of the last 3
+   *   weeks with a value before the cut-off, oldest first. Listed one by
+   *   one because signed errors can cancel in a mean. Empty when
+   *   retrospective.
+   * @property {?number} lastMaxAbs The entry of `lastWeeks` with the
+   *   largest absolute value, with its sign. Null when `lastWeeks` is
+   *   empty.
    * @memberof module:epidemic-dates
    */
   /**
    * Error metrics for one method. Growth rate, Rt, turning point and peak
    * metrics use only complete weeks (`ok`), so truncation of the target is
    * not mistaken for a change in the epidemic. Growth and Rt metrics also
-   * need at least 10 true cases in the week.
+   * need at least 10 true cases in the week. Weeks where `mw` is not finite
+   * (NaN, for example from
+   * {@link module:epidemic-dates.maskWeeks maskWeeks}) have no value and
+   * are left out of every metric.
    * @param {ArrayLike<number>} tw True weekly onsets.
-   * @param {ArrayLike<number>} mw Imputed weekly onsets.
+   * @param {ArrayLike<number>} mw Imputed weekly onsets. NaN where the
+   *   method has no value.
    * @param {Array<?number>} gT True weekly growth rates.
    * @param {Array<?number>} gM Imputed weekly growth rates.
    * @param {boolean[]} ok Complete weeks, from
@@ -1391,7 +1497,7 @@
       sumAbs = 0,
       nAbs = 0;
     for (let w = 0; w < W; w++) {
-      if (tw[w] < 10) continue;
+      if (tw[w] < 10 || !Number.isFinite(mw[w])) continue;
       const rel = mw[w] / tw[w] - 1;
       sumAbs += Math.abs(rel);
       nAbs++;
@@ -1440,24 +1546,25 @@
     /** @param {ArrayLike<number>} a */
     const argmax = a => {
       let b = 0;
-      for (let i = 1; i < nOk; i++) if (a[i] > a[b]) b = i;
+      for (let i = 1; i < nOk; i++)
+        if (Number.isFinite(a[i]) && !(a[i] <= a[b])) b = i;
       return b;
     };
     const pT = argmax(tw);
     const hasPeak = nOk > 2 && pT < nOk - 2 && tw[nOk - 1] < 0.8 * tw[pT];
     const peakShift = hasPeak ? 7 * (argmax(mw) - pT) : null;
     const peakHeight = hasPeak ? mw[argmax(mw)] / tw[pT] - 1 : null;
-    let last = null;
+    /** @type {number[]} */
+    const lastWeeks = [];
     if (!retro) {
-      let s = 0,
-        n = 0;
-      for (let w = W - 3; w < W; w++)
-        if (w >= 0 && tw[w] > 0) {
-          s += mw[w] / tw[w] - 1;
-          n++;
-        }
-      last = n ? s / n : null;
+      for (let w = W - 1; w >= 0 && lastWeeks.length < 3; w--)
+        if (tw[w] > 0 && Number.isFinite(mw[w]))
+          lastWeeks.unshift(mw[w] / tw[w] - 1);
     }
+    let lastMaxAbs = null;
+    for (const v of lastWeeks)
+      if (lastMaxAbs === null || Math.abs(v) > Math.abs(lastMaxAbs))
+        lastMaxAbs = v;
     return {
       maxRel,
       maxRelW,
@@ -1470,7 +1577,8 @@
       zM,
       peakShift,
       peakHeight,
-      last
+      lastWeeks,
+      lastMaxAbs
     };
   }
 
@@ -1516,12 +1624,50 @@
   }
 
   /**
+   * Set weeks that include any display day after `lastDay` to NaN, so they
+   * have no value. Used for the mean shift in real time: it moves every
+   * missing case back by `m` days, so it cannot place any case on an onset
+   * day later than `T − m`. With a fixed shift those days would be left
+   * out in practice, so they are not compared.
+   * @param {ArrayLike<number>} wk Weekly values, week 0 starting on
+   *   display day `sc.wk0`.
+   * @param {Pick<Scenario, "wk0">} sc Scenario.
+   * @param {?number} lastDay Last display day with a value. Null or
+   *   undefined to keep every week.
+   * @returns {Float64Array} A copy, with NaN in the masked weeks.
+   * @alias module:epidemic-dates.maskWeeks
+   */
+  function maskWeeks(wk, sc, lastDay) {
+    const out = Float64Array.from(wk);
+    if (lastDay === null || lastDay === undefined) return out;
+    for (let w = 0; w < out.length; w++)
+      if (sc.wk0 + 7 * w + 6 > lastDay) out[w] = NaN;
+    return out;
+  }
+
+  /**
+   * Output of
+   * {@link module:epidemic-dates.comparisonSeries comparisonSeries}.
+   * @typedef {Object} ComparisonSeries
+   * @property {Float64Array} truth True onsets by day, internal day index.
+   * @property {Object<string, Float64Array>} methods Each method's onsets by
+   *   day, internal day index.
+   * @property {boolean} nowcast Whether the series are truncation corrected.
+   * @property {Object<string, ?number>} lastDay Last display day on which
+   *   each method has a value, or null for no limit. In real time the mean
+   *   shift stops at `Td − m`, where `m` is the rounded mean pooled delay.
+   *   Pass to {@link module:epidemic-dates.maskWeeks maskWeeks}.
+   * @property {number} m Rounded mean pooled delay used by the mean shift.
+   * @memberof module:epidemic-dates
+   */
+  /**
    * The daily series a method is compared on. Without a nowcast, the truth
    * is the onsets of cases reported by the cut-off and each method's
    * imputation is used as is. With `p.nowcast` in real time, every method
    * is corrected for right truncation with the true delay
    * ({@link module:epidemic-dates.correctTruncation correctTruncation})
-   * and compared with all onsets that will eventually be reported.
+   * and compared with all onsets that will eventually be reported. In real
+   * time the mean shift has no value after day `Td − m` (`lastDay`).
    * @param {Pick<ScenarioParams, "nowcast" | "retro">} p Scenario
    *   parameters.
    * @param {Scenario} sc Scenario.
@@ -1529,8 +1675,7 @@
    *   {@link module:epidemic-dates.expectedData expectedData}.
    * @param {MethodResults} R Output of
    *   {@link module:epidemic-dates.runMethods runMethods}.
-   * @returns {{truth: Float64Array, methods: Object<string, Float64Array>,
-   *   nowcast: boolean}} Daily series on the internal day index.
+   * @returns {ComparisonSeries} Daily series on the internal day index.
    * @alias module:epidemic-dates.comparisonSeries
    */
   function comparisonSeries(p, sc, ex, R) {
@@ -1541,7 +1686,10 @@
       methods[m.key] = nowcast ? correctTruncation(R[m.key], sc) : R[m.key];
     }
     const truth = nowcast ? Float64Array.from(sc.C) : ex.truth;
-    return { truth, methods, nowcast };
+    /** @type {Object<string, ?number>} */
+    const lastDay = { hub: null, mean: null, fwd: null, gen: null };
+    if (!p.retro) lastDay.mean = sc.Td - R.m;
+    return { truth, methods, nowcast, lastDay, m: R.m };
   }
 
   /**
@@ -1560,8 +1708,9 @@
    *   for `truth` and each method.
    * @property {Object<string, Array<?number>>} rt Rt, for `truth` and each
    *   method.
-   * @property {Object<string, number[]>} imputed Onsets after imputation, by
-   *   method.
+   * @property {Object<string, Array<?number>>} imputed Onsets after
+   *   imputation, by method. Null in weeks where the method has no value
+   *   (the mean shift near the cut-off in real time).
    * @property {Object<string, Metrics>} metrics Error
    *   metrics, by method.
    * @property {number[]} pooledDelay Pooled empirical delay pmf of complete
@@ -1571,7 +1720,9 @@
    */
   /**
    * Run one scenario end to end, in expectation. Only whole weeks within
-   * `days` and the cut-off are returned.
+   * `days` and the cut-off are returned. In real time the mean shift has no
+   * value in weeks that include days after `T − m`; these weeks are null
+   * and left out of its metrics.
    * @param {Partial<ScenarioParams>} [params={}] Any subset
    *   of {@link module:epidemic-dates.DEFAULTS DEFAULTS}.
    * @returns {RunResult}
@@ -1614,9 +1765,13 @@
       forwardDelay: Array.from(sc.fbar)
     };
     for (const m of METHODS) {
-      const mw = weekly(cs.methods[m.key], W, sc.B + sc.wk0);
+      const mw = maskWeeks(
+        weekly(cs.methods[m.key], W, sc.B + sc.wk0),
+        sc,
+        cs.lastDay[m.key]
+      );
       const gM = growth(mw);
-      out.imputed[m.key] = Array.from(mw);
+      out.imputed[m.key] = Array.from(mw, v => (Number.isFinite(v) ? v : null));
       out.growth[m.key] = gM;
       out.rt[m.key] = gM.map(rToR);
       out.metrics[m.key] = metrics(truth, mw, gT, gM, ok, W, p.retro);
@@ -1874,6 +2029,7 @@
     completeWeeks,
     correctTruncation,
     comparisonSeries,
+    maskWeeks,
     run,
     imputeLinelist,
     makeRng

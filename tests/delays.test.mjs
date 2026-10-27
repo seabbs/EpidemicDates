@@ -83,7 +83,8 @@ test("curveAt interpolates between knots and is flat outside", () => {
   assert.equal(M.curveAt(vals, 7.5), 0.5);
   assert.equal(M.curveAt(vals, 22.5), 2.5);
   assert.equal(M.curveAt(vals, 240), 256);
-  assert.equal(M.curveAt(vals, 1000), 256);
+  assert.equal(M.curveAt(vals, 360), 576);
+  assert.equal(M.curveAt(vals, 1000), 576);
 });
 
 test("curveAt agrees with the growth rate in a scenario", () => {
@@ -106,7 +107,7 @@ test("knotsFrom is linear between anchors and flat outside", () => {
   assert.equal(k.length, M.KNOTS.length);
   assert.equal(k[0], 1); // day 0, before the first anchor
   assert.equal(k[3], 1.5); // day 45
-  assert.equal(k[k.length - 1], 2); // day 240, after the last anchor
+  assert.equal(k[k.length - 1], 2); // day 360, after the last anchor
 });
 
 test("normalise sums to 1 and leaves an all-zero input at zero", () => {

@@ -13,6 +13,9 @@ import {
   sum
 } from "./helpers.mjs";
 
+// use mu0, mu1, pi0 and pi1 in place of the baseline curves
+const linear = { muKnots: null, piKnots: null };
+
 test("hub method is unbiased in steady growth, real time", () => {
   const { mw, tw } = pipeline({ ...steady(0.05), retro: false, cutoff: 150 });
   assert.ok(maxRelErr(mw.hub, tw) < 0.005);
@@ -32,8 +35,8 @@ test("EM back-projection recovers the truth when missing at random", () => {
   for (const set of [
     bvd,
     { ...bvd, retro: false, cutoff: 120 },
-    { ...bvd, mu0: 12, mu1: 4 },
-    { ...bvd, pi0: 0.2, pi1: 0.6 }
+    { ...bvd, ...linear, mu0: 12, mu1: 4 },
+    { ...bvd, ...linear, pi0: 0.2, pi1: 0.6 }
   ]) {
     const { mw, tw } = pipeline(set);
     assert.ok(maxRelErr(mw.gen, tw) < 1e-6);
@@ -87,7 +90,15 @@ test("emImpute calls back on each iteration", () => {
 });
 
 test("missingness linked to delay is scaled by the onset day's mean delay", () => {
-  const set = { ...bvd, mu0: 12, mu1: 6, pi0: 0.3, pi1: 0.3, beta: 1.5 };
+  const set = {
+    ...bvd,
+    ...linear,
+    mu0: 12,
+    mu1: 6,
+    pi0: 0.3,
+    pi1: 0.3,
+    beta: 1.5
+  };
   const { sc } = pipeline(set);
   // onset on the last day shown has mean delay mu1 = 6, so a 6-day delay
   // is the reference and gets the base probability
@@ -100,7 +111,7 @@ test("missingness linked to delay is scaled by the onset day's mean delay", () =
 });
 
 test("beta of 0 keeps missingness at random given report day", () => {
-  const { sc } = pipeline({ ...bvd, pi0: 0.1, pi1: 0.5 });
+  const { sc } = pipeline({ ...bvd, ...linear, pi0: 0.1, pi1: 0.5 });
   const i = sc.B + 50;
   assert.equal(sc.pim(i, 1), sc.pim(i, 20));
   assert.equal(sc.pim(sc.B, 0), 0.1);
@@ -138,9 +149,16 @@ test("run() returns one entry per week and method", () => {
   for (const m of M.METHODS) {
     assert.equal(res.imputed[m.key].length, W);
     assert.equal(res.rt[m.key].length, W);
-    assert.ok(Number.isFinite(res.metrics[m.key].last));
+    const met = res.metrics[m.key];
+    assert.equal(met.lastWeeks.length, 3);
+    assert.ok(met.lastWeeks.every(Number.isFinite));
+    const big = Math.max(...met.lastWeeks.map(Math.abs));
+    assert.equal(Math.abs(met.lastMaxAbs), big);
+    assert.ok(met.lastWeeks.includes(met.lastMaxAbs));
   }
-  assert.equal(M.run({ ...bvd, retro: true }).metrics.hub.last, null);
+  const retro = M.run({ ...bvd, retro: true }).metrics.hub;
+  assert.deepEqual(retro.lastWeeks, []);
+  assert.equal(retro.lastMaxAbs, null);
 });
 
 test("every preset runs without non-finite values", () => {
@@ -193,7 +211,8 @@ test("metrics on a known peak and turning point", () => {
   assert.equal(met.maxRelW, 3);
   assert.equal(met.peakShift, 0);
   assert.ok(Math.abs(met.peakHeight + 0.25) < 1e-12);
-  assert.equal(met.last, null);
+  assert.deepEqual(met.lastWeeks, []);
+  assert.equal(met.lastMaxAbs, null);
   assert.ok(met.zT !== null && met.zM !== null);
   assert.equal(met.lag, met.zM - met.zT);
   // too few cases: no weekly error, no peak
@@ -215,7 +234,8 @@ test("exported constants are frozen", () => {
     M.KNOTS[0] = 99;
   }, TypeError);
   // a copy can be changed
+  const k0 = M.DEFAULTS.knots[0];
   const p = { ...M.DEFAULTS, knots: M.DEFAULTS.knots.slice() };
   p.knots[0] = 1;
-  assert.equal(M.DEFAULTS.knots[0], 0.05);
+  assert.equal(M.DEFAULTS.knots[0], k0);
 });

@@ -14,6 +14,7 @@ const {
   clamp,
   normalise,
   pmfMean,
+  knotsFrom,
   scenario,
   expectedData,
   runMethods,
@@ -23,6 +24,7 @@ const {
   metrics,
   completeWeeks,
   comparisonSeries,
+  maskWeeks,
   emImpute,
   correctTruncation
 } = EpidemicDates;
@@ -34,6 +36,79 @@ const STYLE = {
   gen: { col: "--series-4", width: 2.5, dash: "1 4" }
 };
 const METHODS = EpidemicDates.METHODS.map(m => ({ ...m, ...STYLE[m.key] }));
+// the last day the editors can set
+const KNOT_END = KNOTS[KNOTS.length - 1];
+
+// ---------- calendar dates ----------
+// day 0 is the start date; internal maths stays in days
+const START_DEFAULT = "2026-05-03";
+let START = START_DEFAULT;
+const MONTHS = [
+  "Jan",
+  "Feb",
+  "Mar",
+  "Apr",
+  "May",
+  "Jun",
+  "Jul",
+  "Aug",
+  "Sep",
+  "Oct",
+  "Nov",
+  "Dec"
+];
+const DAY_MS = 86400000;
+function parseStart(s) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(s));
+  if (!m) return null;
+  const t = Date.UTC(+m[1], +m[2] - 1, +m[3]);
+  return Number.isFinite(t) ? t : null;
+}
+const startMs = () => parseStart(START) ?? parseStart(START_DEFAULT);
+const dateOf = day => new Date(startMs() + Math.round(day) * DAY_MS);
+// "24 Oct 2026"
+const fmtDate = day => {
+  const d = dateOf(day);
+  return `${d.getUTCDate()} ${MONTHS[d.getUTCMonth()]} ${d.getUTCFullYear()}`;
+};
+// "24 Oct"
+const fmtShort = day => {
+  const d = dateOf(day);
+  return `${d.getUTCDate()} ${MONTHS[d.getUTCMonth()]}`;
+};
+// tooltip title for a week centred on x
+const fmtWeek = x => `Week of ${fmtShort(x - 3.5)} to ${fmtDate(x + 2.5)}`;
+// x-axis ticks at month starts, thinned to fit; weekly for short ranges
+function dateTicks(x0, x1, n) {
+  const s0 = startMs();
+  const a = dateOf(Math.floor(x0));
+  let y = a.getUTCFullYear(),
+    mo = a.getUTCMonth();
+  const months = [];
+  for (;;) {
+    const x = (Date.UTC(y, mo, 1) - s0) / DAY_MS;
+    if (x > x1) break;
+    if (x >= x0) months.push({ x, y, mo });
+    if (++mo === 12) {
+      mo = 0;
+      y++;
+    }
+  }
+  if (months.length >= 2) {
+    const k = Math.ceil(months.length / Math.max(n, 1));
+    const kept = months.filter((_, i) => i % k === 0);
+    return kept.map((t, i) => ({
+      x: t.x,
+      label: MONTHS[t.mo] + (i === 0 || t.mo === 0 ? " " + t.y : "")
+    }));
+  }
+  const span = x1 - x0;
+  const step = Math.max(7, 7 * Math.ceil(span / 7 / Math.max(n, 1)));
+  const out = [];
+  for (let x = Math.ceil(x0); x <= x1; x += step)
+    out.push({ x, label: fmtShort(x) });
+  return out;
+}
 
 // ---------- page state and controls spec ----------
 const CONTROLS = [
@@ -72,31 +147,19 @@ const CONTROLS = [
         id: "days",
         label: "Days shown",
         min: 70,
-        max: 238,
+        max: 357,
         step: 7,
-        fmt: v => v
+        fmt: v => `${v} (to ${fmtShort(v - 1)})`
       }
     ]
   },
   {
     group: "Onset-to-report delay",
+    editor: {
+      id: "muEditor",
+      hint: "Mean delay in days, by onset day."
+    },
     items: [
-      {
-        id: "mu0",
-        label: "Mean delay at day 0 (days)",
-        min: 1,
-        max: 20,
-        step: 0.5,
-        fmt: v => v.toFixed(1)
-      },
-      {
-        id: "mu1",
-        label: "Mean delay at end (days)",
-        min: 1,
-        max: 20,
-        step: 0.5,
-        fmt: v => v.toFixed(1)
-      },
       {
         id: "cv",
         label: "Coefficient of variation",
@@ -109,23 +172,11 @@ const CONTROLS = [
   },
   {
     group: "Missing onset dates",
+    editor: {
+      id: "piEditor",
+      hint: "Fraction of cases with no onset date, by report day."
+    },
     items: [
-      {
-        id: "pi0",
-        label: "Fraction missing at start",
-        min: 0,
-        max: 0.95,
-        step: 0.05,
-        fmt: v => Math.round(v * 100) + "%"
-      },
-      {
-        id: "pi1",
-        label: "Fraction missing at end",
-        min: 0,
-        max: 0.95,
-        step: 0.05,
-        fmt: v => Math.round(v * 100) + "%"
-      },
       {
         id: "beta",
         label: "Extra missingness with long delays",
@@ -146,8 +197,9 @@ const CONTROLS = [
     items: []
   },
   {
-    group: "Data cut-off",
+    group: "Dates and data cut-off",
     items: [
+      { id: "start", type: "date", label: "Start date (day 0)" },
       {
         id: "retro",
         type: "check",
@@ -162,15 +214,6 @@ const CONTROLS = [
         id: "ended",
         type: "check",
         label: "Outbreak over (no onsets after the days shown)"
-      },
-      {
-        id: "cutoff",
-        label: "Real-time cut-off (day)",
-        min: 40,
-        max: 238,
-        step: 1,
-        fmt: v => v,
-        hint: "At the far right, the cut-off is the last day shown."
       }
     ]
   },
@@ -193,10 +236,18 @@ const CONTROLS = [
     ]
   }
 ];
-let P = { ...DEFAULTS, ...PRESETS[0].set };
-P.knots = P.knots.slice();
-P.asc = P.asc.slice();
+// a fresh copy of a preset, so editing never touches the module's constants
+function fromPreset(set) {
+  const p = { ...DEFAULTS, ...set };
+  for (const k of ["knots", "asc", "muKnots", "piKnots"])
+    if (p[k]) p[k] = p[k].slice();
+  return p;
+}
+let P = fromPreset(PRESETS[0].set);
 let activePreset = 0;
+// series hidden from every chart, by legend name
+const HIDDEN = new Set(["Input"]);
+const shown = s => !HIDDEN.has(s.name);
 
 // ---------- chart drawing ----------
 const css = name =>
@@ -237,6 +288,25 @@ const fmtNum = v => {
   if (a >= 1) return v.toFixed(1);
   return v.toFixed(3);
 };
+const finite = v => v !== null && v !== undefined && isFinite(v);
+// value at quantile p of a sorted array
+const quantile = (a, p) => {
+  if (!a.length) return 0;
+  const i = (a.length - 1) * p,
+    lo = Math.floor(i),
+    hi = Math.ceil(i);
+  return a[lo] + (a[hi] - a[lo]) * (i - lo);
+};
+// y range for an error chart: at least ±min, widening with the data, but
+// capped at 1.5 times the 95th centile of absolute values so one extreme
+// point cannot flatten the rest
+function robustRange(ys, min) {
+  const abs = ys.map(Math.abs).sort((a, b) => a - b);
+  const cap = Math.max(min, 1.5 * quantile(abs, 0.95));
+  const lo = Math.min(...ys, 0),
+    hi = Math.max(...ys, 0);
+  return [Math.min(Math.max(lo, -cap), -min), Math.max(Math.min(hi, cap), min)];
+}
 function lineChart(el, o) {
   const width = Math.max(el.clientWidth, 280);
   const height = o.height || 260;
@@ -245,7 +315,7 @@ function lineChart(el, o) {
     ih = height - m.t - m.b;
   const xs = [];
   for (const s of o.series)
-    for (const p of s.data) if (p.y !== null && isFinite(p.y)) xs.push(p.x);
+    for (const p of s.data) if (finite(p.y)) xs.push(p.x);
   if (!xs.length) {
     el.innerHTML = "<p class='sub'>No data.</p>";
     return;
@@ -256,15 +326,23 @@ function lineChart(el, o) {
   const ys = [];
   for (const s of o.series)
     for (const p of s.data)
-      if (p.y !== null && isFinite(p.y) && p.x >= x0 && p.x <= x1) ys.push(p.y);
+      if (finite(p.y) && p.x >= x0 && p.x <= x1) ys.push(p.y);
   for (const b of o.bands || [])
     for (const p of b.data) if (p.x >= x0 && p.x <= x1) ys.push(p.lo, p.hi);
   if (!ys.length) ys.push(0, 1);
   let y0, y1;
+  // values beyond the robust range are drawn at the edge with a label
+  let edge = null;
   if (o.log) {
     const pos = ys.filter(v => v > 0);
     y0 = Math.max(Math.min(...pos), 0.5);
     y1 = Math.max(...pos) * 1.1;
+  } else if (o.robust !== undefined) {
+    [y0, y1] = robustRange(ys, o.robust);
+    edge = [y0, y1];
+    const pad = (y1 - y0) * 0.06;
+    y0 -= pad;
+    y1 += pad;
   } else {
     y0 = Math.min(...ys, o.includeZero ? 0 : Infinity, o.refY ?? Infinity);
     y1 = Math.max(...ys, o.includeZero ? 0 : -Infinity, o.refY ?? -Infinity);
@@ -287,7 +365,11 @@ function lineChart(el, o) {
           ih
     : y => m.t + ih - ((clamp(y, y0, y1) - y0) / (y1 - y0)) * ih;
   const yt = o.log ? logTicks(y0, y1) : niceTicks(y0, y1, 5);
-  const xt = niceTicks(x0, x1, Math.max(3, Math.floor(iw / 80)));
+  const nx = Math.max(3, Math.floor(iw / 80));
+  const xt = o.dates
+    ? dateTicks(x0, x1, nx)
+    : niceTicks(x0, x1, nx).map(x => ({ x, label: x }));
+  const xtip = o.xtip || (o.dates ? fmtDate : x => x);
   const clipId = "clip" + Math.random().toString(36).slice(2, 8);
   let svg = `<svg viewBox="0 0 ${width} ${height}" role="img" aria-label="${o.aria || ""}"><defs><clipPath id="${clipId}"><rect x="${m.l}" y="${m.t - 2}" width="${iw}" height="${ih + 4}"/></clipPath></defs>`;
   for (const sh of o.shades || []) {
@@ -300,12 +382,10 @@ function lineChart(el, o) {
           ? `<text class="axis-label" x="${sx(a) + 4}" y="${m.t + ih - 6}">${sh.label}</text>`
           : "");
   }
-  if (o.shade)
-    svg += `<rect x="${sx(Math.max(o.shade[0], x0))}" y="${m.t}" width="${Math.max(0, sx(Math.min(o.shade[1], x1)) - sx(Math.max(o.shade[0], x0)))}" height="${ih}" fill="var(--shade)"/>`;
   for (const v of yt)
     svg += `<line class="gridline" x1="${m.l}" x2="${m.l + iw}" y1="${sy(v)}" y2="${sy(v)}"/><g class="tick"><text x="${m.l - 6}" y="${sy(v) + 4}" text-anchor="end">${o.yfmt ? o.yfmt(v) : fmtNum(v)}</text></g>`;
   for (const v of xt)
-    svg += `<g class="tick"><text x="${sx(v)}" y="${m.t + ih + 16}" text-anchor="middle">${v}</text></g>`;
+    svg += `<g class="tick"><text x="${sx(v.x)}" y="${m.t + ih + 16}" text-anchor="middle">${v.label}</text></g>`;
   if (o.zero && y0 < 0 && y1 > 0)
     svg += `<line class="zero" x1="${m.l}" x2="${m.l + iw}" y1="${sy(0)}" y2="${sy(0)}"/>`;
   if (o.refY !== undefined && y0 < o.refY && y1 > o.refY)
@@ -333,7 +413,7 @@ function lineChart(el, o) {
     let d = "",
       pen = false;
     for (const p of s.data) {
-      if (p.y === null || !isFinite(p.y) || (o.log && p.y <= 0)) {
+      if (!finite(p.y) || (o.log && p.y <= 0)) {
         pen = false;
         continue;
       }
@@ -341,6 +421,21 @@ function lineChart(el, o) {
       pen = true;
     }
     svg += `<path d="${d}" fill="none" stroke="${s.color}" stroke-width="${s.width || 2}" stroke-linejoin="round" stroke-linecap="round" ${s.dash ? `stroke-dasharray="${s.dash}"` : ""} clip-path="url(#${clipId})"/>`;
+  }
+  if (edge) {
+    // a small triangle at the edge, labelled with the true value
+    for (const s of o.series)
+      for (const p of s.data) {
+        if (!finite(p.y) || p.x < x0 || p.x > x1) continue;
+        if (p.y >= edge[0] && p.y <= edge[1]) continue;
+        const up = p.y > edge[1],
+          cx = sx(p.x),
+          cy = sy(p.y);
+        const tip = up ? cy - 1 : cy + 1,
+          base = up ? cy + 7 : cy - 7;
+        svg += `<polygon class="edge-mark" points="${cx - 5},${base} ${cx + 5},${base} ${cx},${tip}" fill="${s.color}"/>`;
+        svg += `<text class="axis-label edge-label" x="${cx + 7}" y="${up ? cy + 10 : cy - 3}" fill="${s.color}">${o.vfmt ? o.vfmt(p.y) : fmtNum(p.y)}</text>`;
+      }
   }
   for (const mk of o.markers || []) {
     if (mk.x < x0 || mk.x > x1) continue;
@@ -365,10 +460,10 @@ function lineChart(el, o) {
     xh.setAttribute("x1", sx(best));
     xh.setAttribute("x2", sx(best));
     xh.style.display = "";
-    let html = `<div style="margin-bottom:4px;font-weight:600">${o.xtip ? o.xtip(best) : best}</div>`;
+    let html = `<div style="margin-bottom:4px;font-weight:600">${xtip(best)}</div>`;
     for (const s of o.series) {
       const p = s.data.find(q => q.x === best);
-      if (!p || p.y === null) continue;
+      if (!p || !finite(p.y)) continue;
       html += `<div class="row"><span class="sw" style="background:${s.color}"></span><span class="name">${s.name}</span><span class="val">${o.vfmt ? o.vfmt(p.y) : fmtNum(p.y)}</span></div>`;
     }
     tip.innerHTML = html;
@@ -431,30 +526,65 @@ function lineChart(el, o) {
     hit.addEventListener("dblclick", () => o.onZoom(null));
   }
 }
-function legend(el, items) {
-  el.innerHTML = items
-    .map(
-      i =>
-        `<span><i class="${i.dash ? "dash" : ""}" style="border-color:${i.color}"></i>${i.name}</span>`
-    )
-    .join("");
+// show or hide a series on every chart
+function toggleSeries(name) {
+  if (HIDDEN.has(name)) HIDDEN.delete(name);
+  else HIDDEN.add(name);
+  schedule();
 }
+function legend(el, items, toggle = false) {
+  el.innerHTML = items
+    .map((i, k) => {
+      const off = toggle && HIDDEN.has(i.name);
+      const attrs = toggle
+        ? ` data-i="${k}" class="toggle${off ? " off" : ""}" role="button" tabindex="0" aria-pressed="${!off}" title="Click to ${off ? "show" : "hide"}"`
+        : "";
+      return `<span${attrs}><i class="${i.dash ? "dash" : ""}" style="border-color:${i.color}"></i>${i.name}</span>`;
+    })
+    .join("");
+  if (!toggle) return;
+  for (const sp of el.querySelectorAll("span[data-i]")) {
+    const name = items[+sp.dataset.i].name;
+    sp.addEventListener("click", () => toggleSeries(name));
+    sp.addEventListener("keydown", ev => {
+      if (ev.key === "Enter" || ev.key === " ") {
+        ev.preventDefault();
+        toggleSeries(name);
+      }
+    });
+  }
+}
+
+// ---------- percentages ----------
+// "+1.5%" with a true minus sign, one decimal place
+const pct = v =>
+  v === null || !isFinite(v)
+    ? "–"
+    : (v >= 0 ? "+" : "−") + Math.abs(v * 100).toFixed(1) + "%";
+// for prose: "about right (−0.3%)" below 0.5% in size
+const nearZero = v => Math.abs(v) < 0.005;
+const pctProse = v => (nearZero(v) ? `about right (${pct(v)})` : pct(v));
+const pctList = a => (a.length ? a.map(pct).join(", ") : "–");
+const meanShiftNote = m =>
+  `Mean shift: the last ${m} days before the cut-off are not shown. A fixed shift cannot place any missing case there, so in practice these days would be left out.`;
 
 // ---------- verdict ----------
 function verdict(met) {
   const h = met.hub;
-  const pct = v => (v >= 0 ? "+" : "−") + Math.abs(v * 100).toFixed(0) + "%";
   const items = [];
   items.push(
-    `Largest weekly error <b>${pct(h.maxRel)}</b>. Largest Rt error <b>${(h.maxR >= 0 ? "+" : "−") + Math.abs(h.maxR).toFixed(2)}</b>. Weeks with Rt on the wrong side of 1: <b>${h.wrongSide}</b>.`
+    `Largest weekly error: <b>${pctProse(h.maxRel)}</b>. Largest Rt error <b>${(h.maxR >= 0 ? "+" : "−") + Math.abs(h.maxR).toFixed(2)}</b>. Weeks with Rt on the wrong side of 1: <b>${h.wrongSide}</b>.`
   );
-  if (h.peakHeight !== null)
+  if (h.peakHeight !== null) {
+    const ph = h.peakHeight;
+    const size = nearZero(ph)
+      ? `Peak height about right (${pct(ph)})`
+      : `Peak ${ph < 0 ? "under" : "over"}stated by <b>${Math.abs(ph * 100).toFixed(1)}%</b>`;
+    items.push(`${size}${h.peakShift ? `, moved ${h.peakShift} days` : ""}.`);
+  }
+  if (h.lastWeeks.length)
     items.push(
-      `Peak ${h.peakHeight < 0 ? "under" : "over"}stated by <b>${Math.abs(h.peakHeight * 100).toFixed(0)}%</b>${h.peakShift ? `, moved ${h.peakShift} days` : ""}.`
-    );
-  if (h.last !== null)
-    items.push(
-      `Last 3 weeks before the cut-off: <b>${pct(h.last)}</b> (mean shift ${pct(met.mean.last)}).`
+      `Last 3 weeks before the cut-off: <b>${pctList(h.lastWeeks)}</b> (mean shift ${pctList(met.mean.lastWeeks)}).`
     );
   document.getElementById("verdict").className = "verdict";
   document.getElementById("verdict").innerHTML =
@@ -462,6 +592,9 @@ function verdict(met) {
 }
 
 // ---------- main render ----------
+// results by parameter set, so the cut-off slider can replay quickly
+const CACHE = new Map();
+const CACHE_MAX = 40;
 let cache = { key: null };
 // shared x range for the time-series charts, null when zoomed out
 let ZOOM = null;
@@ -473,6 +606,11 @@ const setZoom = z => {
 function compute() {
   const key = JSON.stringify(P);
   if (cache.key === key) return cache;
+  const hit = CACHE.get(key);
+  if (hit) {
+    cache = hit;
+    return cache;
+  }
   const sc = scenario(P);
   const ex = expectedData(sc);
   const R = runMethods(sc, ex.comp, ex.miss, ex.empCounts);
@@ -480,34 +618,38 @@ function compute() {
   const st = P.stoch ? stochastic(sc, W, P.reps, P.nowcast && !P.retro) : null,
     stochMsg = "";
   cache = { key, sc, ex, R, W, st, stochMsg };
+  if (CACHE.size >= CACHE_MAX) CACHE.delete(CACHE.keys().next().value);
+  CACHE.set(key, cache);
   return cache;
 }
 function render() {
   const t0 = performance.now();
   const { sc, ex, R, W, st, stochMsg } = compute();
-  const xw = w => sc.wk0 + 7 * w + 3.5,
-    x0w = sc.wk0,
-    x1w = sc.wk0 + 7 * W;
+  const xw = w => sc.wk0 + 7 * w + 3.5;
+  const off = sc.B + sc.wk0;
   const cs = comparisonSeries(P, sc, ex, R);
-  const tw = weekly(cs.truth, W, sc.B + sc.wk0),
-    rw = weekly(ex.rep, W, sc.B + sc.wk0);
+  const tw = weekly(cs.truth, W, off),
+    rw = weekly(ex.rep, W, off);
   const mw = {};
   for (const M of METHODS)
-    mw[M.key] = weekly(cs.methods[M.key], W, sc.B + sc.wk0);
+    mw[M.key] = maskWeeks(
+      weekly(cs.methods[M.key], W, off),
+      sc,
+      cs.lastDay[M.key]
+    );
   const gT = growth(tw),
     gM = {};
   for (const M of METHODS) gM[M.key] = growth(mw[M.key]);
   const rIn = Array.from({ length: W }, (_, w) => {
     let s = 0;
-    for (let d = 0; d < 7; d++) s += sc.r[sc.B + sc.wk0 + 7 * w + d] ?? 0;
+    for (let d = 0; d < 7; d++) s += sc.r[off + 7 * w + d] ?? 0;
     return s / 7;
   });
   const col = {};
   for (const M of METHODS) col[M.key] = css(M.col);
   const ink = css("--text-primary"),
     grey = css("--reports");
-  const shade = null;
-  // weeks less than 80% reported by the cut-off
+  // weeks less than 80% (30% with the nowcast) reported by the cut-off
   const ok = completeWeeks(sc, W, cs.nowcast ? 0.3 : 0.8);
   const firstBad = ok.indexOf(false);
   const shades =
@@ -515,14 +657,29 @@ function render() {
       ? [
           {
             from: sc.wk0 + 7 * firstBad,
-            to: x1w,
+            to: sc.wk0 + 7 * W,
             fill: "var(--grid)",
             label: cs.nowcast ? "under 30% reported" : "under 80% reported"
           }
         ]
       : [];
   const vline = P.retro ? undefined : sc.Td;
-  const xtip = x => `Week of days ${x - 3.5} to ${x + 2.5}`;
+  // the x-axis covers the whole window, so it stays put as the cut-off moves
+  const common = {
+    shades,
+    vline,
+    dates: true,
+    xtip: fmtWeek,
+    xmin: ZOOM ? ZOOM[0] : 0,
+    xmax: ZOOM ? ZOOM[1] : sc.N,
+    onZoom: setZoom
+  };
+  const bandsFor = (src, map = b => b) =>
+    METHODS.map(M => ({
+      name: M.name,
+      color: col[M.key],
+      data: src[M.key].map(map)
+    })).filter(shown);
 
   // chart A
   const sA = [
@@ -549,21 +706,16 @@ function render() {
     });
   legend(
     document.getElementById("legendA"),
-    sA.map(s => ({ name: s.name, color: s.color, dash: !!s.dash }))
+    sA.map(s => ({ name: s.name, color: s.color, dash: !!s.dash })),
+    true
   );
   lineChart(document.getElementById("chartA"), {
-    series: sA,
+    ...common,
+    series: sA.filter(shown),
     log: document.getElementById("logA").checked,
-    xlab: "Day (onset or report week)",
+    xlab: "Onset or report week",
     ylab: "Cases per week",
-    shade,
-    shades,
-    vline,
-    xtip,
     includeZero: true,
-    xmin: ZOOM ? ZOOM[0] : x0w,
-    xmax: ZOOM ? ZOOM[1] : x1w,
-    onZoom: setZoom,
     aria: "Weekly onset counts, true and imputed"
   });
 
@@ -575,39 +727,26 @@ function render() {
     width: M.width,
     data: Array.from(mw[M.key], (y, w) => ({
       x: xw(w),
-      y: tw[w] > 0 ? (y / tw[w] - 1) * 100 : null
+      y: tw[w] > 0 && finite(y) ? (y / tw[w] - 1) * 100 : null
     }))
   }));
   const bB = st
-    ? METHODS.map(M => ({
-        color: col[M.key],
-        data: st.bands[M.key].map(p => ({
-          x: p.x,
-          lo: p.lo * 100,
-          hi: p.hi * 100
-        }))
-      }))
+    ? bandsFor(st.bands, p => ({ x: p.x, lo: p.lo * 100, hi: p.hi * 100 }))
     : [];
   legend(
     document.getElementById("legendB"),
-    sB.map(s => ({ name: s.name, color: s.color, dash: !!s.dash }))
+    sB.map(s => ({ name: s.name, color: s.color, dash: !!s.dash })),
+    true
   );
   lineChart(document.getElementById("chartB"), {
-    series: sB,
+    ...common,
+    series: sB.filter(shown),
     bands: bB,
     zero: true,
-    includeZero: true,
-    xlab: "Onset week (day)",
+    robust: 10,
+    xlab: "Onset week",
     ylab: "Error (%)",
-    shade,
-    shades,
-    vline,
-    xtip,
-    xmin: ZOOM ? ZOOM[0] : x0w,
-    xmax: ZOOM ? ZOOM[1] : x1w,
-    onZoom: setZoom,
-    yclamp: [-100, 200],
-    vfmt: v => (v >= 0 ? "+" : "") + v.toFixed(1) + "%",
+    vfmt: v => (v >= 0 ? "+" : "−") + Math.abs(v).toFixed(1) + "%",
     yfmt: v => v + "%",
     aria: "Relative error of imputed weekly counts"
   });
@@ -639,34 +778,29 @@ function render() {
     });
   const bC = st
     ? [
-        { color: ink, data: toRBand(st.truthBand) },
-        { color: col.hub, data: toRBand(st.gbands.hub) }
-      ]
+        { name: "True onsets", color: ink, data: toRBand(st.truthBand) },
+        ...bandsFor(st.gbands).map(b => ({ ...b, data: toRBand(b.data) }))
+      ].filter(shown)
     : [];
   legend(
     document.getElementById("legendC"),
-    sC.map(s => ({ name: s.name, color: s.color, dash: !!s.dash }))
+    sC.map(s => ({ name: s.name, color: s.color, dash: !!s.dash })),
+    true
   );
   lineChart(document.getElementById("chartC"), {
-    series: sC,
+    ...common,
+    series: sC.filter(shown),
     bands: bC,
     refY: 1,
-    xlab: "Onset week (day)",
+    xlab: "Onset week",
     ylab: "Rt",
-    shade,
-    shades,
-    vline,
-    xtip,
-    xmin: ZOOM ? ZOOM[0] : x0w,
-    xmax: ZOOM ? ZOOM[1] : x1w,
-    onZoom: setZoom,
     yclamp: [0, 4],
     vfmt: v => v.toFixed(3),
     yfmt: v => v.toFixed(1),
     aria: "Reproduction number estimated from weekly counts"
   });
 
-  // chart E: growth rate error
+  // chart E: Rt error
   const sE = METHODS.map(M => ({
     name: M.name,
     color: col[M.key],
@@ -679,36 +813,30 @@ function render() {
   }));
   // weeks where a method puts Rt on the other side of 1 from the truth
   const markE = [];
-  for (const M of METHODS)
+  for (const M of METHODS) {
+    if (HIDDEN.has(M.name)) continue;
     gM[M.key].forEach((y, w) => {
       if (y === null || gT[w] === null || !ok[w] || tw[w] < 10) return;
       if (wrongSideOf1(y, gT[w]))
         markE.push({ x: xw(w), y: rToR(y) - rToR(gT[w]), color: col[M.key] });
     });
-  const bE = st
-    ? METHODS.map(M => ({ color: col[M.key], data: st.ebands[M.key] }))
-    : [];
+  }
+  const bE = st ? bandsFor(st.ebands) : [];
   legend(
     document.getElementById("legendE"),
-    sE.map(s => ({ name: s.name, color: s.color, dash: !!s.dash }))
+    sE.map(s => ({ name: s.name, color: s.color, dash: !!s.dash })),
+    true
   );
   lineChart(document.getElementById("chartE"), {
-    series: sE,
+    ...common,
+    series: sE.filter(shown),
     bands: bE,
     zero: true,
-    includeZero: true,
+    robust: 0.2,
     markers: markE,
-    xlab: "Onset week (day)",
+    xlab: "Onset week",
     ylab: "Rt error",
-    shade,
-    shades,
-    vline,
-    xtip,
-    xmin: ZOOM ? ZOOM[0] : x0w,
-    xmax: ZOOM ? ZOOM[1] : x1w,
-    onZoom: setZoom,
-    yclamp: [-1.5, 1.5],
-    vfmt: v => (v >= 0 ? "+" : "") + v.toFixed(3),
+    vfmt: v => (v >= 0 ? "+" : "−") + Math.abs(v).toFixed(3),
     yfmt: v => v.toFixed(2),
     aria: "Error in Rt estimated from imputed counts"
   });
@@ -718,10 +846,6 @@ function render() {
   for (const M of METHODS)
     met[M.key] = metrics(tw, mw[M.key], gT, gM[M.key], ok, W, P.retro);
   verdict(met);
-  const pct = v =>
-    v === null
-      ? "–"
-      : (v >= 0 ? "+" : "−") + Math.abs(v * 100).toFixed(1) + "%";
   const days = v =>
     v === null ? "–" : (v >= 0 ? "+" : "−") + Math.abs(v).toFixed(1);
   let html = `<thead><tr><th>Method</th><th>Max weekly error</th><th>Mean |error|</th><th>Max Rt error</th><th>Weeks Rt on wrong side of 1</th><th>Peak shift (days)</th><th>Peak height</th>${P.retro ? "" : "<th>Last 3 weeks</th>"}</tr></thead><tbody>`;
@@ -734,16 +858,79 @@ function render() {
       <td>${q.wrongSide}</td>
       <td>${days(q.peakShift)}</td>
       <td>${pct(q.peakHeight)}</td>
-      ${P.retro ? "" : `<td>${pct(q.last)}</td>`}</tr>`;
+      ${P.retro ? "" : `<td>${pctList(q.lastWeeks)}</td>`}</tr>`;
   }
   html += `</tbody>`;
   document.getElementById("summary").innerHTML = html;
+  const note = P.retro ? "" : meanShiftNote(cs.m);
+  for (const id of ["meanNote", "meanNoteB"])
+    document.getElementById(id).textContent = note;
 
+  syncAsOf();
   drawSteps();
 
   const tot = tw.reduce((a, b) => a + b, 0);
   document.getElementById("status").textContent =
-    `Expected cases in the onset weeks shown: ${Math.round(tot).toLocaleString("en-GB")}. Cut-off day ${sc.Td}${P.retro ? " (retrospective)" : ""}. Realised mean delay ${pmfMean(sc.fbar).toFixed(1)} days.${stochMsg} Rendered in ${(performance.now() - t0).toFixed(0)} ms.`;
+    `Expected cases in the onset weeks shown: ${Math.round(tot).toLocaleString("en-GB")}. ${P.retro ? "Retrospective: all cases reported" : `Cut-off ${fmtDate(sc.Td)} (day ${sc.Td})`}. Realised mean delay ${pmfMean(sc.fbar).toFixed(1)} days.${stochMsg} Rendered in ${(performance.now() - t0).toFixed(0)} ms.`;
+}
+
+// ---------- "real time as of" cut-off slider ----------
+const ASOF = { timer: null };
+const ASOF_MIN = 35;
+function syncAsOf() {
+  const el = document.getElementById("asofSel");
+  const last = P.days - 1;
+  const v = P.cutoff === null || P.cutoff === undefined ? last : P.cutoff;
+  el.min = ASOF_MIN;
+  el.max = last;
+  el.value = Math.min(v, last);
+  el.disabled = !!P.retro;
+  document.getElementById("asofPlay").disabled = !!P.retro;
+  document.getElementById("asofOut").textContent = P.retro
+    ? "all cases reported (retrospective)"
+    : fmtDate(Math.min(v, last)) + (v >= last ? " (last day shown)" : "");
+}
+// set the cut-off; at or past the last day shown it follows the window
+function setCutoff(v) {
+  P.cutoff = v >= P.days - 1 ? null : Math.max(v, 0);
+  syncAsOf();
+  schedule();
+}
+function stopPlay() {
+  clearTimeout(ASOF.timer);
+  ASOF.timer = null;
+  document.getElementById("asofPlay").textContent = "▶ Play";
+}
+// one step of the playback: a week forward, stopping at the last day
+function playStep() {
+  const last = P.days - 1;
+  const cur = P.cutoff ?? last;
+  const next = cur + 7;
+  setCutoff(next);
+  if (next >= last) {
+    stopPlay();
+    return false;
+  }
+  ASOF.timer = setTimeout(playStep, 700);
+  return true;
+}
+function togglePlay() {
+  if (ASOF.timer) {
+    stopPlay();
+    return;
+  }
+  if (P.retro) return;
+  if (P.cutoff === null || P.cutoff === undefined) setCutoff(ASOF_MIN);
+  document.getElementById("asofPlay").textContent = "❚❚ Pause";
+  ASOF.timer = setTimeout(playStep, 700);
+}
+function wireAsOf() {
+  const el = document.getElementById("asofSel");
+  el.addEventListener("input", () => {
+    stopPlay();
+    setCutoff(+el.value);
+  });
+  document.getElementById("asofPlay").addEventListener("click", togglePlay);
 }
 
 // ---------- controls ----------
@@ -755,12 +942,11 @@ function buildControls() {
     b.type = "button";
     b.textContent = p.name;
     b.addEventListener("click", () => {
+      stopPlay();
       activePreset = i;
       ZOOM = null;
       document.getElementById("zoomReset").disabled = true;
-      P = { ...DEFAULTS, ...p.set };
-      P.knots = P.knots.slice();
-      P.asc = P.asc.slice();
+      P = fromPreset(p.set);
       syncControls();
       schedule();
     });
@@ -779,6 +965,8 @@ function buildControls() {
       div.className = "ctl";
       if (c.type === "check") {
         div.innerHTML = `<label class="check" style="justify-content:flex-start"><input type="checkbox" id="c_${c.id}"> ${c.label}</label>`;
+      } else if (c.type === "date") {
+        div.innerHTML = `<label for="c_${c.id}">${c.label}</label><input type="date" id="c_${c.id}" required>`;
       } else {
         div.innerHTML = `<label for="c_${c.id}">${c.label} <output id="o_${c.id}"></output></label><input type="range" id="c_${c.id}" min="${c.min}" max="${c.max}" step="${c.step}">${c.hint ? `<p class="hint">${c.hint}</p>` : ""}`;
       }
@@ -790,10 +978,19 @@ function buildControls() {
     for (const c of g.items) {
       const el = document.getElementById("c_" + c.id);
       el.addEventListener("input", () => {
+        if (c.type === "date") {
+          // dates only relabel the charts; the scenario is unchanged
+          if (parseStart(el.value) !== null) START = el.value;
+          syncControls();
+          schedule();
+          return;
+        }
         P[c.id] = c.type === "check" ? el.checked : +el.value;
+        if (c.id === "retro" && P.retro) stopPlay();
         // a cut-off at or past the last day shown follows the window
-        if (c.id === "cutoff" && P.cutoff >= P.days - 1) P.cutoff = null;
-        if (c.id === "days" || c.id === "cutoff") syncControls();
+        if (c.id === "days" && P.cutoff !== null && P.cutoff >= P.days - 1)
+          P.cutoff = null;
+        if (c.id === "days") syncControls();
         syncEnabled();
         if (c.type !== "check")
           document.getElementById("o_" + c.id).textContent = c.fmt(P[c.id]);
@@ -816,21 +1013,18 @@ function syncControls() {
     for (const c of g.items) {
       const el = document.getElementById("c_" + c.id);
       if (c.type === "check") el.checked = !!P[c.id];
-      else if (c.id === "cutoff") {
-        const v = P.cutoff ?? P.days - 1;
-        el.value = v;
-        document.getElementById("o_cutoff").textContent =
-          P.cutoff === null || P.cutoff === undefined ? `${v} (last day)` : v;
-      } else {
+      else if (c.type === "date") el.value = START;
+      else {
         el.value = P[c.id];
         document.getElementById("o_" + c.id).textContent = c.fmt(P[c.id]);
       }
     }
   syncEnabled();
+  syncAsOf();
   drawEditor();
   markPreset();
 }
-// ---------- curve editors (growth rate and ascertainment) ----------
+// ---------- curve editors ----------
 const EDITORS = [
   {
     el: "rEditor",
@@ -841,7 +1035,32 @@ const EDITORS = [
     ref: 0,
     grid: [-0.05, 0, 0.05, 0.1],
     tick: v => v.toFixed(2),
+    show: v => v.toFixed(3),
     name: "r"
+  },
+  {
+    el: "muEditor",
+    key: "muKnots",
+    min: 0,
+    max: 20,
+    step: 0.5,
+    ref: null,
+    grid: [0, 5, 10, 15, 20],
+    tick: v => v.toFixed(0),
+    show: v => v.toFixed(1) + " days",
+    name: "mean delay"
+  },
+  {
+    el: "piEditor",
+    key: "piKnots",
+    min: 0,
+    max: 1,
+    step: 0.01,
+    ref: null,
+    grid: [0, 0.25, 0.5, 0.75, 1],
+    tick: v => Math.round(v * 100) + "%",
+    show: v => Math.round(v * 100) + "%",
+    name: "missing"
   },
   {
     el: "aEditor",
@@ -852,16 +1071,32 @@ const EDITORS = [
     ref: 1,
     grid: [0, 0.5, 1, 1.5, 2],
     tick: v => v.toFixed(1),
+    show: v => v.toFixed(2),
     name: "ascertainment"
   }
 ];
+// knot values for an editor; presets that set mu0/mu1 or pi0/pi1 give a
+// straight line over the days shown
+function curveVals(key) {
+  if (P[key]) return P[key];
+  if (key === "muKnots")
+    return knotsFrom([
+      [0, P.mu0],
+      [P.days - 1, P.mu1]
+    ]);
+  if (key === "piKnots")
+    return knotsFrom([
+      [0, P.pi0],
+      [P.days - 1, P.pi1]
+    ]);
+  return KNOTS.map(() => 0);
+}
 const ED = { w: 296, h: 150, l: 34, r: 8, t: 8, b: 20 };
 function edScales(cfg) {
   const iw = ED.w - ED.l - ED.r,
     ih = ED.h - ED.t - ED.b;
-  const xmax = KNOTS[KNOTS.length - 1];
   return {
-    sx: t => ED.l + (t / xmax) * iw,
+    sx: t => ED.l + (t / KNOT_END) * iw,
     sy: v => ED.t + ((cfg.max - v) / (cfg.max - cfg.min)) * ih,
     ix: px =>
       clamp(
@@ -882,19 +1117,21 @@ function drawEditor() {
     const el = document.getElementById(cfg.el);
     if (!el) continue;
     const { sx, sy } = edScales(cfg),
-      vals = P[cfg.key];
+      vals = curveVals(cfg.key);
     let g = `<svg viewBox="0 0 ${ED.w} ${ED.h}" style="width:100%;height:auto;touch-action:none;cursor:crosshair">`;
     for (const v of cfg.grid) {
       g += `<line x1="${ED.l}" x2="${ED.w - ED.r}" y1="${sy(v)}" y2="${sy(v)}" stroke="var(${v === cfg.ref ? "--text-muted" : "--grid"})"/>`;
       g += `<text x="${ED.l - 4}" y="${sy(v) + 3}" text-anchor="end" font-size="9" fill="var(--text-muted)">${cfg.tick(v)}</text>`;
     }
-    for (const t of [0, 60, 120, 180, 240])
+    for (let t = 0; t <= KNOT_END; t += 60)
       g += `<text x="${sx(t)}" y="${ED.h - 6}" text-anchor="middle" font-size="9" fill="var(--text-muted)">${t}</text>`;
-    if (P.days < 240)
-      g += `<rect x="${sx(P.days)}" y="${ED.t}" width="${sx(240) - sx(P.days)}" height="${ED.h - ED.t - ED.b}" fill="var(--grid)" opacity="0.6"/>`;
+    // days beyond the window are greyed out
+    if (P.days < KNOT_END)
+      g += `<rect x="${sx(P.days)}" y="${ED.t}" width="${sx(KNOT_END) - sx(P.days)}" height="${ED.h - ED.t - ED.b}" fill="var(--grid)" opacity="0.6"/>`;
     g += `<polyline fill="none" stroke="var(--text-primary)" stroke-width="2" points="${KNOTS.map((t, j) => `${sx(t)},${sy(vals[j])}`).join(" ")}"/>`;
     KNOTS.forEach((t, j) => {
-      g += `<circle cx="${sx(t)}" cy="${sy(vals[j])}" r="4" fill="var(--surface-1)" stroke="var(--text-primary)" stroke-width="1.5"/>`;
+      const out = t >= P.days;
+      g += `<circle cx="${sx(t)}" cy="${sy(vals[j])}" r="${out ? 3 : 4}" fill="var(--surface-1)" stroke="var(${out ? "--text-muted" : "--text-primary"})" stroke-width="1.5"/>`;
     });
     g += `<text class="edVal" x="${ED.w - ED.r}" y="${ED.t + 9}" text-anchor="end" font-size="10" fill="var(--text-secondary)"></text></svg>`;
     el.innerHTML = g;
@@ -912,12 +1149,13 @@ function wireEditor() {
       const { ix, iy } = edScales(cfg);
       const j = ix(px),
         v = Math.round(iy(py) / cfg.step) * cfg.step;
+      if (!P[cfg.key]) P[cfg.key] = curveVals(cfg.key).slice();
       P[cfg.key][j] = +v.toFixed(3);
       activePreset = -1;
       markPreset();
       drawEditor();
       el.querySelector(".edVal").textContent =
-        `day ${KNOTS[j]}: ${cfg.name} = ${P[cfg.key][j].toFixed(3)}`;
+        `day ${KNOTS[j]} (${fmtShort(KNOTS[j])}): ${cfg.name} ${cfg.show(P[cfg.key][j])}`;
       schedule();
     };
     el.addEventListener("pointerdown", ev => {
@@ -936,7 +1174,6 @@ function wireEditor() {
   }
 }
 function syncEnabled() {
-  document.getElementById("c_cutoff").disabled = P.retro;
   document.getElementById("c_ended").disabled = !P.retro;
   document.getElementById("c_nowcast").disabled = P.retro;
 }
@@ -945,7 +1182,10 @@ function schedule() {
   clearTimeout(timer);
   timer = setTimeout(render, 40);
 }
-document.getElementById("tSel").addEventListener("input", schedule);
+document.getElementById("tSel").addEventListener("input", () => {
+  stopRun();
+  schedule();
+});
 for (const b of document.querySelectorAll(".tab"))
   b.addEventListener("click", () => {
     for (const o of document.querySelectorAll(".tab")) {
@@ -988,17 +1228,40 @@ const STEP_TITLES = [
   "Apply to every report day"
 ];
 const NSTEP = STEP_TITLES.length;
-let emCache = { key: null, snaps: [] };
-// EM iterations from a start using only the complete cases, for animation
-function emSnapshots(c) {
-  if (emCache.key === c.key) return emCache.snaps;
+// days shown before the report day in the last step
+const STEP_WINDOW = 60;
+// the data as of report day t: the same scenario cut at t, in real time.
+// Cached by parameters and t.
+const VINTAGES = new Map();
+function vintage(t) {
+  const p = { ...P, retro: false, cutoff: t, stoch: false };
+  const key = JSON.stringify(p);
+  let v = VINTAGES.get(key);
+  if (v) return v;
+  const sc = scenario(p);
+  const ex = expectedData(sc);
+  const R = runMethods(sc, ex.comp, ex.miss, ex.empCounts);
+  const cs = comparisonSeries(p, sc, ex, R);
+  v = { key, p, sc, ex, R, cs, snaps: null };
+  if (VINTAGES.size >= 30) VINTAGES.delete(VINTAGES.keys().next().value);
+  VINTAGES.set(key, v);
+  return v;
+}
+// EM iterations on a vintage from a start using only the complete cases,
+// for the animation
+function emSnapshots(v) {
+  if (v.snaps) return v.snaps;
   const snaps = [];
-  emImpute(c.ex.comp, c.ex.miss, c.sc, c.ex.comp, 40, (it, out) =>
+  emImpute(v.ex.comp, v.ex.miss, v.sc, v.ex.comp, 40, (it, out) =>
     snaps.push(out)
   );
-  emCache = { key: c.key, snaps };
+  v.snaps = snaps;
   return snaps;
 }
+// the onset curve λ(s) the generative method ends with: its imputed
+// onsets corrected for right truncation
+const lambdaOf = v =>
+  Float64Array.from(v.R.gen, (x, s) => x / Math.max(v.sc.cover[s] ?? 1, 1e-4));
 // small seeded generator so the sampled cases stay put between redraws
 function rng(seed) {
   let x = seed >>> 0;
@@ -1055,22 +1318,23 @@ function sampleCases(sc, t, bn) {
 }
 function stepText(key, step, v) {
   const nm = METHODS.find(m => m.key === key).name;
+  const day = v.date;
   if (step === 0)
-    return `A sample of cases from this scenario. Each has an onset (dot) and a report day (square). Some have no onset date (?). On report day ${v.t}, about ${((100 * v.missT) / Math.max(v.repT, 1e-9)).toFixed(0)}% of cases have no onset date. The three at the bottom are the ones we follow.`;
+    return `A sample of cases from this scenario, using the data as of ${day}. Each has an onset (dot) and a report day (square). Some have no onset date (?). On ${day}, about ${((100 * v.missT) / Math.max(v.repT, 1e-9)).toFixed(0)}% of cases reported have no onset date. The three at the bottom are the ones we follow.`;
   if (step === 1) {
     if (key === "hub")
-      return `The hub method pools the delays of every case with both dates in the data so far, mean ${v.gMean.toFixed(1)} days. Ink is the true delay for missing cases reported on day ${v.t}, mean ${v.bMean.toFixed(1)} days. It depends on how onsets were changing before day ${v.t}. The pooled delay is the same whatever day a case was reported.`;
+      return `The hub method pools the delays of every case with both dates in the data so far, mean ${v.gMean.toFixed(1)} days. Ink is the true delay for missing cases reported on ${day}, mean ${v.bMean.toFixed(1)} days. It depends on how onsets were changing before then. The pooled delay is the same whatever day a case was reported.`;
     if (key === "mean")
-      return `The mean shift keeps only the mean of the pooled delays, ${v.gMean.toFixed(1)} days, rounded to ${v.m}. Ink is the true delay for missing cases reported on day ${v.t}, mean ${v.bMean.toFixed(1)} days.`;
+      return `The mean shift keeps only the mean of the pooled delays, ${v.gMean.toFixed(1)} days, rounded to ${v.m}. Ink is the true delay for missing cases reported on ${day}, mean ${v.bMean.toFixed(1)} days.`;
     if (key === "fwd")
-      return `The forward draw uses the delay from onset to report, mean ${v.fMean.toFixed(1)} days, as estimated with corrections for truncation and censoring. Ink is the true delay for missing cases reported on day ${v.t}, mean ${v.bMean.toFixed(1)} days. The forward delay ignores how many onsets there were on each earlier day.`;
-    return `The generative method uses the forward delay, mean ${v.fMean.toFixed(1)} days, with its own estimate of the onset curve. Ink is the true delay for missing cases reported on day ${v.t}, mean ${v.bMean.toFixed(1)} days.`;
+      return `The forward draw uses the delay from onset to report, mean ${v.fMean.toFixed(1)} days, as estimated with corrections for truncation and censoring. Ink is the true delay for missing cases reported on ${day}, mean ${v.bMean.toFixed(1)} days. The forward delay ignores how many onsets there were on each earlier day.`;
+    return `Bars are the forward delay f(t − s): the chance that a case with onset on day s is reported on ${day}. The dashed line is the method's estimate of the onset curve, λ(s), on the same days. Ink is the true delay for missing cases reported on ${day}, mean ${v.bMean.toFixed(1)} days.`;
   }
   if (step === 2) {
     if (key === "mean")
-      return `Every missing case reported on day ${v.t} goes to day ${v.t - v.m}. Ink is where such cases truly had their onsets.`;
+      return `Every missing case reported on ${day} goes ${v.m} days back, to ${v.shiftDate}. Ink is where such cases truly had their onsets.`;
     if (key === "gen")
-      return `Each onset day s gets weight λ(s) × f(${v.t} − s): the estimated onsets that day times the chance of that delay. Ink is where such cases truly had their onsets.`;
+      return `Each onset day s gets weight λ(s) × f(t − s): the estimated onsets that day (dashed line) times the chance of that delay (faint bars). Solid bars are the product, scaled to sum to 1. Days with more onsets pull weight towards them, so a rise or fall in onsets moves the weights away from the delay alone. Ink is where such cases truly had their onsets.`;
     return `${nm} gives each onset day the probability of the matching delay. Ink is where such cases truly had their onsets.`;
   }
   if (step === 3) {
@@ -1080,12 +1344,19 @@ function stepText(key, step, v) {
       return `Each missing case moves back exactly ${v.m} days (filled dot). The ring is its true onset, which real data would not show.`;
     return `Each missing case is shared across onset days in proportion to the weights (dots sized by share). The ring is its true onset, which real data would not show.`;
   }
+  const target = v.nowcast
+    ? "all onsets that will eventually be reported. Both are corrected for right truncation"
+    : "the onsets of cases reported by then";
+  const meanNote =
+    key === "mean"
+      ? ` The last ${v.m} days are not shown: a fixed shift cannot place any case there.`
+      : "";
   if (key === "gen")
-    return `Doing this for every report day gives the imputed onset curve. The generative method then re-estimates the onset curve and repeats. Iteration ${v.iter} of 40: press Run to watch it converge from a start using the complete cases only.${v.nowcast ? " Curves are corrected for right truncation." : ""}`;
-  return `Doing this for every report day gives the imputed onset curve, here against the truth.${v.nowcast ? " Both are corrected for right truncation." : ""}`;
+    return `Doing this for every report day gives the imputed onset curve, using the data as of ${day}, against ${target}. The generative method then re-estimates the onset curve and repeats. Iteration ${v.iter} of 40: press Run to watch it converge from a start using the complete cases only.`;
+  return `Doing this for every report day gives the imputed onset curve, using the data as of ${day}, against ${target}.${meanNote}`;
 }
 function drawCases(el, o) {
-  const { cases, t, key, step, color, weights, truthW, dist, m } = o;
+  const { cases, t, key, step, color, weights, truthW, dist, m, lam } = o;
   const W = 900,
     rowH = 13,
     top = 10,
@@ -1101,9 +1372,8 @@ function drawCases(el, o) {
   for (let d = from; d <= to; d++) {
     if ((d - t) % 5 !== 0) continue;
     g += `<line x1="${X(d)}" x2="${X(d)}" y1="${top - 4}" y2="${axisY}" stroke="var(--grid)"/>`;
-    g += `<text x="${X(d)}" y="${axisY + 13}" text-anchor="middle" font-size="10" fill="var(--text-muted)">${d}</text>`;
+    g += `<text x="${X(d)}" y="${axisY + 13}" text-anchor="middle" font-size="10" fill="var(--text-muted)">${fmtShort(d)}</text>`;
   }
-  g += `<text x="${x0 - 8}" y="${axisY + 13}" text-anchor="end" font-size="10" fill="var(--text-muted)">day</text>`;
   cases.forEach((cs, i) => {
     const y = top + i * rowH + 4,
       faded = step >= 2 && !cs.focus;
@@ -1131,17 +1401,39 @@ function drawCases(el, o) {
     }
   });
   if (step >= 1) {
-    const bars = step === 1 ? dist : weights,
-      maxW = Math.max(...bars.slice(0, 33), ...truthW.slice(0, 33), 0.01);
+    // generative, steps 2 and 3: f(t − s) as bars, λ(s) as a line; in
+    // step 3 the faint bars are f and the solid bars the product
+    const genLayers = key === "gen" && step <= 2;
+    const solid = step === 1 ? dist : weights;
+    const faint = key === "gen" && step === 2 ? dist : null;
+    const maxW = Math.max(
+      ...solid.slice(0, 33),
+      ...(faint ? faint.slice(0, 33) : []),
+      ...truthW.slice(0, 33),
+      0.01
+    );
     const bh = w => ((lowBase - lowTop) * w) / maxW;
     const label =
-      step === 1 ? "delay (days back from day " + t + ")" : "P(onset day)";
-    for (let d = 0; d <= 32; d++) {
-      if (key === "mean" && step >= 1) continue;
-      g += `<rect x="${X(t - d) - 6}" y="${lowBase - bh(bars[d] || 0)}" width="12" height="${bh(bars[d] || 0)}" fill="${color}" opacity="0.75"/>`;
+      step === 1 ? "delay back from " + fmtShort(t) : "P(onset day)";
+    if (key !== "mean") {
+      if (faint)
+        for (let d = 0; d <= 32; d++)
+          g += `<rect x="${X(t - d) - 7}" y="${lowBase - bh(faint[d] || 0)}" width="14" height="${bh(faint[d] || 0)}" fill="${color}" opacity="0.22"/>`;
+      for (let d = 0; d <= 32; d++)
+        g += `<rect x="${X(t - d) - (faint ? 4 : 6)}" y="${lowBase - bh(solid[d] || 0)}" width="${faint ? 8 : 12}" height="${bh(solid[d] || 0)}" fill="${color}" opacity="${faint ? 0.9 : 0.75}"/>`;
     }
     if (key === "mean")
       g += `<line x1="${X(t - m)}" x2="${X(t - m)}" y1="${lowTop}" y2="${lowBase}" stroke="${color}" stroke-width="4"/>`;
+    if (genLayers && lam) {
+      // λ(s) on its own scale, over the same days
+      let lmax = 0;
+      for (let d = 0; d <= 32; d++) lmax = Math.max(lmax, lam[d] || 0);
+      const ly = x => lowBase - ((lowBase - lowTop) * x) / (lmax || 1);
+      const lp = [];
+      for (let d = 32; d >= 0; d--) lp.push(`${X(t - d)},${ly(lam[d] || 0)}`);
+      g += `<polyline class="lambda" points="${lp.join(" ")}" fill="none" stroke="var(--text-secondary)" stroke-width="2" stroke-dasharray="6 3"/>`;
+      g += `<text x="${X(from) + 4}" y="${ly(lam[32] || 0) - 6}" font-size="11" fill="var(--text-secondary)">λ(s): estimated onsets per day</text>`;
+    }
     const pts = truthW
       .slice(0, 33)
       .map((w, d) => `${X(t - d)},${lowBase - bh(w)}`)
@@ -1156,41 +1448,54 @@ function drawCases(el, o) {
 function drawSteps() {
   const el = document.getElementById("stepChart");
   if (!el || !cache.sc) return;
-  const c = cache,
-    { sc, ex, R } = c,
-    key = STEP.method,
+  const key = STEP.method,
     step = STEP.step;
   const M = METHODS.find(x => x.key === key),
     color = css(M.col),
     ink = css("--text-primary"),
     grey = css("--reports");
   const tSel = document.getElementById("tSel");
-  tSel.max = sc.Td;
-  if (+tSel.value > sc.Td) tSel.value = sc.Td;
-  const t = +tSel.value,
-    ti = t + sc.B;
-  document.getElementById("tSelOut").textContent = t;
+  const tMax = P.days - 1;
+  tSel.max = tMax;
+  if (+tSel.value > tMax) tSel.value = tMax;
+  const t = clamp(+tSel.value || 0, 0, tMax);
+  document.getElementById("tSelOut").textContent = fmtDate(t);
+  // every step uses the data as of day t
+  const vt = vintage(t);
+  const { sc, ex, R } = vt;
+  const ti = t + sc.B;
   const back = new Float64Array(D + 1);
   for (let d = 0; d <= D; d++) {
     const s = ti - d;
     if (s >= 0 && s < sc.S) back[d] = sc.C[s] * sc.f[s][d] * sc.pim(ti, d);
   }
   const bn = normalise(back);
-  const m = Math.round(pmfMean(R.g));
+  const m = vt.cs.m;
+  // the delay each method uses, indexed by days back from t; for the
+  // generative method f(t − s) for each onset day s
+  const fts = new Float64Array(D + 1);
+  for (let d = 0; d <= D; d++) {
+    const s = ti - d;
+    if (s >= 0 && s < sc.S) fts[d] = sc.f[s][d];
+  }
   const dist =
-    key === "hub" || key === "mean" ? R.g : key === "fwd" ? sc.fbar : sc.f[ti];
+    key === "hub" || key === "mean" ? R.g : key === "fwd" ? sc.fbar : fts;
+  const lamAll = lambdaOf(vt);
+  const lam = new Float64Array(D + 1);
   const w = new Float64Array(D + 1);
   for (let d = 0; d <= D; d++) {
     const s = ti - d;
     if (s < 0 || s >= sc.S) continue;
+    lam[d] = lamAll[s];
     if (key === "hub") w[d] = R.g[d];
     else if (key === "fwd") w[d] = sc.fbar[d];
-    else if (key === "gen")
-      w[d] = (R.gen[s] / Math.max(sc.cover[s], 1e-4)) * sc.f[s][d];
+    else if (key === "gen") w[d] = lamAll[s] * fts[d];
   }
   const weights = normalise(w);
   const v = {
     t,
+    date: fmtDate(t),
+    shiftDate: fmtDate(t - m),
     missT: ex.miss[ti] || 0,
     repT: ex.rep[ti] || 0,
     gMean: pmfMean(R.g),
@@ -1198,15 +1503,18 @@ function drawSteps() {
     bMean: pmfMean(bn),
     m,
     iter: STEP.iter,
-    nowcast: !!P.nowcast && !P.retro
+    nowcast: vt.cs.nowcast
   };
   const legendEl = document.getElementById("stepLegend");
   if (step < 4) {
     const cases = sampleCases(sc, t, bn);
-    legend(legendEl, [
-      { name: "Truth for day " + t, color: ink },
+    const items = [
+      { name: "Truth for " + fmtShort(t), color: ink },
       { name: M.name, color }
-    ]);
+    ];
+    if (key === "gen" && (step === 1 || step === 2))
+      items.push({ name: "λ(s), onset curve", color: grey, dash: true });
+    legend(legendEl, items);
     drawCases(el, {
       cases,
       t,
@@ -1216,31 +1524,31 @@ function drawSteps() {
       weights: Array.from(weights),
       truthW: Array.from(bn),
       dist: Array.from(dist),
-      bn,
+      lam: Array.from(lam),
       m
     });
   } else {
-    const day = (arr, from, to) => {
+    const from = Math.max(0, t - STEP_WINDOW);
+    const day = (arr, last = Infinity) => {
       const out = [];
-      for (let x = from; x <= to; x++)
-        out.push({ x, y: arr[x + sc.B] ?? null });
+      for (let x = from; x <= t; x++)
+        out.push({ x, y: x > last ? null : (arr[x + sc.B] ?? null) });
       return out;
     };
-    const corr = arr => (v.nowcast ? correctTruncation(arr, sc) : arr);
-    let imputed = R[key];
+    let imputed = vt.cs.methods[key];
     if (key === "gen") {
-      const snaps = emSnapshots(c);
-      imputed = snaps[Math.min(STEP.iter, snaps.length) - 1];
+      const snaps = emSnapshots(vt);
+      const snap = snaps[Math.min(STEP.iter, snaps.length) - 1];
+      imputed = vt.cs.nowcast ? correctTruncation(snap, sc) : snap;
     }
-    const truth = v.nowcast ? sc.C : ex.truth;
-    const to = Math.min(sc.Td, sc.N - 1);
+    const last = vt.cs.lastDay[key] ?? Infinity;
     const series = [
-      { name: "Truth", color: ink, width: 3, data: day(truth, 0, to) },
+      { name: "Truth", color: ink, width: 3, data: day(vt.cs.truth) },
       {
         name: key === "gen" ? `${M.name}, iteration ${STEP.iter}` : M.name,
         color,
         width: 2.5,
-        data: day(corr(imputed), 0, to)
+        data: day(imputed, last)
       }
     ];
     legend(
@@ -1251,11 +1559,12 @@ function drawSteps() {
       series,
       xlab: "Onset day",
       ylab: "Onsets per day",
-      xmin: 0,
-      xmax: to,
+      xmin: from,
+      xmax: t,
+      dates: true,
       includeZero: true,
       height: 260,
-      vlines: [{ x: t, color: grey, label: `day ${t}` }],
+      vlines: [{ x: t, color: grey, label: `data as of ${fmtShort(t)}` }],
       aria: "Imputed onset curve against the truth",
       vfmt: x => x.toFixed(2)
     });
@@ -1332,4 +1641,5 @@ function wireSteps() {
 buildControls();
 wireEditor();
 wireSteps();
+wireAsOf();
 render();
