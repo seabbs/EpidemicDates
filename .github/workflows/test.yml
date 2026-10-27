@@ -44,6 +44,30 @@ jobs:
       - name: Command line smoke test
         run: uv run epidemic-dates --reps 2 --scenarios A W --out output
 
+  r:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          use-public-rspm: true
+      - uses: r-lib/actions/setup-r-dependencies@v2
+        with:
+          working-directory: r
+          extra-packages: any::rcmdcheck, any::lintr, any::styler, any::devtools, any::jsonlite
+          needs: check
+      - name: Tests, including the cross-language fixtures
+        run: Rscript -e 'devtools::test("r", stop_on_failure = TRUE)'
+      - name: Lint and style check
+        run: |
+          Rscript -e 'pkgload::load_all("r"); l <- lintr::lint_package("r"); print(l); if (length(l)) quit(status = 1)'
+          Rscript -e 's <- styler::style_pkg("r", dry = "fail")'
+      - uses: r-lib/actions/check-r-package@v2
+        with:
+          working-directory: r
+          args: 'c("--no-manual", "--as-cran")'
+          error-on: '"warning"'
+
   docs:
     runs-on: ubuntu-latest
     steps:
@@ -52,6 +76,9 @@ jobs:
         with:
           node-version: 22
       - uses: astral-sh/setup-uv@v6
+      - uses: r-lib/actions/setup-r@v2
+      - name: R API reference
+        run: Rscript docs/r/make_reference.R
       - name: Build the docs site
         run: |
           npx --yes jsdoc-to-markdown@9 --no-cache -c docs/jsdoc/jsdoc.json epidemic-dates.js > docs/javascript/reference.md

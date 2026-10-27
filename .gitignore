@@ -7,3 +7,6 @@ docs/javascript/reference.md
 node_modules/
 .coverage
 docs/figures/*.svg
+docs/r/reference.md
+r/*.Rcheck/
+r/*.tar.gz

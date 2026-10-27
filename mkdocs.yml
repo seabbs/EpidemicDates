@@ -15,6 +15,7 @@ site_dir: _site/docs
 exclude_docs: |
   data/*.py
   figures/*.py
+  r/*.R
 
 nav:
   - Home: index.md
@@ -28,6 +29,9 @@ nav:
   - JavaScript:
       - Guide: javascript/index.md
       - API reference: javascript/reference.md
+  - R:
+      - Guide: r/index.md
+      - API reference: r/reference.md
   - Citation and licence: citation.md
 
 theme:
