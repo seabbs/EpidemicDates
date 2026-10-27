@@ -1,0 +1,1183 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Onset imputation bias</title>
+<style>
+:root {
+  color-scheme: light;
+  --surface-0: #f4f3ef;
+  --surface-1: #fcfcfb;
+  --border: #dddcd5;
+  --grid: #e9e8e2;
+  --text-primary: #0b0b0b;
+  --text-secondary: #52514e;
+  --text-muted: #7a7973;
+  --series-1: #2a78d6;
+  --series-2: #eb6834;
+  --series-3: #1baf7a;
+  --series-4: #eda100;
+  --reports: #a3a29b;
+  --shade: rgba(98, 80, 214, 0.08);
+  --good: #1e7d32;
+  --warning: #a86b00;
+  --serious: #c0392b;
+  --good-bg: #e8f4ea;
+  --warning-bg: #fbf1dc;
+  --serious-bg: #fbe7e4;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --surface-0: #121211;
+    --surface-1: #1a1a19;
+    --border: #34332f;
+    --grid: #2a2a27;
+    --text-primary: #f0efec;
+    --text-secondary: #c3c2b7;
+    --text-muted: #94938b;
+    --series-1: #3987e5;
+    --series-2: #d95926;
+    --series-3: #199e70;
+    --series-4: #c98500;
+    --reports: #6b6a64;
+    --shade: rgba(144, 133, 233, 0.12);
+    --good: #6cc77a;
+    --warning: #e0a63a;
+    --serious: #f07b6c;
+    --good-bg: #1d2b1f;
+    --warning-bg: #2e2614;
+    --serious-bg: #331d1a;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --surface-0: #121211;
+  --surface-1: #1a1a19;
+  --border: #34332f;
+  --grid: #2a2a27;
+  --text-primary: #f0efec;
+  --text-secondary: #c3c2b7;
+  --text-muted: #94938b;
+  --series-1: #3987e5;
+  --series-2: #d95926;
+  --series-3: #199e70;
+  --series-4: #c98500;
+  --reports: #6b6a64;
+  --shade: rgba(144, 133, 233, 0.12);
+  --good: #6cc77a;
+  --warning: #e0a63a;
+  --serious: #f07b6c;
+  --good-bg: #1d2b1f;
+  --warning-bg: #2e2614;
+  --serious-bg: #331d1a;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--surface-0);
+  color: var(--text-primary);
+  font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+.wrap { max-width: 1320px; margin: 0 auto; padding: 24px 16px 64px; }
+h1 { font-size: 1.6rem; margin: 0 0 6px; line-height: 1.25; }
+h2 { font-size: 1.1rem; margin: 0 0 8px; }
+h3 { font-size: 0.95rem; margin: 14px 0 6px; }
+p { margin: 0 0 10px; }
+a { color: var(--series-1); }
+.lede { color: var(--text-secondary); max-width: 78ch; }
+.card {
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 16px;
+}
+.layout {
+  display: grid;
+  grid-template-columns: 330px minmax(0, 1fr);
+  gap: 16px;
+  margin-top: 16px;
+  align-items: start;
+}
+@media (max-width: 900px) {
+  .layout { grid-template-columns: minmax(0, 1fr); }
+}
+.controls { position: sticky; top: 12px; max-height: calc(100vh - 24px);
+  overflow-y: auto; }
+@media (max-width: 900px) { .controls { position: static; max-height: none; } }
+.presets { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+.presets button {
+  font: inherit; font-size: 0.8rem; padding: 4px 8px; border-radius: 6px;
+  border: 1px solid var(--border); background: var(--surface-0);
+  color: var(--text-primary); cursor: pointer; text-align: left;
+}
+.presets button.active { border-color: var(--series-1);
+  box-shadow: inset 0 0 0 1px var(--series-1); }
+.preset-note { font-size: 0.8rem; color: var(--text-secondary);
+  margin-bottom: 8px; min-height: 2.4em; }
+fieldset { border: 0; border-top: 1px solid var(--border); margin: 8px 0 0;
+  padding: 8px 0 0; }
+legend { font-weight: 600; font-size: 0.85rem; padding: 0; }
+.ctl { margin: 6px 0; }
+.ctl label { display: flex; justify-content: space-between; font-size: 0.82rem;
+  color: var(--text-secondary); gap: 8px; }
+.ctl label output { color: var(--text-primary); font-variant-numeric: tabular-nums; }
+.ctl input[type=range] { width: 100%; accent-color: var(--series-1); }
+.check { display: flex; gap: 6px; align-items: center; font-size: 0.82rem;
+  color: var(--text-secondary); margin: 6px 0; }
+.hint { font-size: 0.75rem; color: var(--text-muted); margin: 0 0 4px; }
+.charts { display: grid; gap: 16px; min-width: 0; }
+.chart-grid { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr);
+  gap: 16px; }
+@media (max-width: 1100px) { .chart-grid { grid-template-columns: minmax(0,1fr); } }
+.chart { position: relative; width: 100%; }
+.chart svg { display: block; width: 100%; height: auto; overflow: visible; }
+.chart .tick text, .chart .axis-label { fill: var(--text-muted); font-size: 11px; }
+.chart .gridline { stroke: var(--grid); stroke-width: 1; }
+.chart .zero { stroke: var(--text-muted); stroke-width: 1; }
+.chart .cross { stroke: var(--text-muted); stroke-width: 1; stroke-dasharray: 3 3; }
+.tooltip {
+  position: absolute; pointer-events: none; z-index: 5;
+  background: var(--surface-1); border: 1px solid var(--border);
+  border-radius: 8px; padding: 6px 8px; font-size: 12px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.12); min-width: 160px; display: none;
+}
+.tooltip .row { display: flex; gap: 6px; align-items: center;
+  justify-content: space-between; }
+.tooltip .sw { width: 10px; height: 3px; border-radius: 2px; flex: none; }
+.tooltip .name { flex: 1; color: var(--text-secondary); }
+.tooltip .val { font-variant-numeric: tabular-nums; }
+.legend { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 0.8rem;
+  color: var(--text-secondary); margin: 4px 0 6px; }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.legend i { display: inline-block; width: 18px; height: 0; border-top: 2px solid; }
+.legend i.dash { border-top-style: dashed; }
+.legend i.box { height: 10px; border: 0; border-radius: 2px; }
+.sub { font-size: 0.82rem; color: var(--text-secondary); margin: -4px 0 6px; }
+.verdict { background: var(--surface-1); display: flex; gap: 12px; align-items: flex-start; border-radius: 10px;
+  padding: 14px 16px; border: 1px solid var(--border); }
+.verdict .icon { font-size: 1.3rem; line-height: 1; margin-top: 2px; }
+.verdict.good { background: var(--good-bg); }
+.verdict.warning { background: var(--warning-bg); }
+.verdict.serious { background: var(--serious-bg); }
+.verdict .tag { font-weight: 700; }
+.verdict.good .tag { color: var(--good); }
+.verdict.warning .tag { color: var(--warning); }
+.verdict.serious .tag { color: var(--serious); }
+.verdict ul { margin: 6px 0 0; padding-left: 18px; }
+table { border-collapse: collapse; width: 100%; font-size: 0.82rem; }
+th, td { text-align: right; padding: 5px 8px; border-bottom: 1px solid var(--border);
+  font-variant-numeric: tabular-nums; }
+th:first-child, td:first-child { text-align: left; }
+th { color: var(--text-secondary); font-weight: 600; }
+td.bad { color: var(--serious); font-weight: 600; }
+td.meh { color: var(--warning); font-weight: 600; }
+.table-wrap { overflow-x: auto; }
+.prose { max-width: 80ch; }
+.key { margin: 10px 0 0; padding-left: 18px; max-width: 80ch; }
+.key li { margin-bottom: 2px; }
+details summary { cursor: pointer; font-weight: 600; }
+.prose li { margin-bottom: 4px; }
+code, .math { font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.86em; }
+.note { border-left: 3px solid var(--series-4); padding: 6px 10px;
+  background: var(--surface-0); border-radius: 4px; }
+.status { font-size: 0.78rem; color: var(--text-muted); }
+.theme-toggle { float: right; font: inherit; font-size: 0.8rem;
+  border: 1px solid var(--border); background: var(--surface-1);
+  color: var(--text-primary); border-radius: 6px; padding: 4px 8px; cursor: pointer; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <button class="theme-toggle" id="themeToggle" type="button">Toggle theme</button>
+  <h1>Imputing onset dates by back-sampling reporting delays</h1>
+  <p class="lede">
+    The BDBV hub imputes missing onset dates by subtracting a random delay drawn from the pooled empirical delays
+    (<a href="https://github.com/InsightNet-US/BDBV-Modeling-Hub/issues/61">issue #61</a>).
+    Are there potential issues with that or similar approaches?
+  </p>
+
+  <div id="verdict" class="verdict" style="margin-top:14px"></div>
+
+  <div class="layout">
+    <aside class="card controls" id="controls">
+      <h2>Scenario</h2>
+      <div class="presets" id="presets"></div>
+      <div class="preset-note" id="presetNote"></div>
+    </aside>
+
+    <main class="charts">
+      <section class="card">
+        <h2>Weekly confirmed cases by onset week</h2>
+        <p class="sub">Ink is the truth. Grey is by report week.</p>
+        <div class="legend" id="legendA"></div>
+        <div class="chart" id="chartA"></div>
+        <label class="check"><input type="checkbox" id="logA" checked> Log scale</label>
+      </section>
+
+      <div class="chart-grid">
+        <section class="card">
+          <h2>Relative error in weekly counts</h2>
+          <p class="sub">Imputed ÷ true − 1.</p>
+          <div class="legend" id="legendB"></div>
+          <div class="chart" id="chartB"></div>
+        </section>
+        <section class="card">
+          <h2>Error in Rt</h2>
+          <p class="sub">Imputed − true. Circles mark weeks on the wrong side of 1.</p>
+          <div class="legend" id="legendE"></div>
+          <div class="chart" id="chartE"></div>
+        </section>
+      </div>
+
+      <section class="card">
+        <h2>Rt from weekly counts</h2>
+        <p class="sub">From the 3-week growth rate, generation interval mean 15 days (SD 9). Dashed is the simulated input.</p>
+        <div class="legend" id="legendC"></div>
+        <div class="chart" id="chartC"></div>
+      </section>
+
+      <section class="card">
+        <h2>Summary by method</h2>
+        
+        <div class="table-wrap"><table id="summary"></table></div>
+      </section>
+
+      <section class="card">
+        <h2>Delay used vs delay needed</h2>
+        <p class="sub">For cases reported on the chosen day.</p>
+        <div class="ctl" style="max-width:420px">
+          <label for="tSel">Report day <output id="tSelOut"></output></label>
+          <input type="range" id="tSel" min="0" max="180" step="1" value="90">
+        </div>
+        <div class="legend" id="legendD"></div>
+        <div class="chart" id="chartD"></div>
+      </section>
+
+      <section class="card prose">
+        <details>
+          <summary>Notes</summary>
+          <ul>
+            <li>Cases reported on day t need the backward delay, ∝ C(t−d) f(d). The pooled empirical delay matches it only when growth is steady.</li>
+            <li>Generative = EM back-projection, a partial deconvolution. Complete cases keep their onsets. Each missing case reported on day t is shared over onset days s in proportion to λ(s) f(t−s). λ is re-estimated from complete and shared cases, divided by F(T−s) for right truncation, until it settles. This is EM for the likelihood with the missing onsets as latent, as in Becker's HIV back-projection and Richardson–Lucy deconvolution.</li>
+            <li>Here it gets the true delay and expected counts, and assumes onsets are missing at random given report day. That makes it a best case. With noisy counts it needs smoothing or a model (e.g. a renewal process or <a href="https://package.epinowcast.org/articles/model.html#accounting-for-reported-cases-with-a-missing-reference-date">epinowcast</a>), and the delay has to be estimated. The Python cross-check estimates the delay jointly and stays close to unbiased.</li>
+            <li>Growth r(t) is linear between points every 15 days, plus optional mean-reverting noise. Beyond day 240 it holds the last value.</li>
+            <li>Ebola settings: BVD 2026 early r 0.03–0.09/day, Rt about 1.8 falling to 1.0. Onset-to-sample delay mean 7.4 days. Isiro 2012 r about 0.008/day.</li>
+            <li>Expected values. Turn on replicates to compare with noise. Weeks under 80% reported by the cut-off are shaded and excluded from growth and peak metrics.</li>
+            <li>Cross-checked against an independent Python simulation. Source and tests: <a href="https://github.com/seabbs/epidemic-imputation-demonstration">seabbs/epidemic-imputation-demonstration</a>.</li>
+          </ul>
+        </details>
+      </section>
+      <p class="status" id="status"></p>
+    </main>
+  </div>
+</div>
+
+<script>
+"use strict";
+// ---------- parameters and UI spec ----------
+const D = 100; // maximum delay (days)
+// growth rate r(t) is set at a knot every 15 days and is linear in between
+const KNOTS = Array.from({ length: 17 }, (_, j) => 15 * j);
+const R_MIN = -0.08, R_MAX = 0.12;
+// value of a knot curve at day t, linear between knots, flat beyond
+const curveAt = (vals, t) => {
+  if (t <= KNOTS[0]) return vals[0];
+  if (t >= KNOTS[KNOTS.length - 1]) return vals[vals.length - 1];
+  const j = Math.floor(t / 15);
+  return vals[j] + (vals[j + 1] - vals[j]) * (t - KNOTS[j]) / 15;
+};
+// knot values from a few (day, value) anchor points
+const knotsFrom = pts => KNOTS.map(t => {
+  if (t <= pts[0][0]) return pts[0][1];
+  for (let j = 1; j < pts.length; j++) {
+    if (t <= pts[j][0]) {
+      const [a, ra] = pts[j - 1], [b, rb] = pts[j];
+      return +(ra + (rb - ra) * (t - a) / (b - a)).toFixed(4);
+    }
+  }
+  return pts[pts.length - 1][1];
+});
+const DEFAULTS = {
+  days: 180, O0: 2, knots: knotsFrom([[0, 0.05], [60, 0.05], [120, -0.01]]), rwSd: 0, seed: 1,
+  mu0: 8, mu1: 8, cv: 1.0, pi0: 0.4, pi1: 0.4, beta: 0,
+  asc: KNOTS.map(() => 1), retro: true, cutoff: 110,
+  stoch: false, reps: 30, ended: false
+};
+const CONTROLS = [
+  { group: "Growth rate of onsets", editor: { id: "rEditor", hint: "Drag or sweep across the curve to set r(t). Points every 15 days." }, items: [
+    { id: "rwSd", label: "Random wobble in r", min: 0, max: 0.01, step: 0.0005, fmt: v => v.toFixed(4) },
+    { id: "seed", label: "Wobble seed", min: 1, max: 50, step: 1, fmt: v => v },
+    { id: "O0", label: "Onsets per day at day 0", min: 0.2, max: 30, step: 0.1, fmt: v => v.toFixed(1) },
+    { id: "days", label: "Days shown", min: 70, max: 238, step: 7, fmt: v => v }
+  ]},
+  { group: "Onset-to-report delay", items: [
+    { id: "mu0", label: "Mean delay at day 0 (days)", min: 1, max: 20, step: 0.5, fmt: v => v.toFixed(1) },
+    { id: "mu1", label: "Mean delay at end (days)", min: 1, max: 20, step: 0.5, fmt: v => v.toFixed(1) },
+    { id: "cv", label: "Coefficient of variation", min: 0.3, max: 1.6, step: 0.05, fmt: v => v.toFixed(2) }
+  ]},
+  { group: "Missing onset dates", items: [
+    { id: "pi0", label: "Fraction missing at start", min: 0, max: 0.95, step: 0.05, fmt: v => Math.round(v * 100) + "%" },
+    { id: "pi1", label: "Fraction missing at end", min: 0, max: 0.95, step: 0.05, fmt: v => Math.round(v * 100) + "%" },
+    { id: "beta", label: "Extra missingness with long delays", min: 0, max: 3, step: 0.1, fmt: v => v.toFixed(1),
+      hint: "0 is missing at random." }
+  ]},
+  { group: "Case ascertainment", editor: { id: "aEditor", hint: "Relative to day 0, by onset day. 1 is no change." }, items: []},
+  { group: "Data cut-off", items: [
+    { id: "retro", type: "check", label: "Retrospective (all cases eventually reported)" },
+    { id: "ended", type: "check", label: "Outbreak over (no onsets after the days shown)" },
+    { id: "cutoff", label: "Real-time cut-off (day)", min: 40, max: 240, step: 1, fmt: v => v }
+  ]},
+  { group: "Noise", items: [
+    { id: "stoch", type: "check", label: "Add stochastic replicates (Poisson)" },
+    { id: "reps", label: "Replicates", min: 10, max: 100, step: 10, fmt: v => v }
+  ]}
+];
+const BVD = { knots: knotsFrom([[0, 0.05], [60, 0.05], [120, -0.01]]), O0: 1 };
+const PRESETS = [
+  { name: "BVD 2026: slowing", note: "Growth about 0.05/day (Rt about 1.8) slowing to slight decline after the response.",
+    set: { ...BVD } },
+  { name: "BVD 2026: slow, stall, rebound", note: "Growth slows, stalls near Rt = 1, picks up again, then is brought down. Four changes.",
+    set: { knots: knotsFrom([[0, 0.05], [45, 0.05], [75, 0], [105, 0], [120, 0.03], [150, 0.03], [180, -0.03]]), O0: 1 } },
+  { name: "BVD 2026: real time", note: "The slowing scenario, with data cut at day 120 after the turn.",
+    set: { ...BVD, retro: false, cutoff: 120 } },
+  { name: "BVD 2026: longer delays", note: "14-day mean delay and 70% of onsets missing.",
+    set: { ...BVD, mu0: 14, mu1: 14, pi0: 0.7, pi1: 0.7 } },
+  { name: "BVD 2026: longer delays, real time", note: "14-day mean delay, 70% missing, cut at day 130.",
+    set: { ...BVD, mu0: 14, mu1: 14, pi0: 0.7, pi1: 0.7, retro: false, cutoff: 130 } },
+  { name: "Two waves", note: "Growth, control, resurgence, control.",
+    set: { knots: knotsFrom([[0, 0.06], [30, 0.06], [50, -0.03], [90, -0.03], [105, 0.05], [135, 0.05], [150, -0.04]]), O0: 3 } },
+  { name: "Oscillating", note: "Growth swings up and down every few weeks, for example with stop-start response or new chains.",
+    set: { knots: KNOTS.map(t => +(0.01 + 0.035 * Math.sin(2 * Math.PI * t / 60)).toFixed(4)), O0: 5 } },
+  { name: "Noisy growth", note: "Slowing trend with random changes in growth from week to week.",
+    set: { knots: knotsFrom([[0, 0.04], [180, -0.01]]), rwSd: 0.004, seed: 3, O0: 1 } },
+  { name: "Sharp turnaround", note: "Fast growth reversed within a week by a strong intervention.",
+    set: { knots: knotsFrom([[0, 0.06], [75, 0.06], [90, -0.04]]), O0: 0.5 } },
+  { name: "Isiro 2012: slow, noisy", note: "Slow growth around 0.008/day with wobble. Few cases.",
+    set: { knots: knotsFrom([[0, 0.01], [120, 0.005], [180, -0.01]]), rwSd: 0.003, seed: 7, O0: 1.5, stoch: true } },
+  { name: "Delays shorten", note: "BVD slowing, with the mean delay falling from 12 to 4 days.",
+    set: { ...BVD, mu0: 12, mu1: 4 } },
+  { name: "Late cases miss onsets", note: "BVD slowing, but long-delay cases more often lack an onset date.",
+    set: { ...BVD, beta: 1.5 } },
+  { name: "Ascertainment jump", note: "BVD slowing, with detection doubling over days 60 to 75.",
+    set: { ...BVD, asc: knotsFrom([[0, 1], [60, 1], [75, 2]]) } },
+  { name: "Ascertainment falls", note: "BVD slowing, with detection halving over days 90 to 120, for example from insecurity.",
+    set: { ...BVD, asc: knotsFrom([[0, 1], [90, 1], [120, 0.5]]) } },
+  { name: "Steady growth", note: "Constant growth at 0.05/day.",
+    set: { knots: KNOTS.map(() => 0.05) } },
+  { name: "Steady, no growth", note: "Constant incidence, Rt = 1.",
+    set: { knots: KNOTS.map(() => 0), O0: 20 } },
+  { name: "Steady decline", note: "Constant decline at −0.03/day.",
+    set: { knots: KNOTS.map(() => -0.03), O0: 40 } }
+];
+const METHODS = [
+  { key: "hub", name: "Hub: draw from pooled empirical delays", col: "--series-1", width: 4 },
+  { key: "mean", name: "Mean shift", col: "--series-2", width: 2 },
+  { key: "fwd", name: "Draw from forward delay", col: "--series-3", width: 2, dash: "6 4" },
+  { key: "gen", name: "Generative (EM back-projection)", col: "--series-4", width: 2.5, dash: "1 4" }
+];
+let P = { ...DEFAULTS, ...PRESETS[0].set };
+P.knots = P.knots.slice(); P.asc = P.asc.slice();
+let activePreset = 0;
+
+// ---------- maths helpers ----------
+function gammln(xx) {
+  const cof = [76.18009172947146, -86.50532032941677, 24.01409824083091,
+    -1.231739572450155, 0.1208650973866179e-2, -0.5395239384953e-5];
+  let x = xx, y = xx, tmp = x + 5.5;
+  tmp -= (x + 0.5) * Math.log(tmp);
+  let ser = 1.000000000190015;
+  for (let j = 0; j < 6; j++) ser += cof[j] / ++y;
+  return -tmp + Math.log(2.5066282746310005 * ser / x);
+}
+function gammp(a, x) {
+  if (x <= 0) return 0;
+  const lead = -x + a * Math.log(x) - gammln(a);
+  if (x < a + 1) {
+    let ap = a, sum = 1 / a, del = sum;
+    for (let n = 0; n < 1000; n++) {
+      ap += 1; del *= x / ap; sum += del;
+      if (Math.abs(del) < Math.abs(sum) * 1e-13) break;
+    }
+    return sum * Math.exp(lead);
+  }
+  let b = x + 1 - a, c = 1e300, d = 1 / b, h = d;
+  for (let i = 1; i < 1000; i++) {
+    const an = -i * (i - a);
+    b += 2;
+    d = an * d + b; if (Math.abs(d) < 1e-300) d = 1e-300;
+    c = b + an / c; if (Math.abs(c) < 1e-300) c = 1e-300;
+    d = 1 / d;
+    const del = d * c; h *= del;
+    if (Math.abs(del - 1) < 1e-13) break;
+  }
+  return 1 - Math.exp(lead) * h;
+}
+const pmfCache = new Map();
+// Daily discretised Gamma, rounded to the nearest day: P(d - 0.5 <= X < d + 0.5),
+// truncated at D and renormalised
+function delayPmf(mu, cv) {
+  const key = mu.toFixed(3) + "|" + cv.toFixed(3);
+  if (pmfCache.has(key)) return pmfCache.get(key);
+  const k = 1 / (cv * cv), theta = mu * cv * cv;
+  const pmf = new Float64Array(D + 1);
+  let prev = 0, tot = 0;
+  for (let d = 0; d <= D; d++) {
+    const cur = gammp(k, (d + 0.5) / theta);
+    pmf[d] = Math.max(cur - prev, 0); prev = cur; tot += pmf[d];
+  }
+  for (let d = 0; d <= D; d++) pmf[d] /= tot;
+  pmfCache.set(key, pmf);
+  return pmf;
+}
+const logistic = x => 1 / (1 + Math.exp(-x));
+// Rt from growth rate with a Gamma generation interval (Wallinga and
+// Lipsitch): R = (1 + r * scale)^shape. Ebola-like mean 15 days, SD 9.
+const GI = { mean: 15, sd: 9 };
+const GI_SHAPE = (GI.mean / GI.sd) ** 2, GI_SCALE = GI.sd ** 2 / GI.mean;
+// growth rates on opposite sides of 0 (Rt on opposite sides of 1), ignoring
+// differences within 0.0005/day of 0
+const wrongSideOf1 = (a, b) => (a > 0) !== (b > 0) && Math.max(Math.abs(a), Math.abs(b)) > 5e-4;
+const rToR = r => r === null ? null : Math.pow(Math.max(1 + r * GI_SCALE, 1e-6), GI_SHAPE);
+const logit = p => Math.log(p / (1 - p));
+const clamp = (x, a, b) => Math.min(Math.max(x, a), b);
+const pmfMean = f => { let m = 0; for (let d = 0; d < f.length; d++) m += d * f[d]; return m; };
+
+// ---------- scenario ----------
+function scenario(p) {
+  // Internal day index i = display day + B. The burn-in of B days at the
+  // initial growth rate avoids an artificial start at day 0.
+  const N = p.days, B = D;
+  const Td = p.retro ? N - 1 + D : Math.min(p.cutoff, N - 1);
+  const T = Td + B;
+  const S = T + 1;
+  const r = new Float64Array(S), C = new Float64Array(S);
+  // piecewise-linear r(t) through the knots plus mean-reverting noise
+  const kv = p.knots;
+  let seed = p.seed * 2654435761 >>> 0;
+  const unif = () => {
+    seed = (seed + 0x6D2B79F5) >>> 0;
+    let z = seed;
+    z = Math.imul(z ^ (z >>> 15), z | 1);
+    z ^= z + Math.imul(z ^ (z >>> 7), z | 61);
+    return ((z ^ (z >>> 14)) >>> 0) / 4294967296;
+  };
+  let noise = 0;
+  for (let i = 0; i < S; i++) {
+    const t = i - B;
+    let rt;
+    if (t <= KNOTS[0]) rt = kv[0];
+    else if (t >= KNOTS[KNOTS.length - 1]) rt = kv[kv.length - 1];
+    else {
+      const j = KNOTS.findIndex(k => k > t) - 1;
+      rt = kv[j] + (kv[j + 1] - kv[j]) * (t - KNOTS[j]) / (KNOTS[j + 1] - KNOTS[j]);
+    }
+    if (t >= 0 && p.rwSd > 0) {
+      const u1 = Math.max(unif(), 1e-12), u2 = unif();
+      noise = 0.95 * noise + p.rwSd * Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2);
+    }
+    r[i] = rt + noise;
+  }
+  let logO = Math.log(p.O0) - kv[0] * B;
+  for (let i = 0; i < S; i++) {
+    if (i > 0) logO += r[i - 1];
+    const asc = curveAt(p.asc, i - B);
+    const over = p.retro && p.ended && i - B >= N;
+    C[i] = over ? 0 : Math.exp(logO) * asc;
+  }
+  const f = [], F = [];
+  for (let i = 0; i < S; i++) {
+    const mu = p.mu0 + (p.mu1 - p.mu0) * clamp((i - B) / (N - 1), 0, 1);
+    const pmf = delayPmf(mu, p.cv);
+    f.push(pmf);
+    const cdf = new Float64Array(D + 1);
+    let acc = 0;
+    for (let d = 0; d <= D; d++) { acc += pmf[d]; cdf[d] = acc; }
+    F.push(cdf);
+  }
+  const muRef = p.mu0;
+  // probability onset is missing, by internal report day and delay
+  const pim = (i, d) => {
+    const frac = clamp((i - B) / (N - 1), 0, 1);
+    const base = clamp(p.pi0 + (p.pi1 - p.pi0) * frac, 0, 0.999);
+    if (base <= 0) return 0;
+    if (p.beta === 0) return base;
+    return logistic(logit(base) + p.beta * (d - muRef) / muRef);
+  };
+  // true onset-weighted forward delay over the displayed onsets, standing in
+  // for a delay estimated with a truncation adjustment
+  const fbar = new Float64Array(D + 1);
+  let cs = 0;
+  for (let i = B; i < B + Math.min(N, Td + 1); i++) {
+    cs += C[i];
+    for (let d = 0; d <= D; d++) fbar[d] += C[i] * f[i][d];
+  }
+  for (let d = 0; d <= D; d++) fbar[d] /= cs;
+  // expected fraction of each onset day's cases reported by the cut-off
+  const cover = new Float64Array(S);
+  for (let i = 0; i < S; i++) cover[i] = F[i][Math.min(T - i, D)];
+  return { N, B, T, Td, S, r, C, f, F, pim, fbar, cover };
+}
+
+// ---------- expected-value data ----------
+function expectedData(sc) {
+  const { T, S, C, f, pim } = sc;
+  const truth = new Float64Array(S), comp = new Float64Array(S);
+  const miss = new Float64Array(T + 1), rep = new Float64Array(T + 1);
+  const empCounts = new Float64Array(D + 1);
+  for (let s = 0; s < S; s++) {
+    for (let d = 0; d <= D && s + d <= T; d++) {
+      const x = C[s] * f[s][d], pm = pim(s + d, d);
+      truth[s] += x; rep[s + d] += x;
+      comp[s] += x * (1 - pm); miss[s + d] += x * pm;
+      empCounts[d] += x * (1 - pm);
+    }
+  }
+  return { truth, comp, miss, rep, empCounts };
+}
+
+// ---------- imputation methods (expected allocation) ----------
+function normalise(a) {
+  let s = 0; for (const v of a) s += v;
+  const out = new Float64Array(a.length);
+  if (s > 0) for (let i = 0; i < a.length; i++) out[i] = a[i] / s;
+  return out;
+}
+function convImpute(comp, miss, g, S) {
+  const out = Float64Array.from(comp);
+  for (let t = 0; t < miss.length; t++) {
+    if (!miss[t]) continue;
+    for (let d = 0; d <= D; d++) {
+      const s = t - d;
+      if (s >= 0 && s < S) out[s] += miss[t] * g[d];
+    }
+  }
+  return out;
+}
+function shiftImpute(comp, miss, m, S) {
+  const out = Float64Array.from(comp);
+  for (let t = 0; t < miss.length; t++) {
+    const s = t - m;
+    if (s >= 0 && s < S) out[s] += miss[t];
+  }
+  return out;
+}
+function emImpute(comp, miss, sc, start) {
+  const { S, T, f, F } = sc;
+  const trunc = new Float64Array(S);
+  for (let s = 0; s < S; s++) trunc[s] = Math.max(F[s][Math.min(T - s, D)], 1e-4);
+  let lam = new Float64Array(S);
+  for (let s = 0; s < S; s++) lam[s] = (start[s] + 1e-6) / trunc[s];
+  let alloc = new Float64Array(S);
+  for (let it = 0; it < 80; it++) {
+    alloc = new Float64Array(S);
+    for (let t = 0; t < miss.length; t++) {
+      if (!miss[t]) continue;
+      let den = 0;
+      for (let d = 0; d <= D; d++) { const s = t - d; if (s >= 0 && s < S) den += lam[s] * f[s][d]; }
+      if (den <= 0) continue;
+      for (let d = 0; d <= D; d++) {
+        const s = t - d;
+        if (s >= 0 && s < S) alloc[s] += miss[t] * lam[s] * f[s][d] / den;
+      }
+    }
+    for (let s = 0; s < S; s++) lam[s] = (comp[s] + alloc[s] + 1e-9) / trunc[s];
+  }
+  const out = new Float64Array(S);
+  for (let s = 0; s < S; s++) out[s] = comp[s] + alloc[s];
+  return out;
+}
+function runMethods(sc, comp, miss, empCounts) {
+  const g = normalise(empCounts);
+  const m = Math.round(pmfMean(g));
+  const hub = convImpute(comp, miss, g, sc.S);
+  return {
+    hub,
+    mean: shiftImpute(comp, miss, m, sc.S),
+    fwd: convImpute(comp, miss, sc.fbar, sc.S),
+    gen: emImpute(comp, miss, sc, hub),
+    g, m
+  };
+}
+
+// ---------- weekly summaries ----------
+function weekly(daily, W, off) {
+  const out = new Float64Array(W);
+  for (let w = 0; w < W; w++) for (let d = 0; d < 7; d++) out[w] += daily[off + 7 * w + d] || 0;
+  return out;
+}
+// centred 3-week log-linear growth rate per day; off guards log(0) for
+// stochastic counts and is 0 for expected values
+function growth(wk, off = 0) {
+  const out = new Array(wk.length).fill(null);
+  for (let w = 1; w < wk.length - 1; w++) {
+    if (wk[w - 1] + off <= 0 || wk[w + 1] + off <= 0) continue;
+    out[w] = (Math.log(wk[w + 1] + off) - Math.log(wk[w - 1] + off)) / 14;
+  }
+  return out;
+}
+
+// ---------- stochastic replicates ----------
+function rpois(lam) {
+  if (lam <= 0) return 0;
+  if (lam > 40) return Math.max(0, Math.round(lam + Math.sqrt(lam) * randn()));
+  const L = Math.exp(-lam); let k = 0, p = 1;
+  do { k++; p *= Math.random(); } while (p > L);
+  return k - 1;
+}
+function randn() {
+  let u = 0, v = 0;
+  while (u === 0) u = Math.random();
+  v = Math.random();
+  return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
+}
+function sampleIdx(cdf) {
+  const u = Math.random() * cdf[cdf.length - 1];
+  let lo = 0, hi = cdf.length - 1;
+  while (lo < hi) { const mid = (lo + hi) >> 1; if (cdf[mid] < u) lo = mid + 1; else hi = mid; }
+  return lo;
+}
+function cumsum(a) { const c = new Float64Array(a.length); let s = 0; for (let i = 0; i < a.length; i++) { s += a[i]; c[i] = s; } return c; }
+function rbinom(n, p) {
+  if (n <= 0 || p <= 0) return 0;
+  if (p >= 1) return n;
+  if (n < 40) { let k = 0; for (let i = 0; i < n; i++) if (Math.random() < p) k++; return k; }
+  const m = n * p, v = n * p * (1 - p);
+  if (m < 10) return Math.min(n, rpois(m));
+  return clamp(Math.round(m + Math.sqrt(v) * randn()), 0, n);
+}
+// multinomial allocation of n cases over the probabilities in prob
+function rmultinom(n, prob) {
+  const out = new Float64Array(prob.length);
+  let left = n, rest = 1;
+  for (let k = 0; k < prob.length && left > 0; k++) {
+    const x = k === prob.length - 1 ? left : rbinom(left, rest > 0 ? clamp(prob[k] / rest, 0, 1) : 0);
+    out[k] = x; left -= x; rest -= prob[k];
+  }
+  return out;
+}
+function stochastic(sc, W, reps) {
+  const { S, T, C, f, pim } = sc;
+  const relErr = {}, gr = {}, gerr = {};
+  for (const M of METHODS) { relErr[M.key] = []; gr[M.key] = []; gerr[M.key] = []; }
+  const grTruth = [];
+  for (let rep = 0; rep < reps; rep++) {
+    // Poisson thinning of each (onset, delay) cell keeps the cost at O(S * D)
+    const truth = new Float64Array(S), comp = new Float64Array(S);
+    const miss = new Float64Array(T + 1), empCounts = new Float64Array(D + 1);
+    for (let s = 0; s < S; s++) {
+      for (let d = 0; d <= D && s + d <= T; d++) {
+        const x = C[s] * f[s][d];
+        if (x <= 0) continue;
+        const pm = pim(s + d, d);
+        const nc = rpois(x * (1 - pm)), nm = rpois(x * pm);
+        truth[s] += nc + nm; comp[s] += nc; miss[s + d] += nm; empCounts[d] += nc;
+      }
+    }
+    const nEmp = empCounts.reduce((a, b) => a + b, 0);
+    const g = normalise(empCounts);
+    const res = {};
+    // hub and forward: each missing case gets an independent delay draw
+    res.hub = Float64Array.from(comp);
+    res.fwd = Float64Array.from(comp);
+    for (let t = 0; t <= T; t++) {
+      if (!miss[t]) continue;
+      const ah = nEmp ? rmultinom(miss[t], g) : new Float64Array(D + 1);
+      const af = rmultinom(miss[t], sc.fbar);
+      for (let d = 0; d <= D; d++) {
+        const s = t - d;
+        if (s < 0 || s >= S) continue;
+        res.hub[s] += ah[d]; res.fwd[s] += af[d];
+      }
+    }
+    res.mean = shiftImpute(comp, miss, Math.round(pmfMean(g)), S);
+    res.gen = emImpute(comp, miss, sc, res.hub);
+    const tw = weekly(truth, W, sc.B);
+    const gtw = growth(tw, 0.5);
+    grTruth.push(gtw);
+    for (const M of METHODS) {
+      const mw = weekly(res[M.key], W, sc.B);
+      relErr[M.key].push(Array.from(mw, (v, w) => tw[w] >= 5 ? v / tw[w] - 1 : null));
+      const gmw = growth(mw, 0.5);
+      gr[M.key].push(gmw);
+      gerr[M.key].push(gmw.map((v, w) => v === null || gtw[w] === null ? null : rToR(v) - rToR(gtw[w])));
+    }
+  }
+  const q = (arrs, w, p) => {
+    const v = arrs.map(a => a[w]).filter(x => x !== null && isFinite(x)).sort((a, b) => a - b);
+    if (v.length < Math.max(3, reps / 3)) return null;
+    const i = (v.length - 1) * p, lo = Math.floor(i), hi = Math.ceil(i);
+    return v[lo] + (v[hi] - v[lo]) * (i - lo);
+  };
+  const bands = {}, gbands = {}, ebands = {};
+  for (const M of METHODS) {
+    bands[M.key] = []; gbands[M.key] = []; ebands[M.key] = [];
+    for (let w = 0; w < W; w++) {
+      const lo = q(relErr[M.key], w, 0.05), hi = q(relErr[M.key], w, 0.95);
+      if (lo !== null) bands[M.key].push({ x: 7 * w + 3.5, lo, hi });
+      const glo = q(gr[M.key], w, 0.05), ghi = q(gr[M.key], w, 0.95);
+      if (glo !== null) gbands[M.key].push({ x: 7 * w + 3.5, lo: glo, hi: ghi });
+      const elo = q(gerr[M.key], w, 0.05), ehi = q(gerr[M.key], w, 0.95);
+      if (elo !== null) ebands[M.key].push({ x: 7 * w + 3.5, lo: elo, hi: ehi });
+    }
+  }
+  const tb = [];
+  for (let w = 0; w < W; w++) {
+    const lo = q(grTruth, w, 0.05), hi = q(grTruth, w, 0.95);
+    if (lo !== null) tb.push({ x: 7 * w + 3.5, lo, hi });
+  }
+  return { bands, gbands, ebands, truthBand: tb };
+}
+
+// ---------- metrics ----------
+// ok[w] marks onset weeks that are at least 80% reported by the cut-off.
+// Growth and peak metrics use only these, so truncation of the target
+// itself is not mistaken for a change in the epidemic.
+function metrics(tw, mw, gT, gM, ok, W) {
+  let maxRel = 0, maxRelW = -1, maxG = 0, maxR = 0, wrongSide = 0, sumAbs = 0, nAbs = 0;
+  for (let w = 0; w < W; w++) {
+    if (tw[w] < 10) continue;
+    const rel = mw[w] / tw[w] - 1;
+    sumAbs += Math.abs(rel); nAbs++;
+    if (Math.abs(rel) > Math.abs(maxRel)) { maxRel = rel; maxRelW = w; }
+  }
+  for (let w = 0; w < W; w++) {
+    if (!ok[w] || gT[w] === null || gM[w] === null || tw[w] < 10) continue;
+    if (Math.abs(gM[w] - gT[w]) > Math.abs(maxG)) maxG = gM[w] - gT[w];
+    const dR = rToR(gM[w]) - rToR(gT[w]);
+    if (Math.abs(dR) > Math.abs(maxR)) maxR = dR;
+    if (wrongSideOf1(gM[w], gT[w])) wrongSide++;
+  }
+  const firstNeg = g => {
+    let lastPos = null;
+    for (let w = 0; w < g.length; w++) {
+      if (!ok[w] || g[w] === null) continue;
+      if (g[w] > 0) lastPos = w;
+      else if (lastPos !== null && g[w] < 0) {
+        // linear interpolation of the zero crossing, in days
+        const frac = g[lastPos] / (g[lastPos] - g[w]);
+        return 7 * (lastPos + frac * (w - lastPos)) + 3.5;
+      }
+    }
+    return null;
+  };
+  const zT = firstNeg(gT), zM = firstNeg(gM);
+  const lag = zT !== null && zM !== null ? zM - zT : null;
+  // peak metrics only when the true curve has an interior peak among
+  // complete weeks, with a clear fall after it
+  const nOk = ok.reduce((a, v, i) => (v ? i + 1 : a), 0);
+  const argmax = a => { let b = 0; for (let i = 1; i < nOk; i++) if (a[i] > a[b]) b = i; return b; };
+  const pT = argmax(tw);
+  const hasPeak = nOk > 2 && pT < nOk - 2 && tw[nOk - 1] < 0.8 * tw[pT];
+  const peakShift = hasPeak ? 7 * (argmax(mw) - pT) : null;
+  const peakHeight = hasPeak ? mw[argmax(mw)] / tw[pT] - 1 : null;
+  let last = null;
+  if (!P.retro) {
+    let s = 0, n = 0;
+    for (let w = W - 3; w < W; w++) if (w >= 0 && tw[w] > 0) { s += mw[w] / tw[w] - 1; n++; }
+    last = n ? s / n : null;
+  }
+  return { maxRel, maxRelW, maxG, maxR, wrongSide, meanAbs: nAbs ? sumAbs / nAbs : 0, lag, zT, zM, peakShift, peakHeight, last };
+}
+
+// ---------- chart drawing ----------
+const css = name => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+function niceTicks(lo, hi, n) {
+  if (!(hi > lo)) { hi = lo + 1; }
+  const span = hi - lo, step0 = span / n;
+  const mag = Math.pow(10, Math.floor(Math.log10(step0)));
+  const err = step0 / mag;
+  const step = (err >= 7.5 ? 10 : err >= 3.5 ? 5 : err >= 1.5 ? 2 : 1) * mag;
+  const t = [];
+  for (let v = Math.ceil(lo / step) * step; v <= hi + 1e-9; v += step) t.push(+v.toFixed(10));
+  return t;
+}
+function logTicks(lo, hi) {
+  const t = [];
+  for (let e = Math.floor(Math.log10(lo)); e <= Math.ceil(Math.log10(hi)); e++) {
+    for (const m of [1, 2, 5]) { const v = m * Math.pow(10, e); if (v >= lo && v <= hi) t.push(v); }
+  }
+  return t;
+}
+const fmtNum = v => {
+  if (v === null || !isFinite(v)) return "–";
+  const a = Math.abs(v);
+  if (a >= 1000) return Math.round(v).toLocaleString("en-GB");
+  if (a >= 10) return v.toFixed(0);
+  if (a >= 1) return v.toFixed(1);
+  return v.toFixed(3);
+};
+function lineChart(el, o) {
+  const width = Math.max(el.clientWidth, 280);
+  const height = o.height || 260;
+  const m = { l: 52, r: 14, t: 10, b: 36 };
+  const iw = width - m.l - m.r, ih = height - m.t - m.b;
+  let xs = [], ys = [];
+  for (const s of o.series) for (const p of s.data) if (p.y !== null && isFinite(p.y)) { xs.push(p.x); ys.push(p.y); }
+  for (const b of (o.bands || [])) for (const p of b.data) { ys.push(p.lo, p.hi); xs.push(p.x); }
+  if (!xs.length) { el.innerHTML = "<p class='sub'>No data.</p>"; return; }
+  const x0 = o.xmin ?? Math.min(...xs), x1 = o.xmax ?? Math.max(...xs);
+  let y0, y1;
+  if (o.log) {
+    const pos = ys.filter(v => v > 0);
+    y0 = Math.max(Math.min(...pos), 0.5); y1 = Math.max(...pos) * 1.1;
+  } else {
+    y0 = Math.min(...ys, o.includeZero ? 0 : Infinity, o.refY ?? Infinity);
+    y1 = Math.max(...ys, o.includeZero ? 0 : -Infinity, o.refY ?? -Infinity);
+    if (o.yclamp) { y0 = Math.max(y0, o.yclamp[0]); y1 = Math.min(y1, o.yclamp[1]); }
+    const pad = (y1 - y0) * 0.06 || 1; y0 -= pad; y1 += pad;
+    if (o.includeZero && Math.min(...ys) >= 0) y0 = 0;
+  }
+  const sx = x => m.l + (x - x0) / (x1 - x0 || 1) * iw;
+  const sy = o.log
+    ? y => m.t + ih - (Math.log(Math.max(y, y0)) - Math.log(y0)) / (Math.log(y1) - Math.log(y0)) * ih
+    : y => m.t + ih - (clamp(y, y0, y1) - y0) / (y1 - y0) * ih;
+  const yt = o.log ? logTicks(y0, y1) : niceTicks(y0, y1, 5);
+  const xt = niceTicks(x0, x1, Math.max(3, Math.floor(iw / 80)));
+  const clipId = "clip" + Math.random().toString(36).slice(2, 8);
+  let svg = `<svg viewBox="0 0 ${width} ${height}" role="img" aria-label="${o.aria || ""}"><defs><clipPath id="${clipId}"><rect x="${m.l}" y="${m.t - 2}" width="${iw}" height="${ih + 4}"/></clipPath></defs>`;
+  for (const sh of (o.shades || [])) {
+    const a = Math.max(sh.from, x0), b = Math.min(sh.to, x1);
+    if (b > a) svg += `<rect x="${sx(a)}" y="${m.t}" width="${sx(b) - sx(a)}" height="${ih}" fill="${sh.fill}"/>` +
+      (sh.label ? `<text class="axis-label" x="${sx(a) + 4}" y="${m.t + ih - 6}">${sh.label}</text>` : "");
+  }
+  if (o.shade) svg += `<rect x="${sx(Math.max(o.shade[0], x0))}" y="${m.t}" width="${Math.max(0, sx(Math.min(o.shade[1], x1)) - sx(Math.max(o.shade[0], x0)))}" height="${ih}" fill="var(--shade)"/>`;
+  for (const v of yt) svg += `<line class="gridline" x1="${m.l}" x2="${m.l + iw}" y1="${sy(v)}" y2="${sy(v)}"/><g class="tick"><text x="${m.l - 6}" y="${sy(v) + 4}" text-anchor="end">${o.yfmt ? o.yfmt(v) : fmtNum(v)}</text></g>`;
+  for (const v of xt) svg += `<g class="tick"><text x="${sx(v)}" y="${m.t + ih + 16}" text-anchor="middle">${v}</text></g>`;
+  if (o.zero && y0 < 0 && y1 > 0) svg += `<line class="zero" x1="${m.l}" x2="${m.l + iw}" y1="${sy(0)}" y2="${sy(0)}"/>`;
+  if (o.refY !== undefined && y0 < o.refY && y1 > o.refY) svg += `<line class="zero" x1="${m.l}" x2="${m.l + iw}" y1="${sy(o.refY)}" y2="${sy(o.refY)}"/>`;
+  if (o.vline !== undefined && o.vline >= x0 && o.vline <= x1) svg += `<line class="cross" x1="${sx(o.vline)}" x2="${sx(o.vline)}" y1="${m.t}" y2="${m.t + ih}"/><text class="axis-label" x="${sx(o.vline) - 4}" y="${m.t + 10}" text-anchor="end">cut-off</text>`;
+  svg += `<text class="axis-label" x="${m.l + iw / 2}" y="${height - 4}" text-anchor="middle">${o.xlab}</text>`;
+  svg += `<text class="axis-label" transform="translate(12 ${m.t + ih / 2}) rotate(-90)" text-anchor="middle">${o.ylab}</text>`;
+  for (const b of (o.bands || [])) {
+    if (!b.data.length) continue;
+    const up = b.data.map(p => `${sx(p.x)},${sy(p.hi)}`).join(" ");
+    const dn = b.data.slice().reverse().map(p => `${sx(p.x)},${sy(p.lo)}`).join(" ");
+    svg += `<polygon points="${up} ${dn}" fill="${b.color}" opacity="0.16" clip-path="url(#${clipId})"/>`;
+  }
+  for (const s of o.series) {
+    let d = "", pen = false;
+    for (const p of s.data) {
+      if (p.y === null || !isFinite(p.y) || (o.log && p.y <= 0)) { pen = false; continue; }
+      d += (pen ? "L" : "M") + sx(p.x).toFixed(1) + "," + sy(p.y).toFixed(1); pen = true;
+    }
+    svg += `<path d="${d}" fill="none" stroke="${s.color}" stroke-width="${s.width || 2}" stroke-linejoin="round" stroke-linecap="round" ${s.dash ? `stroke-dasharray="${s.dash}"` : ""} clip-path="url(#${clipId})"/>`;
+  }
+  for (const mk of (o.markers || [])) {
+    if (mk.x < x0 || mk.x > x1) continue;
+    svg += `<circle cx="${sx(mk.x)}" cy="${sy(mk.y)}" r="5" fill="none" stroke="${mk.color}" stroke-width="2"/>`;
+  }
+  svg += `<line class="cross xh" x1="0" x2="0" y1="${m.t}" y2="${m.t + ih}" style="display:none"/>`;
+  svg += `<rect x="${m.l}" y="${m.t}" width="${iw}" height="${ih}" fill="transparent" class="hit"/>`;
+  svg += `</svg><div class="tooltip"></div>`;
+  el.innerHTML = svg;
+  const hit = el.querySelector(".hit"), xh = el.querySelector(".xh"), tip = el.querySelector(".tooltip");
+  const allX = [...new Set(o.series.flatMap(s => s.data.map(p => p.x)))].filter(x => x >= x0 && x <= x1).sort((a, b) => a - b);
+  const move = ev => {
+    const rect = el.querySelector("svg").getBoundingClientRect();
+    const px = (ev.clientX - rect.left) * width / rect.width;
+    const xv = x0 + (px - m.l) / iw * (x1 - x0);
+    let best = allX[0];
+    for (const v of allX) if (Math.abs(v - xv) < Math.abs(best - xv)) best = v;
+    xh.setAttribute("x1", sx(best)); xh.setAttribute("x2", sx(best)); xh.style.display = "";
+    let html = `<div style="margin-bottom:4px;font-weight:600">${o.xtip ? o.xtip(best) : best}</div>`;
+    for (const s of o.series) {
+      const p = s.data.find(q => q.x === best);
+      if (!p || p.y === null) continue;
+      html += `<div class="row"><span class="sw" style="background:${s.color}"></span><span class="name">${s.name}</span><span class="val">${o.vfmt ? o.vfmt(p.y) : fmtNum(p.y)}</span></div>`;
+    }
+    tip.innerHTML = html; tip.style.display = "block";
+    const left = sx(best) / width * rect.width;
+    const tw = tip.offsetWidth;
+    tip.style.left = (left + 12 + tw > rect.width ? left - tw - 12 : left + 12) + "px";
+    tip.style.top = "8px";
+  };
+  hit.addEventListener("mousemove", move);
+  hit.addEventListener("touchstart", e => move(e.touches[0]), { passive: true });
+  hit.addEventListener("touchmove", e => move(e.touches[0]), { passive: true });
+  hit.addEventListener("mouseleave", () => { tip.style.display = "none"; xh.style.display = "none"; });
+}
+function legend(el, items) {
+  el.innerHTML = items.map(i => `<span><i class="${i.dash ? "dash" : ""}" style="border-color:${i.color}"></i>${i.name}</span>`).join("");
+}
+
+// ---------- verdict ----------
+function verdict(met) {
+  const h = met.hub;
+  const pct = v => (v >= 0 ? "+" : "−") + Math.abs(v * 100).toFixed(0) + "%";
+  const items = [];
+  items.push(`Largest weekly error <b>${pct(h.maxRel)}</b>. Largest Rt error <b>${(h.maxR >= 0 ? "+" : "−") + Math.abs(h.maxR).toFixed(2)}</b>. Weeks with Rt on the wrong side of 1: <b>${h.wrongSide}</b>.`);
+  if (h.peakHeight !== null) items.push(`Peak ${h.peakHeight < 0 ? "under" : "over"}stated by <b>${Math.abs(h.peakHeight * 100).toFixed(0)}%</b>${h.peakShift ? `, moved ${h.peakShift} days` : ""}.`);
+  if (h.last !== null) items.push(`Last 3 weeks before the cut-off: <b>${pct(h.last)}</b> (mean shift ${pct(met.mean.last)}).`);
+  document.getElementById("verdict").className = "verdict";
+  document.getElementById("verdict").innerHTML = `<div><span class="tag">Hub method.</span> ${items.join(" ")}</div>`;
+}
+
+// ---------- main render ----------
+let cache = { key: null };
+function compute() {
+  const key = JSON.stringify(P);
+  if (cache.key === key) return cache;
+  const sc = scenario(P);
+  const ex = expectedData(sc);
+  const R = runMethods(sc, ex.comp, ex.miss, ex.empCounts);
+  const W = Math.floor(Math.min(sc.N, sc.Td + 1) / 7);
+  const st = P.stoch ? stochastic(sc, W, P.reps) : null, stochMsg = "";
+  cache = { key, sc, ex, R, W, st, stochMsg };
+  return cache;
+}
+function render() {
+  const t0 = performance.now();
+  const { sc, ex, R, W, st, stochMsg } = compute();
+  const xw = w => 7 * w + 3.5;
+  const tw = weekly(ex.truth, W, sc.B), rw = weekly(ex.rep, W, sc.B);
+  const mw = {}; for (const M of METHODS) mw[M.key] = weekly(R[M.key], W, sc.B);
+  const gT = growth(tw), gM = {}; for (const M of METHODS) gM[M.key] = growth(mw[M.key]);
+  const rIn = Array.from({ length: W }, (_, w) => { let s = 0; for (let d = 0; d < 7; d++) s += sc.r[sc.B + 7 * w + d] ?? 0; return s / 7; });
+  const col = {}; for (const M of METHODS) col[M.key] = css(M.col);
+  const ink = css("--text-primary"), grey = css("--reports");
+  const shade = null;
+  // weeks less than 80% reported by the cut-off
+  const ok = Array.from({ length: W }, (_, w) => {
+    let num = 0, den = 0;
+    for (let d = 0; d < 7; d++) { const i = sc.B + 7 * w + d; num += sc.C[i] * sc.cover[i]; den += sc.C[i]; }
+    return den > 0 ? num / den >= 0.8 : true;
+  });
+  const firstBad = ok.indexOf(false);
+  const shades = firstBad >= 0 ? [{ from: 7 * firstBad, to: 7 * W, fill: "var(--grid)", label: "under 80% reported" }] : [];
+  const vline = P.retro ? undefined : sc.Td;
+  const xtip = x => `Week starting day ${x - 3.5}`;
+
+
+  // chart A
+  const sA = [{ name: "Reported (by report week)", color: grey, dash: "4 3", data: Array.from(rw, (y, w) => ({ x: xw(w), y })) },
+    { name: "True onsets", color: ink, width: 2.5, data: Array.from(tw, (y, w) => ({ x: xw(w), y })) }];
+  for (const M of METHODS) sA.push({ name: M.name, color: col[M.key], dash: M.dash, width: M.width, data: Array.from(mw[M.key], (y, w) => ({ x: xw(w), y })) });
+  legend(document.getElementById("legendA"), sA.map(s => ({ name: s.name, color: s.color, dash: !!s.dash })));
+  lineChart(document.getElementById("chartA"), { series: sA, log: document.getElementById("logA").checked,
+    xlab: "Day (onset or report week)", ylab: "Cases per week", shade, shades, vline, xtip, includeZero: true,
+    xmin: 0, xmax: 7 * W, aria: "Weekly onset counts, true and imputed" });
+
+  // chart B
+  const sB = METHODS.map(M => ({ name: M.name, color: col[M.key], dash: M.dash, width: M.width,
+    data: Array.from(mw[M.key], (y, w) => ({ x: xw(w), y: tw[w] > 0 ? (y / tw[w] - 1) * 100 : null })) }));
+  const bB = st ? METHODS.map(M => ({ color: col[M.key], data: st.bands[M.key].map(p => ({ x: p.x, lo: p.lo * 100, hi: p.hi * 100 })) })) : [];
+  legend(document.getElementById("legendB"), sB.map(s => ({ name: s.name, color: s.color, dash: !!s.dash })));
+  lineChart(document.getElementById("chartB"), { series: sB, bands: bB, zero: true, includeZero: true,
+    xlab: "Onset week (day)", ylab: "Error (%)", shade, shades, vline, xtip, xmin: 0, xmax: 7 * W,
+    yclamp: [-100, 200], vfmt: v => (v >= 0 ? "+" : "") + v.toFixed(1) + "%", yfmt: v => v + "%",
+    aria: "Relative error of imputed weekly counts" });
+
+  // chart C
+  const toRBand = b => b.map(p => ({ x: p.x, lo: rToR(p.lo), hi: rToR(p.hi) }));
+  const sC = [{ name: "Input", color: ink, dash: "2 3", width: 1.5, data: rIn.map((y, w) => ({ x: xw(w), y: rToR(y) })) },
+    { name: "True onsets", color: ink, width: 2.5, data: gT.map((y, w) => ({ x: xw(w), y: rToR(y) })) }];
+  for (const M of METHODS) sC.push({ name: M.name, color: col[M.key], dash: M.dash, width: M.width, data: gM[M.key].map((y, w) => ({ x: xw(w), y: rToR(y) })) });
+  const bC = st ? [{ color: ink, data: toRBand(st.truthBand) }, { color: col.hub, data: toRBand(st.gbands.hub) }] : [];
+  legend(document.getElementById("legendC"), sC.map(s => ({ name: s.name, color: s.color, dash: !!s.dash })));
+  lineChart(document.getElementById("chartC"), { series: sC, bands: bC, refY: 1,
+    xlab: "Onset week (day)", ylab: "Rt", shade, shades, vline, xtip, xmin: 0, xmax: 7 * W,
+    yclamp: [0, 4], vfmt: v => v.toFixed(3), yfmt: v => v.toFixed(1),
+    aria: "Reproduction number estimated from weekly counts" });
+
+  // chart E: growth rate error
+  const sE = METHODS.map(M => ({ name: M.name, color: col[M.key], dash: M.dash, width: M.width,
+    data: gM[M.key].map((y, w) => ({ x: xw(w), y: y === null || gT[w] === null ? null : rToR(y) - rToR(gT[w]) })) }));
+  // weeks where a method puts Rt on the other side of 1 from the truth
+  const markE = [];
+  for (const M of METHODS) gM[M.key].forEach((y, w) => {
+    if (y === null || gT[w] === null || !ok[w] || tw[w] < 10) return;
+    if (wrongSideOf1(y, gT[w])) markE.push({ x: xw(w), y: rToR(y) - rToR(gT[w]), color: col[M.key] });
+  });
+  const bE = st ? METHODS.map(M => ({ color: col[M.key], data: st.ebands[M.key] })) : [];
+  legend(document.getElementById("legendE"), sE.map(s => ({ name: s.name, color: s.color, dash: !!s.dash })));
+  lineChart(document.getElementById("chartE"), { series: sE, bands: bE, zero: true, includeZero: true, markers: markE,
+    xlab: "Onset week (day)", ylab: "Rt error", shade, shades, vline, xtip, xmin: 0, xmax: 7 * W,
+    yclamp: [-1.5, 1.5], vfmt: v => (v >= 0 ? "+" : "") + v.toFixed(3), yfmt: v => v.toFixed(2),
+    aria: "Error in Rt estimated from imputed counts" });
+
+  // metrics
+  const met = {};
+  for (const M of METHODS) met[M.key] = metrics(tw, mw[M.key], gT, gM[M.key], ok, W);
+  verdict(met);
+  const cls = (v, a, b) => Math.abs(v) >= a ? "bad" : Math.abs(v) >= b ? "meh" : "";
+  const pct = v => v === null ? "–" : (v >= 0 ? "+" : "−") + Math.abs(v * 100).toFixed(1) + "%";
+  const days = v => v === null ? "–" : (v >= 0 ? "+" : "−") + Math.abs(v).toFixed(1);
+  let html = `<thead><tr><th>Method</th><th>Max weekly error</th><th>Mean |error|</th><th>Max Rt error</th><th>Weeks Rt on wrong side of 1</th><th>Peak shift (days)</th><th>Peak height</th>${P.retro ? "" : "<th>Last 3 weeks</th>"}</tr></thead><tbody>`;
+  for (const M of METHODS) {
+    const q = met[M.key];
+    html += `<tr><td><span class="sw" style="display:inline-block;width:10px;height:3px;border-radius:2px;background:${col[M.key]};margin-right:6px;vertical-align:middle"></span>${M.name}</td>
+      <td>${pct(q.maxRel)}</td>
+      <td>${pct(q.meanAbs).replace("+", "")}</td>
+      <td>${q.maxR >= 0 ? "+" : "−"}${Math.abs(q.maxR).toFixed(3)}</td>
+      <td>${q.wrongSide}</td>
+      <td>${days(q.peakShift)}</td>
+      <td>${pct(q.peakHeight)}</td>
+      ${P.retro ? "" : `<td>${pct(q.last)}</td>`}</tr>`;
+  }
+  html += `</tbody>`;
+  document.getElementById("summary").innerHTML = html;
+
+  // chart D: delay distributions for a chosen report day
+  const tSel = document.getElementById("tSel");
+  tSel.max = sc.Td; if (+tSel.value > sc.Td) tSel.value = sc.Td;
+  const t = +tSel.value, ti = t + sc.B;
+  const back = new Float64Array(D + 1);
+  for (let d = 0; d <= D; d++) { const s = ti - d; if (s >= 0 && s < sc.S) back[d] = sc.C[s] * sc.f[s][d] * sc.pim(ti, d); }
+  const bn = normalise(back);
+  document.getElementById("tSelOut").textContent = `${t} (onset growth rate that day ${(sc.r[Math.min(ti, sc.S - 1)]).toFixed(3)}/day)`;
+  const sD = [
+    { name: `Correct backward for day ${t} (mean ${pmfMean(bn).toFixed(1)})`, color: ink, width: 2.5, data: Array.from(bn, (y, d) => ({ x: d, y })).filter(p => p.x <= 40) },
+    { name: `Pooled empirical, used by hub (mean ${pmfMean(R.g).toFixed(1)})`, color: col.hub, data: Array.from(R.g, (y, d) => ({ x: d, y })).filter(p => p.x <= 40) },
+    { name: `Forward (mean ${pmfMean(sc.fbar).toFixed(1)})`, color: col.fwd, data: Array.from(sc.fbar, (y, d) => ({ x: d, y })).filter(p => p.x <= 40) }
+  ];
+  legend(document.getElementById("legendD"), sD.map(s => ({ name: s.name, color: s.color })));
+  lineChart(document.getElementById("chartD"), { series: sD, xlab: "Delay from onset to report (days)", ylab: "Probability",
+    includeZero: true, xmin: 0, xmax: 40, height: 230, xtip: x => `Delay ${x} days`, vfmt: v => v.toFixed(4),
+    yfmt: v => v.toFixed(2), aria: "Delay distributions" });
+
+  const tot = tw.reduce((a, b) => a + b, 0);
+  document.getElementById("status").textContent =
+    `Expected cases in the onset weeks shown: ${Math.round(tot).toLocaleString("en-GB")}. Cut-off day ${sc.Td}${P.retro ? " (retrospective)" : ""}. Realised mean delay ${pmfMean(sc.fbar).toFixed(1)} days.${stochMsg} Rendered in ${(performance.now() - t0).toFixed(0)} ms.`;
+}
+
+// ---------- controls ----------
+function buildControls() {
+  const host = document.getElementById("controls");
+  const pre = document.getElementById("presets");
+  PRESETS.forEach((p, i) => {
+    const b = document.createElement("button");
+    b.type = "button"; b.textContent = p.name;
+    b.addEventListener("click", () => { activePreset = i; P = { ...DEFAULTS, ...p.set }; P.knots = P.knots.slice(); P.asc = P.asc.slice(); syncControls(); schedule(); });
+    pre.appendChild(b);
+  });
+  for (const g of CONTROLS) {
+    const fs = document.createElement("fieldset");
+    fs.innerHTML = `<legend>${g.group}</legend>`;
+    if (g.editor) {
+      const ed = document.createElement("div");
+      ed.innerHTML = `<p class="hint">${g.editor.hint}</p><div id="${g.editor.id}"></div>`;
+      fs.appendChild(ed);
+    }
+    for (const c of g.items) {
+      const div = document.createElement("div");
+      div.className = "ctl";
+      if (c.type === "check") {
+        div.innerHTML = `<label class="check" style="justify-content:flex-start"><input type="checkbox" id="c_${c.id}"> ${c.label}</label>`;
+      } else {
+        div.innerHTML = `<label for="c_${c.id}">${c.label} <output id="o_${c.id}"></output></label><input type="range" id="c_${c.id}" min="${c.min}" max="${c.max}" step="${c.step}">${c.hint ? `<p class="hint">${c.hint}</p>` : ""}`;
+      }
+      fs.appendChild(div);
+    }
+    host.appendChild(fs);
+  }
+  for (const g of CONTROLS) for (const c of g.items) {
+    const el = document.getElementById("c_" + c.id);
+    el.addEventListener("input", () => {
+      P[c.id] = c.type === "check" ? el.checked : +el.value;
+      syncEnabled();
+      if (c.type !== "check") document.getElementById("o_" + c.id).textContent = c.fmt(P[c.id]);
+      activePreset = -1; markPreset(); schedule();
+    });
+  }
+  syncControls();
+}
+function markPreset() {
+  [...document.querySelectorAll("#presets button")].forEach((b, i) => b.classList.toggle("active", i === activePreset));
+  document.getElementById("presetNote").textContent = activePreset >= 0 ? PRESETS[activePreset].note : "Custom settings.";
+}
+function syncControls() {
+  for (const g of CONTROLS) for (const c of g.items) {
+    const el = document.getElementById("c_" + c.id);
+    if (c.type === "check") el.checked = !!P[c.id];
+    else { el.value = P[c.id]; document.getElementById("o_" + c.id).textContent = c.fmt(P[c.id]); }
+  }
+  syncEnabled();
+  drawEditor();
+  markPreset();
+}
+// ---------- curve editors (growth rate and ascertainment) ----------
+const EDITORS = [
+  { el: "rEditor", key: "knots", min: R_MIN, max: R_MAX, step: 0.002, ref: 0,
+    grid: [-0.05, 0, 0.05, 0.1], tick: v => v.toFixed(2), name: "r" },
+  { el: "aEditor", key: "asc", min: 0, max: 2, step: 0.05, ref: 1,
+    grid: [0, 0.5, 1, 1.5, 2], tick: v => v.toFixed(1), name: "ascertainment" }
+];
+const ED = { w: 296, h: 150, l: 34, r: 8, t: 8, b: 20 };
+function edScales(cfg) {
+  const iw = ED.w - ED.l - ED.r, ih = ED.h - ED.t - ED.b;
+  const xmax = KNOTS[KNOTS.length - 1];
+  return {
+    sx: t => ED.l + t / xmax * iw,
+    sy: v => ED.t + (cfg.max - v) / (cfg.max - cfg.min) * ih,
+    ix: px => clamp(Math.round((px - ED.l) / iw * (KNOTS.length - 1)), 0, KNOTS.length - 1),
+    iy: py => clamp(cfg.max - (py - ED.t) / ih * (cfg.max - cfg.min), cfg.min, cfg.max)
+  };
+}
+function drawEditor() {
+  for (const cfg of EDITORS) {
+    const el = document.getElementById(cfg.el);
+    if (!el) continue;
+    const { sx, sy } = edScales(cfg), vals = P[cfg.key];
+    let g = `<svg viewBox="0 0 ${ED.w} ${ED.h}" style="width:100%;height:auto;touch-action:none;cursor:crosshair">`;
+    for (const v of cfg.grid) {
+      g += `<line x1="${ED.l}" x2="${ED.w - ED.r}" y1="${sy(v)}" y2="${sy(v)}" stroke="var(${v === cfg.ref ? "--text-muted" : "--grid"})"/>`;
+      g += `<text x="${ED.l - 4}" y="${sy(v) + 3}" text-anchor="end" font-size="9" fill="var(--text-muted)">${cfg.tick(v)}</text>`;
+    }
+    for (const t of [0, 60, 120, 180, 240]) g += `<text x="${sx(t)}" y="${ED.h - 6}" text-anchor="middle" font-size="9" fill="var(--text-muted)">${t}</text>`;
+    if (P.days < 240) g += `<rect x="${sx(P.days)}" y="${ED.t}" width="${sx(240) - sx(P.days)}" height="${ED.h - ED.t - ED.b}" fill="var(--grid)" opacity="0.6"/>`;
+    g += `<polyline fill="none" stroke="var(--text-primary)" stroke-width="2" points="${KNOTS.map((t, j) => `${sx(t)},${sy(vals[j])}`).join(" ")}"/>`;
+    KNOTS.forEach((t, j) => { g += `<circle cx="${sx(t)}" cy="${sy(vals[j])}" r="4" fill="var(--surface-1)" stroke="var(--text-primary)" stroke-width="1.5"/>`; });
+    g += `<text class="edVal" x="${ED.w - ED.r}" y="${ED.t + 9}" text-anchor="end" font-size="10" fill="var(--text-secondary)"></text></svg>`;
+    el.innerHTML = g;
+  }
+}
+function wireEditor() {
+  for (const cfg of EDITORS) {
+    const el = document.getElementById(cfg.el);
+    let down = false;
+    const setFrom = ev => {
+      const svg = el.querySelector("svg"), rect = svg.getBoundingClientRect();
+      const px = (ev.clientX - rect.left) * ED.w / rect.width, py = (ev.clientY - rect.top) * ED.h / rect.height;
+      const { ix, iy } = edScales(cfg);
+      const j = ix(px), v = Math.round(iy(py) / cfg.step) * cfg.step;
+      P[cfg.key][j] = +v.toFixed(3);
+      activePreset = -1; markPreset(); drawEditor();
+      el.querySelector(".edVal").textContent = `day ${KNOTS[j]}: ${cfg.name} = ${P[cfg.key][j].toFixed(3)}`;
+      schedule();
+    };
+    el.addEventListener("pointerdown", ev => { down = true; el.setPointerCapture(ev.pointerId); setFrom(ev); });
+    el.addEventListener("pointermove", ev => { if (down) setFrom(ev); });
+    const up = () => { down = false; };
+    el.addEventListener("pointerup", up);
+    el.addEventListener("pointercancel", up);
+  }
+}
+function syncEnabled() {
+  document.getElementById("c_cutoff").disabled = P.retro;
+  document.getElementById("c_ended").disabled = !P.retro;
+}
+let timer = null;
+function schedule() { clearTimeout(timer); timer = setTimeout(render, 40); }
+document.getElementById("tSel").addEventListener("input", schedule);
+document.getElementById("logA").addEventListener("change", schedule);
+document.getElementById("themeToggle").addEventListener("click", () => {
+  const cur = document.documentElement.getAttribute("data-theme");
+  const dark = cur ? cur === "dark" : matchMedia("(prefers-color-scheme: dark)").matches;
+  document.documentElement.setAttribute("data-theme", dark ? "light" : "dark");
+  schedule();
+});
+matchMedia("(prefers-color-scheme: dark)").addEventListener("change", schedule);
+let lastWidth = 0;
+new ResizeObserver(entries => {
+  const w = Math.round(entries[0].contentRect.width);
+  if (w !== lastWidth) { lastWidth = w; schedule(); }
+}).observe(document.querySelector(".charts"));
+buildControls();
+wireEditor();
+render();
+</script>
+</body>
+</html>
