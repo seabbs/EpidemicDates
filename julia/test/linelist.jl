@@ -17,8 +17,8 @@
     @test res.dropped == 0
     # mean delay is 11 / 3, which rounds to 4
     @test res.imputed.mean ==
-          res.complete .+
-          [0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0]
+        res.complete .+
+        [0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0]
     @test sum(res.imputed.em) ≈ 5
     @test sum(res.imputed.backsampling) ≈ 5
 end
@@ -59,15 +59,19 @@ end
 
 @testitem "a supplied delay adds the fwd method" begin
     pmf = delay_pmf(4, 3)
-    res = impute_linelist([0, 2, missing, 5, missing], [3, 6, 7, 9, 12];
-        delay = pmf)
+    res = impute_linelist(
+        [0, 2, missing, 5, missing], [3, 6, 7, 9, 12];
+        delay = pmf
+    )
     @test keys(res.imputed) == (:backsampling, :mean, :em, :fwd)
     @test haskey(res.imputed_before_day0, :fwd)
     alloc = res.imputed.fwd .- res.complete
     @test sum(alloc) + res.imputed_before_day0.fwd ≈ 2
     # an unnormalised delay gives the same result
-    res2 = impute_linelist([0, 2, missing, 5, missing], [3, 6, 7, 9, 12];
-        delay = 3 .* pmf)
+    res2 = impute_linelist(
+        [0, 2, missing, 5, missing], [3, 6, 7, 9, 12];
+        delay = 3 .* pmf
+    )
     @test res2.imputed.fwd ≈ res.imputed.fwd
 end
 
@@ -108,26 +112,42 @@ end
     @test_throws ArgumentError impute_linelist([0.0, Inf], [1, 2])
     @test_throws ArgumentError impute_linelist([0.5, 1], [1, 2])
     @test_throws ArgumentError impute_linelist([0, 1], [1.5, 2])
-    @test_throws ArgumentError impute_linelist(ok_onset, ok_report;
-        cutoff = -1)
-    @test_throws ArgumentError impute_linelist(ok_onset, ok_report;
-        cutoff = 2.5)
-    @test_throws ArgumentError impute_linelist(ok_onset, ok_report;
-        n_iter = 0)
-    @test_throws ArgumentError impute_linelist(ok_onset, ok_report;
-        max_delay = -1)
-    @test_throws ArgumentError impute_linelist(ok_onset, ok_report;
-        delay = [0.0, 0.0])
-    @test_throws ArgumentError impute_linelist(ok_onset, ok_report;
-        delay = [0.5, -0.5])
-    @test_throws ArgumentError impute_linelist(ok_onset, ok_report;
-        delay = Float64[])
+    @test_throws ArgumentError impute_linelist(
+        ok_onset, ok_report;
+        cutoff = -1
+    )
+    @test_throws ArgumentError impute_linelist(
+        ok_onset, ok_report;
+        cutoff = 2.5
+    )
+    @test_throws ArgumentError impute_linelist(
+        ok_onset, ok_report;
+        n_iter = 0
+    )
+    @test_throws ArgumentError impute_linelist(
+        ok_onset, ok_report;
+        max_delay = -1
+    )
+    @test_throws ArgumentError impute_linelist(
+        ok_onset, ok_report;
+        delay = [0.0, 0.0]
+    )
+    @test_throws ArgumentError impute_linelist(
+        ok_onset, ok_report;
+        delay = [0.5, -0.5]
+    )
+    @test_throws ArgumentError impute_linelist(
+        ok_onset, ok_report;
+        delay = Float64[]
+    )
     # no complete cases left
     @test_throws ArgumentError impute_linelist([missing, missing], [1, 2])
     @test_throws ArgumentError impute_linelist([5, missing], [1, 2])
     # mixed dates and days
-    @test_throws ArgumentError impute_linelist([0, missing],
-        [Date(2026, 1, 1), Date(2026, 1, 2)])
+    @test_throws ArgumentError impute_linelist(
+        [0, missing],
+        [Date(2026, 1, 1), Date(2026, 1, 2)]
+    )
     @test_throws ArgumentError impute_linelist(["a", missing], [1, 2])
 end
 
@@ -147,7 +167,7 @@ end
 
 @testitem "internal helpers" begin
     using EpidemicDates: round_half_up, mean_shift_allocate,
-                         backsampling_allocate
+        backsampling_allocate
     @test round_half_up(2.5) == 3
     @test round_half_up(-0.5) == 0
     @test round_half_up(1.49) == 1
@@ -156,5 +176,5 @@ end
     @test mean_shift_allocate([1.0, 2.0], 5) == [0.0, 0.0]
     @test_throws ArgumentError mean_shift_allocate([1.0], -1)
     @test backsampling_allocate([0.0, 0.0, 4.0], [0.5, 0.25, 0.25]) ==
-          [1.0, 1.0, 2.0]
+        [1.0, 1.0, 2.0]
 end

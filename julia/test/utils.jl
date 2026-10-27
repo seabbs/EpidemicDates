@@ -17,7 +17,7 @@ end
     @test out ≈ [10.0, 10.0, 10 / 0.5, 0.0, 0.0]
     # unnormalised delays are normalised
     @test correct_truncation(counts, 2 .* pmf, 4) ≈
-          correct_truncation(counts, pmf, 4)
+        correct_truncation(counts, pmf, 4)
 end
 
 @testitem "correct_truncation recovers truncated expected counts" begin
@@ -32,8 +32,10 @@ end
 
 @testitem "correct_truncation validates its inputs" begin
     @test_throws ArgumentError correct_truncation([1.0], [1.0], -1)
-    @test_throws ArgumentError correct_truncation([1.0], [1.0], 0;
-        min_cover = 0)
+    @test_throws ArgumentError correct_truncation(
+        [1.0], [1.0], 0;
+        min_cover = 0
+    )
     @test_throws ArgumentError correct_truncation([1.0], [0.0], 0)
     @test_throws ArgumentError correct_truncation([1.0], [-1.0, 2.0], 0)
 end

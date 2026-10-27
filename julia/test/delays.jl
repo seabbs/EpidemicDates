@@ -26,7 +26,7 @@ end
     # P(d) = ∫_0^1 F(d + 1 - u) - F(d - u) du, by the midpoint rule
     u = ((1:20_000) .- 0.5) ./ 20_000
     direct = [sum(F.(d + 1 .- u) .- F.(d .- u)) / length(u) for d in 0:60]
-    @test isapprox(delay_pmf(μ, σ), direct ./ sum(direct); atol = 1e-7)
+    @test isapprox(delay_pmf(μ, σ), direct ./ sum(direct); atol = 1.0e-7)
 end
 
 @testitem "delay_pmf validates its inputs" begin

@@ -53,21 +53,28 @@ julia> correct_truncation([10.0, 10.0, 10.0], [0.5, 0.5], 2)
     Sam Abbott has only checked the interactive page, not this package.
     Treat the results as exploratory.
 """
-function correct_truncation(counts::AbstractVector{<:Real},
+function correct_truncation(
+        counts::AbstractVector{<:Real},
         delay::AbstractVector{<:Real}, cutoff::Integer;
-        min_cover::Real = 0.05)
+        min_cover::Real = 0.05
+    )
     pmf = _check_delay(delay)
     return _correct_truncation(counts, cutoff, min_cover) do i
         return pmf
     end
 end
 
-function correct_truncation(counts::AbstractVector{<:Real},
+function correct_truncation(
+        counts::AbstractVector{<:Real},
         delay::AbstractMatrix{<:Real}, cutoff::Integer;
-        min_cover::Real = 0.05)
-    size(delay, 1) == length(counts) || throw(ArgumentError(
-        "a delay matrix needs one row per day of counts " *
-        "($(length(counts)) rows), got $(size(delay, 1))"))
+        min_cover::Real = 0.05
+    )
+    size(delay, 1) == length(counts) || throw(
+        ArgumentError(
+            "a delay matrix needs one row per day of counts " *
+                "($(length(counts)) rows), got $(size(delay, 1))"
+        )
+    )
     return _correct_truncation(counts, cutoff, min_cover) do i
         return view(delay, i, :)
     end

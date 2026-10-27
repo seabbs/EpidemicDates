@@ -3,11 +3,16 @@ _is_missing_day(x) = ismissing(x) || isnothing(x) || (x isa Real && isnan(x))
 _is_whole(x::Real) = isfinite(x) && x == round(x)
 
 # Convert date vectors to whole days since the earliest date.
-function _dates_to_days(onset::AbstractVector, report::AbstractVector,
-        cutoff)
+function _dates_to_days(
+        onset::AbstractVector, report::AbstractVector,
+        cutoff
+    )
     known = [x for x in onset if !_is_missing_day(x)]
-    all(x -> x isa Date, known) || throw(ArgumentError(
-        "onset must hold dates or missing when report holds dates"))
+    all(x -> x isa Date, known) || throw(
+        ArgumentError(
+            "onset must hold dates or missing when report holds dates"
+        )
+    )
     reports = [x for x in report if !_is_missing_day(x)]
     all(x -> x isa Date, reports) ||
         throw(ArgumentError("report must hold only dates"))
@@ -21,9 +26,12 @@ end
 # 0:max_delay, one row for a static delay or one per onset day 0:T.
 function _fixed_delay(delay, T::Integer, max_delay::Integer)
     if delay isa AbstractMatrix
-        size(delay, 1) == T + 1 || throw(ArgumentError(
-            "a delay matrix needs one row per onset day 0:cutoff " *
-            "($(T + 1) rows), got $(size(delay, 1))"))
+        size(delay, 1) == T + 1 || throw(
+            ArgumentError(
+                "a delay matrix needs one row per onset day 0:cutoff " *
+                    "($(T + 1) rows), got $(size(delay, 1))"
+            )
+        )
         rows = [_check_delay(view(delay, i, :)) for i in axes(delay, 1)]
     else
         rows = [_check_delay(delay)]
@@ -32,8 +40,11 @@ function _fixed_delay(delay, T::Integer, max_delay::Integer)
     for (k, row) in enumerate(rows)
         n = min(length(row), max_delay + 1)
         out[k, 1:n] .= row[1:n]
-        sum(out[k, :]) > 0 || throw(ArgumentError(
-            "delay must have positive mass on 0:$max_delay"))
+        sum(out[k, :]) > 0 || throw(
+            ArgumentError(
+                "delay must have positive mass on 0:$max_delay"
+            )
+        )
         out[k, :] ./= sum(out[k, :])
     end
     return out
@@ -43,8 +54,11 @@ function _check_delay(delay)
     delay === nothing && return nothing
     v = collect(Float64, delay)
     isempty(v) && throw(ArgumentError("delay must not be empty"))
-    all(x -> isfinite(x) && x >= 0, v) || throw(ArgumentError(
-        "delay must hold non-negative finite probabilities"))
+    all(x -> isfinite(x) && x >= 0, v) || throw(
+        ArgumentError(
+            "delay must hold non-negative finite probabilities"
+        )
+    )
     sum(v) > 0 || throw(ArgumentError("delay must have a positive sum"))
     return v ./ sum(v)
 end
@@ -177,30 +191,43 @@ julia> round(sum(res.imputed.em); digits = 6)
     Sam Abbott has only checked the interactive page, not this package.
     Treat the results as exploratory.
 """
-function impute_linelist(onset::AbstractVector, report::AbstractVector;
+function impute_linelist(
+        onset::AbstractVector, report::AbstractVector;
         cutoff = nothing, delay = nothing, max_delay::Integer = DMAX,
         n_iter::Integer = 150, delay_period = nothing,
-        delay_shrinkage::Real = 10.0)
-    length(onset) == length(report) || throw(ArgumentError(
-        "onset and report must have the same length, got " *
-        "$(length(onset)) and $(length(report))"))
+        delay_shrinkage::Real = 10.0
+    )
+    length(onset) == length(report) || throw(
+        ArgumentError(
+            "onset and report must have the same length, got " *
+                "$(length(onset)) and $(length(report))"
+        )
+    )
     isempty(report) && throw(ArgumentError("the line list is empty"))
     day0 = nothing
     if any(x -> x isa Date, report) || any(x -> x isa Date, onset)
         onset, report, cutoff, day0 = _dates_to_days(onset, report, cutoff)
     end
-    n_bad = count(x -> _is_missing_day(x) || (x isa Real && !isfinite(x)),
-        report)
-    n_bad > 0 && throw(ArgumentError(
-        "report day is missing or infinite for $n_bad case(s); " *
-        "every case needs a report day"))
+    n_bad = count(
+        x -> _is_missing_day(x) || (x isa Real && !isfinite(x)),
+        report
+    )
+    n_bad > 0 && throw(
+        ArgumentError(
+            "report day is missing or infinite for $n_bad case(s); " *
+                "every case needs a report day"
+        )
+    )
     all(x -> x isa Real, report) ||
         throw(ArgumentError("report days must be numbers or dates"))
     known = [x for x in onset if !_is_missing_day(x)]
     all(x -> x isa Real, known) ||
         throw(ArgumentError("onset days must be numbers, dates or missing"))
-    any(isinf, known) && throw(ArgumentError(
-        "onset days must not be infinite; use missing if unknown"))
+    any(isinf, known) && throw(
+        ArgumentError(
+            "onset days must not be infinite; use missing if unknown"
+        )
+    )
     all(_is_whole, report) ||
         throw(ArgumentError("report days must be whole numbers of days"))
     all(_is_whole, known) ||
@@ -218,11 +245,18 @@ function impute_linelist(onset::AbstractVector, report::AbstractVector;
     n_iter >= 1 ||
         throw(ArgumentError("n_iter must be at least 1, got $n_iter"))
     delay !== nothing && delay_period !== nothing &&
-        throw(ArgumentError(
-            "give either delay or delay_period, not both"))
+        throw(
+        ArgumentError(
+            "give either delay or delay_period, not both"
+        )
+    )
     isfinite(delay_shrinkage) && delay_shrinkage > 0 ||
-        throw(ArgumentError("delay_shrinkage must be a positive finite " *
-                            "number, got $delay_shrinkage"))
+        throw(
+        ArgumentError(
+            "delay_shrinkage must be a positive finite " *
+                "number, got $delay_shrinkage"
+        )
+    )
     fixed = delay === nothing ? nothing : _fixed_delay(delay, T, max_delay)
     is_matrix = delay isa AbstractMatrix
     fwd_pmf = is_matrix ? nothing : _check_delay(delay)
@@ -253,33 +287,44 @@ function impute_linelist(onset::AbstractVector, report::AbstractVector;
             end
         end
     end
-    isempty(onset_c) && throw(ArgumentError(
-        "no complete cases (cases with both an onset and a report day " *
-        "in range) are left, so the delay cannot be estimated"))
+    isempty(onset_c) && throw(
+        ArgumentError(
+            "no complete cases (cases with both an onset and a report day " *
+                "in range) are left, so the delay cannot be estimated"
+        )
+    )
     empirical ./= sum(empirical)
 
     backsampling = backsampling_allocate(missing_by_report, empirical)
     shift = round_half_up(sum((0:max_delay) .* empirical))
     mean_alloc = mean_shift_allocate(missing_by_report, shift)
-    fit = em_fit(onset_c, delay_c, report_m, T; max_delay, n_iter, fixed,
-        period, delay_shrinkage)
+    fit = em_fit(
+        onset_c, delay_c, report_m, T; max_delay, n_iter, fixed,
+        period, delay_shrinkage
+    )
     n_missing = sum(missing_by_report)
     lost(a) = max(n_missing - sum(a), 0.0)
-    imputed = (backsampling = complete .+ backsampling,
-        mean = complete .+ mean_alloc, em = complete .+ fit.allocation)
-    before_day0 = (backsampling = lost(backsampling),
-        mean = n_missing - sum(mean_alloc))
+    imputed = (
+        backsampling = complete .+ backsampling,
+        mean = complete .+ mean_alloc, em = complete .+ fit.allocation,
+    )
+    before_day0 = (
+        backsampling = lost(backsampling),
+        mean = n_missing - sum(mean_alloc),
+    )
     if delay !== nothing
         fwd = is_matrix ?
-              posterior_allocate(missing_by_report, ones(n_days), fixed) :
-              backsampling_allocate(missing_by_report, fwd_pmf)
+            posterior_allocate(missing_by_report, ones(n_days), fixed) :
+            backsampling_allocate(missing_by_report, fwd_pmf)
         imputed = merge(imputed, (fwd = complete .+ fwd,))
         before_day0 = merge(before_day0, (fwd = lost(fwd),))
     end
-    return (complete = complete, missing_by_report = missing_by_report,
+    return (
+        complete = complete, missing_by_report = missing_by_report,
         empirical_delay = empirical, imputed = imputed,
         em_delay = fit.delay, em_delay_by_period = fit.delay_by_period,
         delay_period_start = fit.period_start,
         imputed_before_day0 = before_day0,
-        dropped = dropped, cutoff = T, day0 = day0)
+        dropped = dropped, cutoff = T, day0 = day0,
+    )
 end
