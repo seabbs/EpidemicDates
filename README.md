@@ -1,4 +1,6 @@
-# <img src="assets/logo-mark.svg" alt="" height="36" align="top"> Comparing methods for imputing missing symptom onsets
+# <img src="assets/logo-mark.svg" alt="" height="36" align="top"> EpidemicDates
+
+**Comparing methods for imputing missing symptom onsets.**
 
 [![test](https://github.com/seabbs/epidemic-imputation-demonstration/actions/workflows/test.yml/badge.svg)](https://github.com/seabbs/epidemic-imputation-demonstration/actions/workflows/test.yml)
 [![docs](https://github.com/seabbs/epidemic-imputation-demonstration/actions/workflows/pages.yml/badge.svg)](https://seabbs.github.io/epidemic-imputation-demonstration/docs/)
