@@ -38,7 +38,7 @@ jobs:
       - run: npm ci
       - name: Tests (module and page) with coverage
         # Writes lcov.info and fails below the thresholds in package.json.
-        # page.js runs in a vm from a string, so V8 does not count it.
+        # page.js runs in a vm with its file name, so V8 counts it too.
         run: npm run coverage
       - uses: codecov/codecov-action@v5
         with:

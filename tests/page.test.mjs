@@ -5,9 +5,11 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
+import { fileURLToPath } from "node:url";
 import vm from "node:vm";
 
-const page = readFileSync(new URL("../page.js", import.meta.url), "utf8");
+const pageFile = fileURLToPath(new URL("../page.js", import.meta.url));
+const page = readFileSync(pageFile, "utf8");
 const EpidemicDates = createRequire(import.meta.url)("../epidemic-dates.js");
 
 // an element stub that accepts any property access, call or assignment
@@ -59,7 +61,8 @@ function loadPage() {
     clearTimeout() {}
   };
   vm.createContext(ctx);
-  vm.runInContext(page, ctx);
+  // the file name lets V8 coverage count page.js
+  vm.runInContext(page, ctx, { filename: pageFile });
   return ctx;
 }
 
