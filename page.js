@@ -300,6 +300,20 @@ const quantile = (a, p) => {
 // y range for an error chart: at least ±min, widening with the data, but
 // capped at 1.5 times the 95th centile of absolute values so one extreme
 // point cannot flatten the rest
+// error-chart ranges held fixed while "Lock the error axes" is ticked
+const LOCKED = {};
+function lockedRange(id) {
+  const box = document.getElementById("lockAxes");
+  if (!box || !box.checked) return null;
+  if (!LOCKED[id]) {
+    try {
+      LOCKED[id] = JSON.parse(document.getElementById(id).dataset.range);
+    } catch {
+      return null;
+    }
+  }
+  return LOCKED[id];
+}
 function robustRange(ys, min) {
   const abs = ys.map(Math.abs).sort((a, b) => a - b);
   const cap = Math.max(min, 1.5 * quantile(abs, 0.95));
@@ -337,8 +351,15 @@ function lineChart(el, o) {
     const pos = ys.filter(v => v > 0);
     y0 = Math.max(Math.min(...pos), 0.5);
     y1 = Math.max(...pos) * 1.1;
+  } else if (o.fixedRange) {
+    [y0, y1] = o.fixedRange;
+    edge = [y0, y1];
+    const pad = (y1 - y0) * 0.06;
+    y0 -= pad;
+    y1 += pad;
   } else if (o.robust !== undefined) {
     [y0, y1] = robustRange(ys, o.robust);
+    if (el.dataset) el.dataset.range = JSON.stringify([y0, y1]);
     edge = [y0, y1];
     const pad = (y1 - y0) * 0.06;
     y0 -= pad;
@@ -743,7 +764,8 @@ function render() {
     series: sB.filter(shown),
     bands: bB,
     zero: true,
-    robust: 10,
+    robust: 2,
+    fixedRange: lockedRange("chartB"),
     xlab: "Onset week",
     ylab: "Error (%)",
     vfmt: v => (v >= 0 ? "+" : "−") + Math.abs(v).toFixed(1) + "%",
@@ -832,7 +854,8 @@ function render() {
     series: sE.filter(shown),
     bands: bE,
     zero: true,
-    robust: 0.2,
+    robust: 0.02,
+    fixedRange: lockedRange("chartE"),
     markers: markE,
     xlab: "Onset week",
     ylab: "Rt error",
@@ -1092,18 +1115,20 @@ function curveVals(key) {
   return KNOTS.map(() => 0);
 }
 const ED = { w: 296, h: 150, l: 34, r: 8, t: 8, b: 20 };
+// the editors span only the days shown: the last knot at or after the
+// final day of the window
+function edEnd() {
+  return Math.min(KNOT_END, Math.ceil((P.days - 1) / 15) * 15);
+}
 function edScales(cfg) {
   const iw = ED.w - ED.l - ED.r,
-    ih = ED.h - ED.t - ED.b;
+    ih = ED.h - ED.t - ED.b,
+    end = edEnd(),
+    nK = end / 15 + 1;
   return {
-    sx: t => ED.l + (t / KNOT_END) * iw,
+    sx: t => ED.l + (t / end) * iw,
     sy: v => ED.t + ((cfg.max - v) / (cfg.max - cfg.min)) * ih,
-    ix: px =>
-      clamp(
-        Math.round(((px - ED.l) / iw) * (KNOTS.length - 1)),
-        0,
-        KNOTS.length - 1
-      ),
+    ix: px => clamp(Math.round(((px - ED.l) / iw) * (nK - 1)), 0, nK - 1),
     iy: py =>
       clamp(
         cfg.max - ((py - ED.t) / ih) * (cfg.max - cfg.min),
@@ -1123,15 +1148,13 @@ function drawEditor() {
       g += `<line x1="${ED.l}" x2="${ED.w - ED.r}" y1="${sy(v)}" y2="${sy(v)}" stroke="var(${v === cfg.ref ? "--text-muted" : "--grid"})"/>`;
       g += `<text x="${ED.l - 4}" y="${sy(v) + 3}" text-anchor="end" font-size="9" fill="var(--text-muted)">${cfg.tick(v)}</text>`;
     }
-    for (let t = 0; t <= KNOT_END; t += 60)
+    const end = edEnd(),
+      shown = KNOTS.filter(t => t <= end);
+    for (let t = 0; t <= end; t += end <= 180 ? 30 : 60)
       g += `<text x="${sx(t)}" y="${ED.h - 6}" text-anchor="middle" font-size="9" fill="var(--text-muted)">${t}</text>`;
-    // days beyond the window are greyed out
-    if (P.days < KNOT_END)
-      g += `<rect x="${sx(P.days)}" y="${ED.t}" width="${sx(KNOT_END) - sx(P.days)}" height="${ED.h - ED.t - ED.b}" fill="var(--grid)" opacity="0.6"/>`;
-    g += `<polyline fill="none" stroke="var(--text-primary)" stroke-width="2" points="${KNOTS.map((t, j) => `${sx(t)},${sy(vals[j])}`).join(" ")}"/>`;
-    KNOTS.forEach((t, j) => {
-      const out = t >= P.days;
-      g += `<circle cx="${sx(t)}" cy="${sy(vals[j])}" r="${out ? 3 : 4}" fill="var(--surface-1)" stroke="var(${out ? "--text-muted" : "--text-primary"})" stroke-width="1.5"/>`;
+    g += `<polyline fill="none" stroke="var(--text-primary)" stroke-width="2" points="${shown.map((t, j) => `${sx(t)},${sy(vals[j])}`).join(" ")}"/>`;
+    shown.forEach((t, j) => {
+      g += `<circle cx="${sx(t)}" cy="${sy(vals[j])}" r="4" fill="var(--surface-1)" stroke="var(--text-primary)" stroke-width="1.5"/>`;
     });
     g += `<text class="edVal" x="${ED.w - ED.r}" y="${ED.t + 9}" text-anchor="end" font-size="10" fill="var(--text-secondary)"></text></svg>`;
     el.innerHTML = g;
@@ -1200,6 +1223,10 @@ document
   .getElementById("zoomReset")
   .addEventListener("click", () => setZoom(null));
 document.getElementById("logA").addEventListener("change", schedule);
+document.getElementById("lockAxes").addEventListener("change", () => {
+  for (const k of Object.keys(LOCKED)) delete LOCKED[k];
+  schedule();
+});
 document.getElementById("themeToggle").addEventListener("click", () => {
   const cur = document.documentElement.getAttribute("data-theme");
   const dark = cur
