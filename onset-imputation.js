@@ -632,18 +632,23 @@
    * @param {module:onset-imputation.Scenario} sc Scenario, for `f`, `F`, `S`, `T`.
    * @param {ArrayLike<number>} start Starting onset curve, for example the
    *   `hub` result.
+   * @param {number} [iterations=80] Number of EM iterations.
+   * @param {?function(number, Float64Array, Float64Array)} [onIter=null]
+   *   Called after each iteration with the iteration number, `comp` plus
+   *   the allocated cases, and the current onset curve `λ`. Used by the
+   *   page to show the iterations.
    * @returns {Float64Array} `comp` plus the allocated cases, by onset day.
    *   Not truncation adjusted.
    * @alias module:onset-imputation.emImpute
    */
-  function emImpute(comp, miss, sc, start) {
+  function emImpute(comp, miss, sc, start, iterations = 80, onIter = null) {
     const { S, T, f, F } = sc;
     const trunc = new Float64Array(S);
     for (let s = 0; s < S; s++) trunc[s] = Math.max(F[s][Math.min(T - s, D)], 1e-4);
     const lam = new Float64Array(S);
     for (let s = 0; s < S; s++) lam[s] = (start[s] + 1e-6) / trunc[s];
     let alloc = new Float64Array(S);
-    for (let it = 0; it < 80; it++) {
+    for (let it = 0; it < iterations; it++) {
       alloc = new Float64Array(S);
       for (let t = 0; t < miss.length; t++) {
         if (!miss[t]) continue;
@@ -656,6 +661,7 @@
         }
       }
       for (let s = 0; s < S; s++) lam[s] = (comp[s] + alloc[s] + 1e-9) / trunc[s];
+      if (onIter) onIter(it + 1, Float64Array.from(comp, (v, s) => v + alloc[s]), Float64Array.from(lam));
     }
     const out = new Float64Array(S);
     for (let s = 0; s < S; s++) out[s] = comp[s] + alloc[s];

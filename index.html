@@ -287,25 +287,20 @@ table.maths td:nth-child(2) { white-space: nowrap; }
         <div class="tabs" role="tablist">
           <h2 style="margin:0 12px 0 0">How the methods work</h2>
           <button type="button" role="tab" class="tab active" data-tab="steps" aria-selected="true">Step through</button>
-          <button type="button" role="tab" class="tab" data-tab="demo" aria-selected="false">On this scenario</button>
           <button type="button" role="tab" class="tab" data-tab="maths" aria-selected="false">Maths</button>
           <button type="button" role="tab" class="tab" data-tab="assumptions" aria-selected="false">Assumptions</button>
         </div>
         <div class="tabpanel" id="tab-steps">
-          <p class="sub">A toy line list of 15 cases. Two have no onset date. Pick a method and step through how it imputes the onset of the case reported on day 17.</p>
+          <p class="sub">Uses the scenario set above. Pick a method and a report day, then step through or press Run.</p>
           <div class="tabs" id="stepMethods"></div>
-          <div class="stepnav"><button type="button" id="stepPrev">◀ Back</button><span id="stepTitle"></span><button type="button" id="stepNext">Next ▶</button></div>
-          <div class="chart" id="stepChart"></div>
-          <p id="stepText" class="steptext"></p>
-        </div>
-        <div class="tabpanel" id="tab-demo" hidden>
-          <p class="sub">A case is reported on day t with no onset date. Where does each method put its onset? Ink is where it truly falls, given the simulated epidemic. Uses the scenario set below.</p>
           <div class="ctl" style="max-width:520px">
-            <label for="tSel">Report day t <output id="tSelOut"></output></label>
+            <label for="tSel">Report day <output id="tSelOut"></output></label>
             <input type="range" id="tSel" min="0" max="180" step="1" value="120">
           </div>
-          <div class="legend" id="legendD"></div>
-          <div class="chart" id="chartD"></div>
+          <div class="stepnav"><button type="button" id="stepPrev">◀ Back</button><button type="button" id="stepRun">▶ Run</button><button type="button" id="stepNext">Next ▶</button><span id="stepTitle"></span></div>
+          <div class="legend" id="stepLegend"></div>
+          <div class="chart" id="stepChart"></div>
+          <p id="stepText" class="steptext"></p>
         </div>
         <div class="tabpanel prose" id="tab-assumptions" hidden>
           <ul>

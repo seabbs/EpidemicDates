@@ -70,5 +70,7 @@ test("every step of the step-through renders for every method", () => {
   const ctx = loadPage();
   vm.runInContext(`for (const m of METHODS) for (let s = 0; s < 4; s++) {
     STEP.method = m.key; STEP.step = s; drawSteps();
-  }`, ctx);
+  }
+  STEP.method = "gen"; STEP.step = 3;
+  for (let i = 1; i <= 40; i++) { STEP.iter = i; drawSteps(); }`, ctx);
 });

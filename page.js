@@ -4,8 +4,9 @@
 // ---------- maths from onset-imputation.js ----------
 const {
   D, KNOTS, R_MIN, R_MAX, DEFAULTS, PRESETS, rToR, wrongSideOf1,
-  clamp, normalise, pmfMean, delayPmf, scenario, expectedData, runMethods, weekly,
-  growth, stochastic, metrics, completeWeeks, comparisonSeries
+  clamp, normalise, pmfMean, scenario, expectedData, runMethods, weekly,
+  growth, stochastic, metrics, completeWeeks, comparisonSeries,
+  emImpute, correctTruncation
 } = OnsetImputation;
 // line styles keep overlapping methods visible
 const STYLE = {
@@ -331,37 +332,7 @@ function render() {
   html += `</tbody>`;
   document.getElementById("summary").innerHTML = html;
 
-  // chart D: where each method puts a missing onset reported on day t
-  const tSel = document.getElementById("tSel");
-  tSel.max = sc.Td; if (+tSel.value > sc.Td) tSel.value = sc.Td;
-  const t = +tSel.value, ti = t + sc.B, span = 40;
-  const truthW = new Float64Array(D + 1), genW = new Float64Array(D + 1);
-  for (let d = 0; d <= D; d++) {
-    const s = ti - d;
-    if (s < 0 || s >= sc.S) continue;
-    truthW[d] = sc.C[s] * sc.f[s][d] * sc.pim(ti, d);
-    // the generative method's onset curve: imputed onsets over fraction reported
-    genW[d] = R.gen[s] / Math.max(sc.cover[s], 1e-4) * sc.f[s][d];
-  }
-  const tn = normalise(truthW), gn = normalise(genW);
-  const mshift = Math.round(pmfMean(R.g));
-  const onsetSeries = (w, name, M, extra = {}) => ({ name, color: M ? col[M] : ink,
-    dash: M ? METHODS.find(m => m.key === M).dash : undefined,
-    width: M ? METHODS.find(m => m.key === M).width : 3, ...extra,
-    data: Array.from({ length: span + 1 }, (_, d) => ({ x: t - d, y: w[d] })) });
-  const sD = [
-    onsetSeries(tn, "Truth", null),
-    onsetSeries(R.g, "Hub: pooled empirical delays", "hub"),
-    onsetSeries(sc.fbar, "Forward delay", "fwd"),
-    onsetSeries(gn, "Generative (EM)", "gen")
-  ];
-  document.getElementById("tSelOut").textContent = `${t} (growth that day ${(sc.r[Math.min(ti, sc.S - 1)]).toFixed(3)}/day)`;
-  legend(document.getElementById("legendD"), [...sD.map(s => ({ name: s.name, color: s.color, dash: !!s.dash })),
-    { name: `Mean shift: day ${t - mshift}`, color: col.mean }]);
-  lineChart(document.getElementById("chartD"), { series: sD, xlab: "Onset day", ylab: "Probability",
-    includeZero: true, xmin: t - span, xmax: t, height: 240, xtip: x => `Onset day ${x} (delay ${t - x})`,
-    vfmt: v => v.toFixed(4), yfmt: v => v.toFixed(2), aria: "Where each method places a missing onset",
-    vlines: [{ x: t - mshift, color: col.mean, label: "mean shift" }, { x: t, color: ink, label: "report day" }] });
+  drawSteps();
 
   const tot = tw.reduce((a, b) => a + b, 0);
   document.getElementById("status").textContent =
@@ -511,157 +482,126 @@ new ResizeObserver(entries => {
   if (w !== lastWidth) { lastWidth = w; schedule(); }
 }).observe(document.querySelector(".charts"));
 
-// ---------- step-through of the methods on a toy line list ----------
-const TOY = {
-  complete: [[2, 5], [3, 9], [4, 6], [5, 7], [6, 12], [7, 9], [8, 10], [9, 14],
-    [10, 12], [11, 13], [12, 18], [13, 15], [14, 16]],
-  missing: [17, 19], t: 17, T: 20, days: 20
-};
-const STEP = { method: "hub", step: 0 };
-function toyWeights() {
-  const dmax = 10, { t, T } = TOY;
-  const delays = TOY.complete.map(([o, r]) => r - o);
-  const g = new Array(dmax + 1).fill(0);
-  for (const d of delays) g[d] += 1 / delays.length;
-  const f = Array.from(delayPmf(4, 0.8).slice(0, dmax + 1));
-  const fs = f.reduce((a, b) => a + b, 0); for (let d = 0; d <= dmax; d++) f[d] /= fs;
-  const m = Math.round(delays.reduce((a, b) => a + b, 0) / delays.length);
-  // onset curve: complete onsets per day, smoothed over 3 days and divided
-  // by the fraction of cases with that onset reported by T
-  const n = new Array(T + 1).fill(0);
-  for (const [o] of TOY.complete) n[o]++;
-  const F = d => f.slice(0, Math.min(d, dmax) + 1).reduce((a, b) => a + b, 0);
-  const lam = n.map((_, s) => ((n[s - 1] || 0) + n[s] + (n[s + 1] || 0)) / 3 / Math.max(F(T - s), 0.05));
-  const onsetW = { hub: [], fwd: [], gen: [], mean: [] };
-  let gs = 0;
-  for (let d = 0; d <= dmax; d++) {
-    const s = t - d;
-    onsetW.hub.push({ s, w: g[d] }); onsetW.fwd.push({ s, w: f[d] });
-    const w = (lam[s] || 0) * f[d]; onsetW.gen.push({ s, w }); gs += w;
-  }
-  onsetW.gen.forEach(o => { o.w /= gs; });
-  onsetW.mean = [{ s: t - m, w: 1 }];
-  return { g, f, m, lam, onsetW, delays, dmax };
+// ---------- step-through of the methods on the current scenario ----------
+const STEP = { method: "hub", step: 0, iter: 40, timer: null };
+const STEP_TITLES = ["What is observed", "The delay the method uses", "Where one day's missing onsets go", "Apply to every report day"];
+let emCache = { key: null, snaps: [] };
+// EM iterations from a start using only the complete cases, for animation
+function emSnapshots(c) {
+  if (emCache.key === c.key) return emCache.snaps;
+  const snaps = [];
+  emImpute(c.ex.comp, c.ex.miss, c.sc, c.ex.comp, 40, (it, out) => snaps.push(out));
+  emCache = { key: c.key, snaps };
+  return snaps;
 }
-const STEP_TITLES = ["The data", "The delay the method uses", "Where the onset could be", "Impute"];
-const STEP_TEXT = {
-  hub: [
-    "Thirteen cases have an onset (dot) and a report day (square). The line between them is the delay. Two cases have only a report day.",
-    "The hub method pools the delays of every case with both dates into one distribution. Here most delays are 2 days, with a tail to 6.",
-    "For the case reported on day 17, each possible onset day gets the probability of the matching delay. The same distribution is used whatever day the case was reported.",
-    "One delay is drawn at random from that distribution, and the onset is set to the report day minus the delay. Repeating this for every missing case gives the imputed onset curve."
-  ],
-  mean: [
-    "Thirteen cases have an onset (dot) and a report day (square). The line between them is the delay. Two cases have only a report day.",
-    "The mean shift uses only the average of the pooled delays, here rounded to 3 days.",
-    "There is one possible onset: the report day minus the mean delay.",
-    "Every missing case moves back by the same 3 days. There is no spread, so the shape of the report curve is kept but shifted."
-  ],
-  fwd: [
-    "Thirteen cases have an onset (dot) and a report day (square). The line between them is the delay. Two cases have only a report day.",
-    "The forward draw uses the delay from onset to report as it would be estimated with corrections for truncation and censoring. Here it has a mean of 4 days.",
-    "Each possible onset day gets the probability of the matching forward delay. It ignores how many onsets there were on each day.",
-    "One delay is drawn at random and subtracted from the report day, as for the hub method but with the forward delay."
-  ],
-  gen: [
-    "Thirteen cases have an onset (dot) and a report day (square). The line between them is the delay. Two cases have only a report day.",
-    "The generative method uses the forward delay and an estimate of the onset curve λ (line), built from the complete cases and corrected for cases not yet reported.",
-    "Each possible onset day s is weighted by λ(s) × f(17 − s): how many onsets there were that day times the chance of that delay. Days with more onsets get more weight.",
-    "The missing case is shared across onset days in proportion to those weights. The onset curve is then re-estimated with the shared cases added, and the two steps repeat until nothing changes."
-  ]
-};
+function stepText(key, step, v) {
+  const nm = METHODS.find(m => m.key === key).name;
+  if (step === 0) return `On report day ${v.t}, about ${v.missT.toFixed(1)} of ${v.repT.toFixed(1)} expected reports (${(100 * v.missT / Math.max(v.repT, 1e-9)).toFixed(0)}%) have no onset date. Ink is the onsets of cases that do have one. Grey is all cases by report day. Every method has to place the missing ones on an onset day.`;
+  if (step === 1) {
+    if (key === "hub") return `The hub method pools the delays of every case with both dates in the data so far. Their mean is ${v.gMean.toFixed(1)} days. Ink is the delay of the missing cases reported on day ${v.t}, which depends on how onsets were changing before day ${v.t} (mean ${v.bMean.toFixed(1)} days). The pooled delay is the same whatever day a case was reported.`;
+    if (key === "mean") return `The mean shift keeps only the mean of the pooled delays, ${v.gMean.toFixed(1)} days, rounded to ${v.m}. Ink is the delay of the missing cases reported on day ${v.t} (mean ${v.bMean.toFixed(1)} days).`;
+    if (key === "fwd") return `The forward draw uses the delay from onset to report (mean ${v.fMean.toFixed(1)} days), as estimated with corrections for truncation and censoring. Ink is the delay of the missing cases reported on day ${v.t} (mean ${v.bMean.toFixed(1)} days). The forward delay ignores how many onsets there were on each earlier day.`;
+    return `The generative method uses the forward delay (mean ${v.fMean.toFixed(1)} days) together with its own estimate of the onset curve. Ink is the delay of the missing cases reported on day ${v.t} (mean ${v.bMean.toFixed(1)} days).`;
+  }
+  if (step === 2) {
+    if (key === "mean") return `All ${v.missT.toFixed(1)} missing cases from day ${v.t} go to day ${v.t - v.m}. Ink is where they truly had their onsets.`;
+    if (key === "gen") return `Each onset day s gets weight λ(s) × f(${v.t} − s): the estimated onsets that day times the chance of that delay. Ink is where the missing cases truly had their onsets. The two match when the onset curve and delay are right.`;
+    return `${nm} spreads the ${v.missT.toFixed(1)} missing cases from day ${v.t} over onset days in proportion to its delay. Ink is where they truly had their onsets.`;
+  }
+  if (key === "gen") return `Doing this for every report day gives the imputed onset curve. The generative method then re-estimates the onset curve from the result and repeats. Iteration ${v.iter} of 40: press Run to watch it converge from a start that uses the complete cases only.${v.nowcast ? " Curves are corrected for right truncation." : ""}`;
+  return `Doing this for every report day gives the imputed onset curve, here against the truth.${v.nowcast ? " Both are corrected for right truncation." : ""} Differences show where the method misplaces onsets.`;
+}
 function drawSteps() {
   const el = document.getElementById("stepChart");
-  if (!el) return;
-  const { onsetW, g, f, m, lam, dmax } = toyWeights();
-  const key = STEP.method, step = STEP.step, color = `var(${METHODS.find(x => x.key === key).col})`;
-  const W = 900, H = 330, x0 = 60, dx = 38, rowH = 11, top = 14;
-  const X = d => x0 + d * dx;
-  const nRows = TOY.complete.length + TOY.missing.length;
-  const axisY = top + nRows * rowH + 10, lowTop = axisY + 34, lowBase = H - 26;
-  let g2 = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Step-through of the imputation method">`;
-  // day axis
-  for (let d = 0; d <= TOY.days; d++) {
-    g2 += `<line x1="${X(d)}" x2="${X(d)}" y1="${top - 4}" y2="${axisY}" stroke="var(--grid)"/>`;
-    g2 += `<text x="${X(d)}" y="${axisY + 13}" text-anchor="middle" font-size="10" fill="var(--text-muted)">${d}</text>`;
+  if (!el || !cache.sc) return;
+  const c = cache, { sc, ex, R } = c, key = STEP.method, step = STEP.step;
+  const M = METHODS.find(m => m.key === key), color = css(M.col), ink = css("--text-primary"), grey = css("--reports");
+  const tSel = document.getElementById("tSel");
+  tSel.max = sc.Td; if (+tSel.value > sc.Td) tSel.value = sc.Td;
+  const t = +tSel.value, ti = t + sc.B, span = 40;
+  document.getElementById("tSelOut").textContent = t;
+  const back = new Float64Array(D + 1);
+  for (let d = 0; d <= D; d++) { const s = ti - d; if (s >= 0 && s < sc.S) back[d] = sc.C[s] * sc.f[s][d] * sc.pim(ti, d); }
+  const bn = normalise(back);
+  const m = Math.round(pmfMean(R.g));
+  const v = { t, missT: ex.miss[ti] || 0, repT: ex.rep[ti] || 0, gMean: pmfMean(R.g), fMean: pmfMean(sc.fbar),
+    bMean: pmfMean(bn), m, iter: STEP.iter, nowcast: !!P.nowcast && !P.retro };
+  const day = (arr, from, to) => { const out = []; for (let x = from; x <= to; x++) out.push({ x, y: arr[x + sc.B] ?? null }); return out; };
+  let o;
+  if (step === 0) {
+    const from = Math.max(0, t - span), to = Math.min(sc.Td, t + 5);
+    o = { series: [
+      { name: "All cases, by report day", color: grey, dash: "4 3", data: day(ex.rep, from, to) },
+      { name: "Complete cases, by onset day", color: ink, width: 2.5, data: day(ex.comp, from, to) },
+      { name: "Missing onset, by report day", color, width: 2.5, data: day(ex.miss, from, to) }],
+      xlab: "Day", ylab: "Cases per day", xmin: from, xmax: to, includeZero: true,
+      vlines: [{ x: t, color: ink, label: `day ${t}` }] };
+  } else if (step === 1) {
+    const dist = key === "hub" || key === "mean" ? R.g : key === "fwd" ? sc.fbar : sc.f[ti];
+    const series = [{ name: `Truth for day ${t}`, color: ink, width: 3, data: Array.from(bn, (y, d) => ({ x: d, y })).slice(0, span + 1) }];
+    if (key !== "mean") series.push({ name: M.name, color, width: 2.5, data: Array.from(dist, (y, d) => ({ x: d, y })).slice(0, span + 1) });
+    o = { series, xlab: "Delay from onset to report (days)", ylab: "Probability", xmin: 0, xmax: span, includeZero: true,
+      vlines: key === "mean" ? [{ x: m, color, label: `mean ${m} days` }] : [] };
+  } else if (step === 2) {
+    const w = new Float64Array(D + 1);
+    for (let d = 0; d <= D; d++) {
+      const s = ti - d;
+      if (s < 0 || s >= sc.S) continue;
+      if (key === "hub") w[d] = R.g[d];
+      else if (key === "fwd") w[d] = sc.fbar[d];
+      else if (key === "gen") w[d] = R.gen[s] / Math.max(sc.cover[s], 1e-4) * sc.f[s][d];
+    }
+    const wn = normalise(w);
+    const series = [{ name: "Truth", color: ink, width: 3, data: Array.from({ length: span + 1 }, (_, d) => ({ x: t - d, y: v.missT * bn[d] })) }];
+    if (key !== "mean") series.push({ name: M.name, color, width: 2.5, data: Array.from({ length: span + 1 }, (_, d) => ({ x: t - d, y: v.missT * wn[d] })) });
+    o = { series, xlab: "Onset day", ylab: `Missing cases from day ${t}`, xmin: t - span, xmax: t, includeZero: true,
+      vlines: key === "mean" ? [{ x: t - m, color, label: "all go here" }, { x: t, color: ink, label: "report day" }] : [{ x: t, color: ink, label: "report day" }] };
+  } else {
+    const nowcast = v.nowcast;
+    const corr = arr => nowcast ? correctTruncation(arr, sc) : arr;
+    let imputed = R[key];
+    if (key === "gen") { const snaps = emSnapshots(c); imputed = snaps[Math.min(STEP.iter, snaps.length) - 1]; }
+    const truth = nowcast ? sc.C : ex.truth;
+    const from = 0, to = sc.Td > sc.N - 1 ? sc.N - 1 : sc.Td;
+    o = { series: [
+      { name: "Truth", color: ink, width: 3, data: day(truth, from, to) },
+      { name: key === "gen" ? `${M.name}, iteration ${STEP.iter}` : M.name, color, width: 2.5, data: day(corr(imputed), from, to) }],
+      xlab: "Onset day", ylab: "Onsets per day", xmin: from, xmax: to, includeZero: true,
+      vlines: [{ x: t, color: grey, label: `day ${t}` }] };
   }
-  g2 += `<text x="${X(TOY.days) + 8}" y="${axisY + 13}" font-size="10" fill="var(--text-muted)">day</text>`;
-  // complete cases
-  TOY.complete.forEach(([o, r], i) => {
-    const y = top + i * rowH;
-    g2 += `<line x1="${X(o)}" x2="${X(r)}" y1="${y}" y2="${y}" stroke="var(--text-secondary)" stroke-width="2"/>`;
-    g2 += `<circle cx="${X(o)}" cy="${y}" r="4" fill="var(--text-primary)"/>`;
-    g2 += `<rect x="${X(r) - 4}" y="${y - 4}" width="8" height="8" fill="var(--text-secondary)"/>`;
-  });
-  // missing cases
-  TOY.missing.forEach((r, j) => {
-    const y = top + (TOY.complete.length + j) * rowH, sel = r === TOY.t;
-    g2 += `<text x="${X(r) - 10}" y="${y + 4}" text-anchor="end" font-size="11" font-weight="700" fill="${sel ? color : "var(--text-muted)"}">?</text>`;
-    g2 += `<rect x="${X(r) - 4}" y="${y - 4}" width="8" height="8" fill="${sel ? color : "var(--text-muted)"}"/>`;
-    if (sel && step === 3) {
-      if (key === "hub" || key === "fwd") {
-        // show one draw: the most likely delay, for illustration
-        const best = onsetW[key].reduce((a, b) => (b.w > a.w ? b : a));
-        g2 += `<line x1="${X(best.s)}" x2="${X(r)}" y1="${y}" y2="${y}" stroke="${color}" stroke-width="2" stroke-dasharray="4 3"/>`;
-        g2 += `<circle cx="${X(best.s)}" cy="${y}" r="5" fill="${color}"/>`;
-        g2 += `<text x="${X(best.s) - 8}" y="${y + 4}" text-anchor="end" font-size="10" fill="var(--text-secondary)">one draw</text>`;
-      } else if (key === "mean") {
-        g2 += `<line x1="${X(r - m)}" x2="${X(r)}" y1="${y}" y2="${y}" stroke="${color}" stroke-width="2" stroke-dasharray="4 3"/>`;
-        g2 += `<circle cx="${X(r - m)}" cy="${y}" r="5" fill="${color}"/>`;
-      } else {
-        for (const o of onsetW.gen) if (o.w > 0.01) g2 += `<circle cx="${X(o.s)}" cy="${y}" r="${2 + 10 * Math.sqrt(o.w)}" fill="${color}" opacity="0.55"/>`;
-      }
-    }
-  });
-  // lower panel
-  const maxW = Math.max(...(step === 1 ? (key === "gen" || key === "fwd" ? f : g) : onsetW[key].map(o => o.w)), 0.01);
-  const barH = w => (lowBase - lowTop) * w / maxW;
-  if (step === 1) {
-    const dist = key === "fwd" || key === "gen" ? f : g;
-    const label = key === "fwd" || key === "gen" ? "forward delay f(d)" : "pooled delays g(d)";
-    if (key === "mean") {
-      for (let d = 0; d <= dmax; d++) g2 += `<rect x="${X(d) - 9}" y="${lowBase - barH(g[d])}" width="18" height="${barH(g[d])}" fill="var(--grid)"/>`;
-      g2 += `<line x1="${X(m)}" x2="${X(m)}" y1="${lowTop}" y2="${lowBase}" stroke="${color}" stroke-width="3"/>`;
-      g2 += `<text x="${X(m) + 6}" y="${lowTop + 10}" font-size="11" fill="var(--text-secondary)">mean delay ≈ ${m} days</text>`;
-    } else {
-      for (let d = 0; d <= dmax; d++) g2 += `<rect x="${X(d) - 9}" y="${lowBase - barH(dist[d])}" width="18" height="${barH(dist[d])}" fill="${color}" opacity="0.8"/>`;
-      g2 += `<text x="${X(dmax) + 14}" y="${lowTop + 10}" font-size="11" fill="var(--text-secondary)">${label}</text>`;
-    }
-    if (key === "gen") {
-      const lmax = Math.max(...lam);
-      const pts = lam.map((v, s) => `${X(s)},${lowBase - (lowBase - lowTop) * v / lmax}`).join(" ");
-      g2 += `<polyline points="${pts}" fill="none" stroke="var(--text-primary)" stroke-width="2"/>`;
-      g2 += `<text x="${X(TOY.days) - 4}" y="${lowTop + 24}" text-anchor="end" font-size="11" fill="var(--text-secondary)">onset curve λ(s), on the day axis</text>`;
-    }
-    g2 += `<text x="${x0 - 8}" y="${lowBase + 14}" text-anchor="end" font-size="10" fill="var(--text-muted)">delay (days) →</text>`;
-    for (let d = 0; d <= dmax; d++) g2 += `<text x="${X(d)}" y="${lowBase + 14}" text-anchor="middle" font-size="10" fill="var(--text-muted)">${d}</text>`;
-  } else if (step >= 2) {
-    for (const o of onsetW[key]) {
-      if (o.s < 0) continue;
-      g2 += `<rect x="${X(o.s) - 9}" y="${lowBase - barH(o.w)}" width="18" height="${barH(o.w)}" fill="${color}" opacity="0.8"/>`;
-    }
-    g2 += `<text x="${x0 - 8}" y="${lowTop + 10}" text-anchor="end" font-size="10" fill="var(--text-muted)">P(onset)</text>`;
-    g2 += `<line x1="${X(TOY.t)}" x2="${X(TOY.t)}" y1="${lowTop}" y2="${lowBase}" stroke="var(--text-muted)" stroke-dasharray="3 3"/>`;
-    g2 += `<text x="${X(TOY.t) + 4}" y="${lowTop + 10}" font-size="10" fill="var(--text-muted)">report day 17</text>`;
-  }
-  g2 += `<line x1="${x0 - 20}" x2="${X(TOY.days)}" y1="${lowBase}" y2="${lowBase}" stroke="var(--text-muted)"/>`;
-  g2 += `</svg>`;
-  el.innerHTML = g2;
+  legend(document.getElementById("stepLegend"), o.series.map(x => ({ name: x.name, color: x.color, dash: !!x.dash })));
+  lineChart(el, { ...o, height: 260, aria: "Step-through of the selected method", vfmt: x => x.toFixed(3) });
   document.getElementById("stepTitle").textContent = `Step ${step + 1} of 4: ${STEP_TITLES[step]}`;
-  document.getElementById("stepText").textContent = STEP_TEXT[key][step];
+  document.getElementById("stepText").textContent = stepText(key, step, v);
   document.getElementById("stepPrev").disabled = step === 0;
   document.getElementById("stepNext").disabled = step === 3;
   for (const b of document.querySelectorAll("#stepMethods .mtab")) b.classList.toggle("active", b.dataset.m === key);
 }
+function stopRun() {
+  clearTimeout(STEP.timer); STEP.timer = null;
+  document.getElementById("stepRun").textContent = "▶ Run";
+}
+function runSteps() {
+  if (STEP.timer) { stopRun(); return; }
+  document.getElementById("stepRun").textContent = "❚❚ Pause";
+  if (STEP.step === 3 && (STEP.method !== "gen" || STEP.iter >= 40)) { STEP.step = 0; STEP.iter = 1; }
+  if (STEP.step < 3) STEP.iter = 1;
+  const tick = () => {
+    if (STEP.step < 3) { STEP.step++; drawSteps(); STEP.timer = setTimeout(tick, 1600); return; }
+    if (STEP.method === "gen" && STEP.iter < 40) { STEP.iter++; drawSteps(); STEP.timer = setTimeout(tick, STEP.iter < 10 ? 400 : 120); return; }
+    stopRun();
+  };
+  drawSteps();
+  STEP.timer = setTimeout(tick, 1600);
+}
 function wireSteps() {
   const host = document.getElementById("stepMethods");
   host.innerHTML = METHODS.map(m => `<button type="button" class="mtab" data-m="${m.key}">${m.name}</button>`).join("");
-  for (const b of host.querySelectorAll(".mtab")) b.addEventListener("click", () => { STEP.method = b.dataset.m; drawSteps(); });
-  document.getElementById("stepPrev").addEventListener("click", () => { STEP.step = Math.max(0, STEP.step - 1); drawSteps(); });
-  document.getElementById("stepNext").addEventListener("click", () => { STEP.step = Math.min(3, STEP.step + 1); drawSteps(); });
-  drawSteps();
+  for (const b of host.querySelectorAll(".mtab")) b.addEventListener("click", () => { stopRun(); STEP.method = b.dataset.m; STEP.iter = 40; drawSteps(); });
+  document.getElementById("stepPrev").addEventListener("click", () => { stopRun(); STEP.step = Math.max(0, STEP.step - 1); STEP.iter = 40; drawSteps(); });
+  document.getElementById("stepNext").addEventListener("click", () => { stopRun(); STEP.step = Math.min(3, STEP.step + 1); STEP.iter = 40; drawSteps(); });
+  document.getElementById("stepRun").addEventListener("click", runSteps);
 }
-
 buildControls();
 wireEditor();
 wireSteps();
