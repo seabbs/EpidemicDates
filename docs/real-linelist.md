@@ -1,8 +1,12 @@
 # Using it on a real line list
 
-This page works through imputing missing onsets in a line list, step by step, in Python, JavaScript, R and Julia.
-Pick a language in any tab and the other tabs follow.
+This page takes an example line list in which 17% of cases have no onset date and works through it step by step.
+We read the data, fill in the missing onsets with each method, and add them up by week.
+Because the example is simulated, we know the true onsets, so the figures show how close each method gets.
+Finally we nowcast the most recent weeks, which are still being reported, with uncertainty.
 
+The code is shown in Python, JavaScript, R and Julia.
+Pick a language in any tab and the other tabs follow.
 The functions are:
 
 - `impute_linelist` in the Python package ([source](https://github.com/seabbs/epidemic-imputation-demonstration/tree/main/src/epidemic_dates), [guide](python/index.md));
@@ -560,12 +564,8 @@ It has no estimate.
 Under 5% of the cases with onset on 31 August are reported by then, so that day has no estimate, and nor does its week.
 Set `min_reported` (`minReported` in JavaScript) lower to get one, with wide bands.
 
-**A hub submission.**
-The table is in the long format forecast hubs use for quantile forecasts.
-Each row is one target date and one quantile level.
+The table has one row per week and quantile level.
 `target_end_date` is the last onset day in the week.
-To submit, add the columns the hub asks for, such as the location, the reference date and the horizon.
-This is how the method could take part in a hub that collects nowcasts of onsets.
 
 **What the bands include.**
 They include the random placement of each missing onset, given the estimated delay and onset curve.

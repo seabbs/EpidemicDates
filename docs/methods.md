@@ -319,7 +319,7 @@ Each sample $b$ does three things.
 
 Weekly samples sum the daily samples.
 Quantiles at 0.025, 0.1, 0.25, 0.5, 0.75, 0.9 and 0.975 come from the samples by linear interpolation.
-They are returned in long format, one row per target date and quantile, as forecast hubs use.
+They are returned with one row per target date and quantile.
 
 **Captured:** the random placement of missing onsets; the binomial reporting of recent onsets; and, with resampling, sampling uncertainty in the delay and in the EM onset curve.
 

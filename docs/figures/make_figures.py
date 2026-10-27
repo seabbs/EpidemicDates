@@ -508,6 +508,27 @@ def read_linelist():
     return day0, onset, report
 
 
+def read_truth(day0, n_days):
+    """Read the true daily onsets, known because the example is simulated.
+
+    Returns the true onsets of the cases in the line list and the onsets of
+    all sampled cases, including those reported after the cut-off.
+    """
+    reported = np.zeros(n_days)
+    with (CSV.parent / "example-linelist-truth.csv").open() as fh:
+        for r in csv.DictReader(fh):
+            d = (dt.date.fromisoformat(r["true_onset_date"]) - day0).days
+            if 0 <= d < n_days:
+                reported[d] += 1
+    eventual = np.zeros(n_days)
+    with (CSV.parent / "example-eventual-onsets.csv").open() as fh:
+        for r in csv.DictReader(fh):
+            d = (dt.date.fromisoformat(r["onset_date"]) - day0).days
+            if 0 <= d < n_days:
+                eventual[d] += int(r["cases"])
+    return reported, eventual
+
+
 def fig_linelist(theme):
     """Weekly counts from the example line list."""
     th = style(theme)
@@ -516,6 +537,8 @@ def fig_linelist(theme):
     n_days = int(report.max()) + 1
     by_report = to_weeks(np.bincount(report.astype(int), minlength=n_days))
     complete = to_weeks(res["complete"])
+    true_reported, _ = read_truth(day0, n_days)
+    truth = to_weeks(true_reported)
     starts = [day0 + dt.timedelta(days=7 * w) for w in range(complete.size)]
     mid = [s + dt.timedelta(days=3) for s in starts]
     fig, ax = plt.subplots(figsize=(8, 3.4))
@@ -529,6 +552,13 @@ def fig_linelist(theme):
         lw=1.2,
         ls=(0, (3, 2)),
         label="Complete onsets only",
+    )
+    ax.plot(
+        mid,
+        truth,
+        color=th["truth"],
+        lw=2.4,
+        label="True onsets (known as the data are simulated)",
     )
     for m, key in [
         ("backsampling", "backsampling"),
@@ -578,6 +608,7 @@ def fig_nowcast(theme):
     def weeks(daily):
         return daily[first:].reshape(n_weeks, 7).sum(1)
 
+    _, eventual = read_truth(day0, cutoff + 1)
     q = np.quantile(nc["weekly_samples"], [0.025, 0.25, 0.5, 0.75, 0.975], 0)
     mid = [day0 + dt.timedelta(days=int(s) + 3) for s in nc["week_start"]]
     fig, ax = plt.subplots(figsize=(8, 3.4))
@@ -610,6 +641,13 @@ def fig_nowcast(theme):
         lw=1.2,
         ls=(0, (3, 2)),
         label="Complete onsets only",
+    )
+    ax.plot(
+        mid,
+        weeks(eventual),
+        color=th["truth"],
+        lw=2.4,
+        label="Eventual true onsets (known as the data are simulated)",
     )
     cut = day0 + dt.timedelta(days=cutoff)
     ax.axvline(cut, color=th["muted"], lw=0.8)

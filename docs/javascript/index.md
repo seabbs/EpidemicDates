@@ -126,7 +126,7 @@ for (const r of nc.weeklyQuantiles.slice(-7)) {
 2026-08-18 2026-08-24 0.975 58
 ```
 
-The table is in the long format forecast hubs use, one row per week and quantile.
+The table has one row per week and quantile.
 Weeks end on the cut-off.
 The week ending on the cut-off has no estimate, because under 5% of the cases with onset that day are reported (`minReported`).
 `method` can also be `backsampling`, `mean` or `fwd`, and `delay` holds the delay fixed.

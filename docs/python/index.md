@@ -105,7 +105,7 @@ ed.write_nowcast_csv(nc, "nowcast.csv")
 2026-08-18 2026-08-24 0.975 60.0
 ```
 
-The table is in the long format forecast hubs use, one row per week and quantile.
+The table has one row per week and quantile.
 Weeks end on the cut-off.
 The week ending on the cut-off has no estimate, because under 5% of the cases with onset that day are reported (`min_reported`).
 `write_nowcast_csv` writes the table to CSV.

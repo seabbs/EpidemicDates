@@ -25,6 +25,7 @@ nav:
   - Assumptions: assumptions.md
   - Using it on a real line list: real-linelist.md
   - Packages:
+      - packages/index.md
       - Python:
           - Guide: python/index.md
           - API reference: python/reference.md
@@ -92,7 +93,6 @@ extra_css:
 
 extra_javascript:
   - javascripts/mathjax.js
-  - javascripts/packages-menu.js
   - https://unpkg.com/mathjax@3.2.2/es5/tex-mml-chtml.js
 
 markdown_extensions:
