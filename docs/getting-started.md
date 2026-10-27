@@ -34,7 +34,7 @@ Both can impute a real line list.
     ```python
     import epidemic_dates as ed
 
-    ed.METHODS  # ('hub', 'mean', 'forward', 'em')
+    ed.METHODS  # ('backsampling', 'mean', 'forward', 'em')
     ```
 
     The package also installs the `epidemic-dates` command:
@@ -59,7 +59,7 @@ Both can impute a real line list.
     ```js
     const EpidemicDates = require("./epidemic-dates.js");
 
-    EpidemicDates.METHODS.map((m) => m.key); // ['hub', 'mean', 'fwd', 'gen']
+    EpidemicDates.METHODS.map((m) => m.key); // ['backsampling', 'mean', 'fwd', 'gen']
     ```
 
     In a browser, the script defines the global `EpidemicDates`:
