@@ -6,16 +6,30 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Comparing methods for imputing missing symptom onsets</title>
 <link rel="icon" type="image/svg+xml" href="assets/favicon.svg">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,500,700,700i%7CRoboto+Mono:400,700&amp;display=fallback">
 <style>
+/* Palette and type follow the docs (MkDocs Material, white or black
+   header, blue accent). Chart colours are the page's own. */
 :root {
   color-scheme: light;
-  --surface-0: #f4f3ef;
-  --surface-1: #fcfcfb;
-  --border: #dddcd5;
-  --grid: #e9e8e2;
-  --text-primary: #0b0b0b;
-  --text-secondary: #52514e;
-  --text-muted: #7a7973;
+  --font: Roboto, -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica,
+    Arial, sans-serif;
+  --font-mono: "Roboto Mono", SFMono-Regular, Consolas, Menlo, monospace;
+  --surface-0: #ffffff;
+  --surface-1: #ffffff;
+  --surface-2: #f5f5f5;
+  --header-bg: #ffffff;
+  --header-fg: #212121;
+  --border: #e0e0e0;
+  --grid: #eeeeee;
+  --text-primary: #212121;
+  --text-secondary: #616161;
+  --text-muted: #8a8a8a;
+  --link: #4051b5;
+  --accent: #4287ff;
+  --accent-soft: rgba(66, 135, 255, 0.1);
   --series-1: #2a78d6;
   --series-2: #eb6834;
   --series-3: #1baf7a;
@@ -28,17 +42,24 @@
   --good-bg: #e8f4ea;
   --warning-bg: #fbf1dc;
   --serious-bg: #fbe7e4;
+  --admonition: #ff9100;
+  --admonition-bg: rgba(255, 145, 0, 0.1);
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     color-scheme: dark;
-    --surface-0: #121211;
-    --surface-1: #1a1a19;
-    --border: #34332f;
-    --grid: #2a2a27;
-    --text-primary: #f0efec;
-    --text-secondary: #c3c2b7;
-    --text-muted: #94938b;
+    --surface-0: hsl(232, 15%, 14%);
+    --surface-1: hsl(232, 15%, 14%);
+    --surface-2: hsl(232, 15%, 18%);
+    --header-bg: #000000;
+    --header-fg: #ffffff;
+    --border: hsl(232, 15%, 24%);
+    --grid: hsl(232, 15%, 20%);
+    --text-primary: #bebfc7;
+    --text-secondary: #8c8d95;
+    --text-muted: #77787f;
+    --link: #5e8bde;
+    --accent-soft: rgba(66, 135, 255, 0.16);
     --series-1: #3987e5;
     --series-2: #d95926;
     --series-3: #199e70;
@@ -55,13 +76,18 @@
 }
 :root[data-theme="dark"] {
   color-scheme: dark;
-  --surface-0: #121211;
-  --surface-1: #1a1a19;
-  --border: #34332f;
-  --grid: #2a2a27;
-  --text-primary: #f0efec;
-  --text-secondary: #c3c2b7;
-  --text-muted: #94938b;
+  --surface-0: hsl(232, 15%, 14%);
+  --surface-1: hsl(232, 15%, 14%);
+  --surface-2: hsl(232, 15%, 18%);
+  --header-bg: #000000;
+  --header-fg: #ffffff;
+  --border: hsl(232, 15%, 24%);
+  --grid: hsl(232, 15%, 20%);
+  --text-primary: #bebfc7;
+  --text-secondary: #8c8d95;
+  --text-muted: #77787f;
+  --link: #5e8bde;
+  --accent-soft: rgba(66, 135, 255, 0.16);
   --series-1: #3987e5;
   --series-2: #d95926;
   --series-3: #199e70;
@@ -80,54 +106,110 @@ body {
   margin: 0;
   background: var(--surface-0);
   color: var(--text-primary);
-  font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+  font: 15px/1.6 var(--font);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
-.wrap { max-width: 1320px; margin: 0 auto; padding: 24px 16px 64px; }
-h1 { font-size: 1.6rem; margin: 0 0 6px; line-height: 1.25; }
-h2 { font-size: 1.1rem; margin: 0 0 8px; }
-h3 { font-size: 0.95rem; margin: 14px 0 6px; }
+button, input { font-family: inherit; }
+
+/* Top bar, as the docs header. */
+.topbar {
+  position: sticky; top: 0; z-index: 10;
+  background: var(--header-bg); color: var(--header-fg);
+  box-shadow: 0 0 4px rgba(0, 0, 0, 0.1), 0 4px 8px rgba(0, 0, 0, 0.1);
+}
+.topbar-inner {
+  max-width: 1280px; margin: 0 auto; height: 48px; padding: 0 16px;
+  display: flex; align-items: center; gap: 4px;
+}
+.brand {
+  display: flex; align-items: center; gap: 10px; min-width: 0;
+  color: inherit; text-decoration: none; margin-right: auto;
+}
+.brand img { display: block; height: 28px; width: auto; max-width: 100%; }
+.logo-dark { display: none !important; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .logo-light { display: none !important; }
+  :root:not([data-theme="light"]) .logo-dark { display: block !important; }
+}
+:root[data-theme="dark"] .logo-light { display: none !important; }
+:root[data-theme="dark"] .logo-dark { display: block !important; }
+.topbar a.nav, .topbar button.icon {
+  display: inline-flex; align-items: center; gap: 6px; height: 36px;
+  padding: 0 8px; border: 0; border-radius: 4px; background: none;
+  color: inherit; font-size: 14px; text-decoration: none; cursor: pointer;
+  opacity: 0.8;
+}
+.topbar a.nav:hover, .topbar button.icon:hover { opacity: 1; }
+.topbar a.nav:focus-visible, .topbar button.icon:focus-visible {
+  outline: 2px solid var(--accent); outline-offset: -2px; opacity: 1;
+}
+.topbar svg { fill: currentColor; }
+.icon-sun { display: none; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .icon-moon { display: none; }
+  :root:not([data-theme="light"]) .icon-sun { display: block; }
+}
+:root[data-theme="dark"] .icon-moon { display: none; }
+:root[data-theme="dark"] .icon-sun { display: block; }
+/* Inside the docs preview the docs header is already there. */
+.embedded .topbar { display: none; }
+
+.wrap { max-width: 1280px; margin: 0 auto; padding: 24px 16px 64px; }
+h1 {
+  font-size: 2rem; font-weight: 300; letter-spacing: -0.01em;
+  line-height: 1.3; margin: 8px 0 12px; color: var(--text-secondary);
+}
+h2 { font-size: 1.1rem; font-weight: 500; margin: 0 0 8px;
+  letter-spacing: -0.01em; line-height: 1.4; }
+h3 { font-size: 0.95rem; font-weight: 700; margin: 14px 0 6px; }
 p { margin: 0 0 10px; }
-a { color: var(--series-1); }
+a { color: var(--link); text-decoration: none; }
+a:hover { color: var(--accent); }
+b { font-weight: 700; }
 .lede { color: var(--text-secondary); max-width: 78ch; }
 .card {
   background: var(--surface-1);
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: 4px;
   padding: 16px;
 }
 .layout {
   display: grid;
   grid-template-columns: 330px minmax(0, 1fr);
   gap: 16px;
-  margin-top: 16px;
+  margin-top: 20px;
   align-items: start;
 }
 @media (max-width: 900px) {
   .layout { grid-template-columns: minmax(0, 1fr); }
 }
-.controls { position: sticky; top: 12px; max-height: calc(100vh - 24px);
+.controls { position: sticky; top: 64px; max-height: calc(100vh - 80px);
   overflow-y: auto; }
+.embedded .controls { top: 12px; max-height: calc(100vh - 24px); }
 @media (max-width: 900px) { .controls { position: static; max-height: none; } }
 .presets { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
 .presets button {
-  font: inherit; font-size: 0.8rem; padding: 4px 8px; border-radius: 6px;
-  border: 1px solid var(--border); background: var(--surface-0);
+  font-size: 0.8rem; padding: 4px 8px; border-radius: 4px;
+  border: 1px solid var(--border); background: var(--surface-1);
   color: var(--text-primary); cursor: pointer; text-align: left;
 }
-.presets button.active { border-color: var(--series-1);
-  box-shadow: inset 0 0 0 1px var(--series-1); }
+.presets button:hover { border-color: var(--accent); }
+.presets button.active { border-color: var(--accent);
+  background: var(--accent-soft); box-shadow: inset 0 0 0 1px var(--accent); }
 .preset-note { font-size: 0.8rem; color: var(--text-secondary);
   margin-bottom: 8px; min-height: 2.4em; }
 fieldset { border: 0; border-top: 1px solid var(--border); margin: 8px 0 0;
-  padding: 8px 0 0; }
-legend { font-weight: 600; font-size: 0.85rem; padding: 0; }
+  padding: 8px 0 0; min-width: 0; }
+legend { font-weight: 700; font-size: 0.85rem; padding: 0; }
 .ctl { margin: 6px 0; }
 .ctl label { display: flex; justify-content: space-between; font-size: 0.82rem;
   color: var(--text-secondary); gap: 8px; }
 .ctl label output { color: var(--text-primary); font-variant-numeric: tabular-nums; }
-.ctl input[type=range] { width: 100%; accent-color: var(--series-1); }
+.ctl input[type=range] { width: 100%; accent-color: var(--accent); }
 .check { display: flex; gap: 6px; align-items: center; font-size: 0.82rem;
   color: var(--text-secondary); margin: 6px 0; }
+.check input { accent-color: var(--accent); }
 .hint { font-size: 0.75rem; color: var(--text-muted); margin: 0 0 4px; }
 .charts { display: grid; gap: 16px; min-width: 0; }
 .chart-grid { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr);
@@ -142,7 +224,7 @@ legend { font-weight: 600; font-size: 0.85rem; padding: 0; }
 .tooltip {
   position: absolute; pointer-events: none; z-index: 5;
   background: var(--surface-1); border: 1px solid var(--border);
-  border-radius: 8px; padding: 6px 8px; font-size: 12px;
+  border-radius: 4px; padding: 6px 8px; font-size: 12px;
   box-shadow: 0 4px 16px rgba(0,0,0,0.12); min-width: 160px; display: none;
 }
 .tooltip .row { display: flex; gap: 6px; align-items: center;
@@ -157,7 +239,8 @@ legend { font-weight: 600; font-size: 0.85rem; padding: 0; }
 .legend i.dash { border-top-style: dashed; }
 .legend i.box { height: 10px; border: 0; border-radius: 2px; }
 .sub { font-size: 0.82rem; color: var(--text-secondary); margin: -4px 0 6px; }
-.verdict { background: var(--surface-1); display: flex; gap: 12px; align-items: flex-start; border-radius: 10px;
+.verdict { background: var(--surface-1); display: flex; gap: 12px;
+  align-items: flex-start; border-radius: 4px;
   padding: 14px 16px; border: 1px solid var(--border); }
 .verdict .icon { font-size: 1.3rem; line-height: 1; margin-top: 2px; }
 .verdict.good { background: var(--good-bg); }
@@ -169,79 +252,83 @@ legend { font-weight: 600; font-size: 0.85rem; padding: 0; }
 .verdict.serious .tag { color: var(--serious); }
 .verdict ul { margin: 6px 0 0; padding-left: 18px; }
 table { border-collapse: collapse; width: 100%; font-size: 0.82rem; }
-th, td { text-align: right; padding: 5px 8px; border-bottom: 1px solid var(--border);
+th, td { text-align: right; padding: 6px 8px; border-bottom: 1px solid var(--border);
   font-variant-numeric: tabular-nums; }
 th:first-child, td:first-child { text-align: left; }
-th { color: var(--text-secondary); font-weight: 600; }
-td.bad { color: var(--serious); font-weight: 600; }
-td.meh { color: var(--warning); font-weight: 600; }
+th { color: var(--text-primary); font-weight: 700; }
+td.bad { color: var(--serious); font-weight: 700; }
+td.meh { color: var(--warning); font-weight: 700; }
 .table-wrap { overflow-x: auto; }
 .prose { max-width: 80ch; }
 .key { margin: 10px 0 0; padding-left: 18px; max-width: 80ch; }
 .key li { margin-bottom: 2px; }
-details summary { cursor: pointer; font-weight: 600; }
+details summary { cursor: pointer; font-weight: 700; }
 .prose li { margin-bottom: 4px; }
-code, .math { font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 0.86em; }
-.note { border-left: 3px solid var(--series-4); padding: 6px 10px;
-  background: var(--surface-0); border-radius: 4px; }
+code, .math { font-family: var(--font-mono); font-size: 0.85em; }
+code { background: var(--surface-2); border-radius: 2px; padding: 0 0.3em; }
+.note { border-left: 4px solid var(--series-4); padding: 6px 10px;
+  background: var(--surface-2); border-radius: 2px; }
 .status { font-size: 0.78rem; color: var(--text-muted); }
-.tabs { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-bottom: 8px; }
-.tab { font: inherit; font-size: 0.85rem; padding: 4px 12px; border-radius: 999px;
-  border: 1px solid var(--border); background: var(--surface-0); color: var(--text-secondary); cursor: pointer; }
-.mtab { font: inherit; font-size: 0.8rem; padding: 3px 10px; border-radius: 999px;
-  border: 1px solid var(--border); background: var(--surface-0); color: var(--text-secondary); cursor: pointer; }
-.mtab.active { color: var(--text-primary); border-color: var(--series-1); box-shadow: inset 0 0 0 1px var(--series-1); }
-.tab.active { color: var(--text-primary); border-color: var(--series-1); box-shadow: inset 0 0 0 1px var(--series-1); }
+/* Tabs as in the docs: text labels with an accent underline. */
+.tabs { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 4px;
+  margin-bottom: 8px; border-bottom: 1px solid var(--border); }
+.tab, .mtab {
+  font-size: 0.82rem; font-weight: 700; padding: 6px 8px; margin-bottom: -1px;
+  border: 0; border-bottom: 2px solid transparent; border-radius: 0;
+  background: none; color: var(--text-secondary); cursor: pointer;
+}
+.mtab { font-size: 0.8rem; }
+.tab:hover, .mtab:hover { color: var(--link); }
+.tab.active, .mtab.active { color: var(--link); border-bottom-color: var(--link); }
 table.maths td, table.maths th { text-align: left; vertical-align: top; }
 table.maths td:nth-child(2) { white-space: nowrap; }
-.stepnav { display: flex; align-items: center; gap: 10px; margin: 6px 0; font-size: 0.9rem; }
-.stepnav button { font: inherit; font-size: 0.8rem; padding: 3px 10px; border-radius: 6px;
-  border: 1px solid var(--border); background: var(--surface-0); color: var(--text-primary); cursor: pointer; }
-.stepnav button:disabled { opacity: 0.4; cursor: default; }
-.steptext { max-width: 80ch; margin-top: 6px; }
-.links { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0 0; }
-.links a { display: inline-flex; align-items: center; gap: 6px; font-size: 0.85rem; text-decoration: none;
-  color: var(--text-primary); border: 1px solid var(--border); background: var(--surface-1);
-  border-radius: 999px; padding: 4px 12px; }
-.links a:hover { border-color: var(--series-1); }
-.disclaimer { border: 1px solid var(--warning); background: var(--warning-bg); color: var(--text-primary);
-  border-radius: 8px; padding: 8px 12px; margin: 6px 0 10px; font-size: 0.88rem; max-width: 100ch; }
-.site-logo { display: inline-block; margin-bottom: 4px; }
-.site-logo img { display: block; height: 32px; width: auto; }
-.logo-dark { display: none !important; }
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) .logo-light { display: none !important; }
-  :root:not([data-theme="light"]) .logo-dark { display: block !important; }
+.stepnav { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px;
+  margin: 6px 0; font-size: 0.9rem; }
+.stepnav button, .zoombar button, .asof-head button {
+  font-size: 0.8rem; padding: 3px 10px; border-radius: 4px;
+  border: 1px solid var(--border); background: var(--surface-1);
+  color: var(--text-primary); cursor: pointer;
 }
-:root[data-theme="dark"] .logo-light { display: none !important; }
-:root[data-theme="dark"] .logo-dark { display: block !important; }
-.zoombar { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 6px; }
-.zoombar button { font: inherit; font-size: 0.8rem; padding: 3px 8px; border-radius: 6px;
-  border: 1px solid var(--border); background: var(--surface-0); color: var(--text-primary); cursor: pointer; }
+.stepnav button:hover:not(:disabled), .zoombar button:hover:not(:disabled),
+.asof-head button:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+.stepnav button:disabled, .asof-head button:disabled { opacity: 0.4; cursor: default; }
 .zoombar button:disabled { opacity: 0.5; cursor: default; }
+.steptext { max-width: 80ch; margin-top: 6px; }
+/* Warning admonition, as in the docs. */
+.disclaimer { border-left: 4px solid var(--admonition);
+  background: var(--admonition-bg); color: var(--text-primary);
+  border-radius: 2px; padding: 8px 12px; margin: 6px 0 12px;
+  font-size: 0.88rem; max-width: 100ch; }
+.zoombar { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 6px; }
 .legend span.toggle { cursor: pointer; user-select: none; }
 .legend span.toggle:hover { color: var(--text-primary); }
 .legend span.off { opacity: 0.45; text-decoration: line-through; }
 .asof-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
-.asof-head label { font-weight: 600; }
+.asof-head label { font-weight: 700; }
 .asof-head output { font-variant-numeric: tabular-nums; }
-.asof-head button { font: inherit; font-size: 0.8rem; padding: 3px 10px; border-radius: 6px;
-  border: 1px solid var(--border); background: var(--surface-0); color: var(--text-primary); cursor: pointer; }
-.asof-head button:disabled { opacity: 0.4; cursor: default; }
-#asofSel { width: 100%; accent-color: var(--series-1); margin: 6px 0 2px; }
-.theme-toggle { float: right; font: inherit; font-size: 0.8rem;
-  border: 1px solid var(--border); background: var(--surface-1);
-  color: var(--text-primary); border-radius: 6px; padding: 4px 8px; cursor: pointer; }
+.ctl input[type=date] { display: block; width: 100%; margin-top: 2px;
+  padding: 3px 6px; font-size: 0.82rem; color: var(--text-primary);
+  background: var(--surface-1); border: 1px solid var(--border);
+  border-radius: 4px; }
+#asofSel { width: 100%; accent-color: var(--accent); margin: 6px 0 2px; }
 </style>
 </head>
 <body>
+<header class="topbar">
+  <div class="topbar-inner">
+    <a class="brand" href="./" aria-label="EpidemicDates home">
+      <img class="logo-light" src="assets/logo.svg" alt="EpidemicDates" width="156" height="28">
+      <img class="logo-dark" src="assets/logo-dark.svg" alt="EpidemicDates" width="156" height="28">
+    </a>
+    <a class="nav" href="https://seabbs.github.io/epidemic-imputation-demonstration/docs/" target="_top">Docs</a>
+    <a class="nav" href="https://github.com/seabbs/epidemic-imputation-demonstration" target="_top" aria-label="Source on GitHub" title="Source on GitHub"><svg width="20" height="20" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg></a>
+    <button class="icon" id="themeToggle" type="button" aria-label="Switch between light and dark mode" title="Switch between light and dark mode">
+      <svg class="icon-moon" width="20" height="20" viewBox="0 0 24 24" aria-hidden="true"><path d="M17.75 4.09l-2.53 1.94.91 3.06-2.63-1.81-2.63 1.81.91-3.06-2.53-1.94L12.44 4l1.06-3 1.06 3 3.19.09m3.5 6.91l-1.64 1.25.59 1.98-1.7-1.17-1.7 1.17.59-1.98L15.75 11l2.06-.05L18.5 9l.69 1.95 2.06.05m-2.28 4.95c.83-.08 1.72 1.1 1.19 1.85-.32.45-.66.87-1.08 1.27C15.17 23 8.84 23 4.94 19.07c-3.91-3.9-3.91-10.24 0-14.14.4-.4.82-.76 1.27-1.08.75-.53 1.93.36 1.85 1.19-.27 2.86.69 5.83 2.89 8.02a9.96 9.96 0 008.02 2.89m-1.64 2.02a12.08 12.08 0 01-7.8-3.47c-2.17-2.19-3.33-5-3.49-7.82-2.81 3.14-2.7 7.96.31 10.98 3.02 3.01 7.84 3.12 10.98.31z"/></svg>
+      <svg class="icon-sun" width="20" height="20" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 7a5 5 0 015 5 5 5 0 01-5 5 5 5 0 01-5-5 5 5 0 015-5m0 2a3 3 0 00-3 3 3 3 0 003 3 3 3 0 003-3 3 3 0 00-3-3m0-7l2.39 3.42C13.65 5.15 12.84 5 12 5c-.84 0-1.65.15-2.39.42L12 2M3.34 7l4.16-.35A7.2 7.2 0 005.94 8.5c-.44.74-.69 1.5-.83 2.29L3.34 7m.02 10l1.76-3.77a7.131 7.131 0 002.38 4.14L3.36 17M20.65 7l-1.77 3.79a7.023 7.023 0 00-2.38-4.15l4.15.36m-.01 10l-4.14.36c.59-.51 1.12-1.14 1.54-1.86.42-.73.69-1.5.83-2.29L20.64 17M12 22l-2.41-3.44c.74.27 1.55.44 2.41.44.82 0 1.63-.17 2.37-.44L12 22z"/></svg>
+    </button>
+  </div>
+</header>
 <div class="wrap">
-  <button class="theme-toggle" id="themeToggle" type="button">Toggle theme</button>
-  <a class="site-logo" href="./" aria-label="EpidemicDates home">
-    <img class="logo-light" src="assets/logo.svg" alt="EpidemicDates" height="32">
-    <img class="logo-dark" src="assets/logo-dark.svg" alt="" height="32">
-  </a>
   <h1>Comparing methods for imputing missing symptom onsets</h1>
   <div class="disclaimer" role="note">
     <b>Disclaimer.</b> This is an exploratory demonstration, not an evaluation of any hub's data pipeline.
@@ -254,12 +341,6 @@ table.maths td:nth-child(2) { white-space: nowrap; }
     (<a href="https://github.com/InsightNet-US/BDBV-Modeling-Hub/issues/61">issue #61</a>).
     Are there potential issues with that or similar approaches?
   </p>
-  <nav class="links" aria-label="Project links">
-    <a href="https://github.com/seabbs/epidemic-imputation-demonstration"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg><span>GitHub</span></a>
-    <a href="https://seabbs.github.io/epidemic-imputation-demonstration/docs/">Docs</a>
-    <a href="https://seabbs.github.io/epidemic-imputation-demonstration/docs/javascript/">JavaScript</a>
-    <a href="https://seabbs.github.io/epidemic-imputation-demonstration/docs/python/">Python</a>
-  </nav>
 
   <div class="layout">
     <aside class="card controls" id="controls">
@@ -338,7 +419,7 @@ table.maths td:nth-child(2) { white-space: nowrap; }
         </div>
         <div class="tabpanel prose" id="tab-assumptions" hidden>
           <ul>
-            <li><b>The hub method.</b> We assume each missing onset is drawn from the raw empirical delays of cases with both dates, pooled over the whole data vintage, with no correction for right truncation and no stratification by time or place. This follows the description in issue #61 but is not confirmed. If the delays were corrected for truncation, the method would behave like the forward draw.</li>
+            <li><b>Back-sampling.</b> We assume each missing onset is drawn from the raw empirical delays of cases with both dates, pooled over the whole data vintage, with no correction for right truncation and no stratification by time or place. This follows the description in issue #61 but is not confirmed. If the delays were corrected for truncation, the method would behave like the forward draw.</li>
             <li><b>The target.</b> By default the data are cut at the last day and every method is corrected for right truncation using the true delay, as if the hub had done this correctly. Truth is all onsets that will eventually be reported. With the nowcast off, truth is the onsets of cases reported by the cut-off, so recent weeks are incomplete for the truth and every method alike. In real data the delay used for the correction would itself have to be estimated.</li>
             <li><b>Missingness.</b> Onsets are missing at random given the report day, unless "Extra missingness with long delays" is set above 0.</li>
             <li><b>Delays.</b> Double interval censored daily Gamma. The mean can change with onset day; the CV is fixed. Real delays have heavier tails: in the BDBV data the 99th centile is about 33 days.</li>
@@ -348,15 +429,15 @@ table.maths td:nth-child(2) { white-space: nowrap; }
         </div>
         <div class="tabpanel prose" id="tab-maths" hidden>
           <p>Notation: a case reported on day <i>t</i> has unknown onset day <i>s</i>. <i>C</i>(<i>s</i>) is expected confirmed onsets, <i>f</i>(<i>d</i>) the forward onset-to-report delay, <i>F</i> its CDF, π(<i>t</i>, <i>d</i>) the chance an onset is missing, and <i>T</i> the data cut-off.</p>
-          <table class="maths">
+          <div class="table-wrap"><table class="maths">
             <tr><th>Method</th><th>Where a missing onset goes</th><th>In words</th></tr>
             <tr><td>Truth</td><td>P(<i>s</i> | <i>t</i>) ∝ <i>C</i>(<i>s</i>) <i>f</i>(<i>t</i>−<i>s</i>) π(<i>t</i>, <i>t</i>−<i>s</i>)</td><td>Depends on how many onsets there were on each earlier day.</td></tr>
-            <tr><td>Hub</td><td>P(<i>s</i> | <i>t</i>) = <i>g</i>(<i>t</i>−<i>s</i>), &nbsp; <i>g</i>(<i>d</i>) ∝ <i>f</i>(<i>d</i>) Σ<sub><i>u</i> ≤ <i>T</i>−<i>d</i></sub> <i>C</i>(<i>u</i>)(1−π)</td><td>Pooled delays of complete cases reported by <i>T</i>. The same for every <i>t</i>.</td></tr>
+            <tr><td>Back-sampling</td><td>P(<i>s</i> | <i>t</i>) = <i>g</i>(<i>t</i>−<i>s</i>), &nbsp; <i>g</i>(<i>d</i>) ∝ <i>f</i>(<i>d</i>) Σ<sub><i>u</i> ≤ <i>T</i>−<i>d</i></sub> <i>C</i>(<i>u</i>)(1−π)</td><td>Pooled delays of complete cases reported by <i>T</i>. The same for every <i>t</i>.</td></tr>
             <tr><td>Mean shift</td><td><i>s</i> = <i>t</i> − round(Σ<sub><i>d</i></sub> <i>d</i> <i>g</i>(<i>d</i>))</td><td>Every missing case moves back by the same amount.</td></tr>
             <tr><td>Forward draw</td><td>P(<i>s</i> | <i>t</i>) = <i>f</i>(<i>t</i>−<i>s</i>)</td><td>The delay from onset, ignoring how many onsets there were.</td></tr>
             <tr><td>Generative</td><td>P(<i>s</i> | <i>t</i>) ∝ λ(<i>s</i>) <i>f</i>(<i>t</i>−<i>s</i>), &nbsp; λ(<i>s</i>) = [<i>n</i><sub>complete</sub>(<i>s</i>) + <i>n</i><sub>allocated</sub>(<i>s</i>)] / <i>F</i>(<i>T</i>−<i>s</i>)</td><td>EM back-projection: share missing cases by the current onset curve, re-estimate the curve, repeat.</td></tr>
-          </table>
-          <p><b>Steady growth.</b> If <i>C</i>(<i>s</i>) ∝ e<sup><i>rs</i></sup> and π is constant, the truth is ∝ <i>f</i>(<i>d</i>) e<sup>−<i>rd</i></sup>. The sum in <i>g</i> is also ∝ e<sup>−<i>rd</i></sup>, so the hub draw matches the truth. When growth changes, the two differ.</p>
+          </table></div>
+          <p><b>Steady growth.</b> If <i>C</i>(<i>s</i>) ∝ e<sup><i>rs</i></sup> and π is constant, the truth is ∝ <i>f</i>(<i>d</i>) e<sup>−<i>rd</i></sup>. The sum in <i>g</i> is also ∝ e<sup>−<i>rd</i></sup>, so the back-sampling draw matches the truth. When growth changes, the two differ.</p>
           <p><b>Delays.</b> <i>f</i> is a double interval censored daily Gamma (primarycensored form): <i>f</i>(<i>d</i>) = <i>G</i>(<i>d</i>+1) − 2<i>G</i>(<i>d</i>) + <i>G</i>(<i>d</i>−1), with <i>G</i>(<i>x</i>) = ∫<sub>0</sub><sup><i>x</i></sup> <i>F</i>(<i>u</i>) d<i>u</i>.</p>
           <p><b>Rt.</b> From the weekly growth rate <i>r</i> with a Gamma generation interval (shape <i>k</i>, scale θ): <i>R</i> = (1 + <i>r</i>θ)<sup><i>k</i></sup>.</p>
           <h3>What each method is compared with</h3>
@@ -379,7 +460,7 @@ table.maths td:nth-child(2) { white-space: nowrap; }
             <li>Cases reported on day t need the backward delay, ∝ C(t−d) f(d). The pooled empirical delay matches it only when growth is steady.</li>
             <li>Generative = EM back-projection, a partial deconvolution. Complete cases keep their onsets. Each missing case reported on day t is shared over onset days s in proportion to λ(s) f(t−s). λ is re-estimated from complete and shared cases, divided by F(T−s) for right truncation, until it settles. This is EM for the likelihood with the missing onsets as latent, as in Becker's HIV back-projection and Richardson–Lucy deconvolution.</li>
             <li>Here it gets the true delay and expected counts, and assumes onsets are missing at random given report day. That makes it a best case. With noisy counts it needs smoothing or a model (e.g. a renewal process or <a href="https://package.epinowcast.org/articles/model.html#accounting-for-reported-cases-with-a-missing-reference-date">epinowcast</a>), and the delay has to be estimated. The Python cross-check estimates the delay jointly and stays close to unbiased.</li>
-            <li>Delays are double interval censored daily Gamma pmfs (primarycensored form, uniform primary event), so the daily mean equals the Gamma mean. The hub draws observed whole-day delays, which need no correction. A fitted forward delay would need this correction and a right-truncation adjustment, as in primarycensored or epidist.</li>
+            <li>Delays are double interval censored daily Gamma pmfs (primarycensored form, uniform primary event), so the daily mean equals the Gamma mean. Back-sampling draws observed whole-day delays, which need no correction. A fitted forward delay would need this correction and a right-truncation adjustment, as in primarycensored or epidist.</li>
             <li>Growth r(t), mean delay, fraction missing and ascertainment are linear between points every 15 days. Growth has optional mean-reverting noise. Beyond day 360 each holds its last value.</li>
             <li>Ebola settings: BVD 2026 early r 0.03–0.09/day, Rt about 1.8 falling to 1.0. Onset-to-sample delay mean 7.4 days. Isiro 2012 r about 0.008/day.</li>
             <li>Expected values. Turn on replicates to compare with noise. Weeks under 80% reported by the cut-off are shaded and excluded from growth and peak metrics.</li>

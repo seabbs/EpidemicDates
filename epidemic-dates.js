@@ -541,7 +541,10 @@
    * @alias module:epidemic-dates.METHODS
    */
   const METHODS = deepFreeze([
-    { key: "backsampling", name: "Back-sampling: draw from pooled empirical delays" },
+    {
+      key: "backsampling",
+      name: "Back-sampling: draw from pooled empirical delays"
+    },
     { key: "mean", name: "Mean shift" },
     { key: "fwd", name: "Draw from forward delay" },
     { key: "gen", name: "Generative (EM back-projection)" }

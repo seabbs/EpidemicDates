@@ -90,7 +90,8 @@ test("comparisonSeries stops the mean shift at T - m in real time", () => {
   const cs = M.comparisonSeries(p, sc, ex, R);
   assert.equal(cs.m, R.m);
   assert.equal(cs.lastDay.mean, 150 - R.m);
-  for (const k of ["backsampling", "fwd", "gen"]) assert.equal(cs.lastDay[k], null);
+  for (const k of ["backsampling", "fwd", "gen"])
+    assert.equal(cs.lastDay[k], null);
   const retro = pipeline({ ...bvd, retro: true });
   const cr = M.comparisonSeries(retro.p, retro.sc, retro.ex, retro.R);
   assert.equal(cr.lastDay.mean, null);

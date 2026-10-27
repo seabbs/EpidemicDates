@@ -30,7 +30,7 @@ const {
 } = EpidemicDates;
 // line styles keep overlapping methods visible
 const STYLE = {
-  hub: { col: "--series-1", width: 4 },
+  backsampling: { col: "--series-1", width: 4 },
   mean: { col: "--series-2", width: 2 },
   fwd: { col: "--series-3", width: 2, dash: "6 4" },
   gen: { col: "--series-4", width: 2.5, dash: "1 4" }
@@ -570,7 +570,7 @@ const meanShiftNote = m =>
 
 // ---------- verdict ----------
 function verdict(met) {
-  const h = met.hub;
+  const h = met.backsampling;
   const items = [];
   items.push(
     `Largest weekly error: <b>${pctProse(h.maxRel)}</b>. Largest Rt error <b>${(h.maxR >= 0 ? "+" : "−") + Math.abs(h.maxR).toFixed(2)}</b>. Weeks with Rt on the wrong side of 1: <b>${h.wrongSide}</b>.`
@@ -588,7 +588,7 @@ function verdict(met) {
     );
   document.getElementById("verdict").className = "verdict";
   document.getElementById("verdict").innerHTML =
-    `<div><span class="tag">Hub method.</span> ${items.join(" ")}</div>`;
+    `<div><span class="tag">Back-sampling method.</span> ${items.join(" ")}</div>`;
 }
 
 // ---------- main render ----------
@@ -1209,6 +1209,40 @@ document.getElementById("themeToggle").addEventListener("click", () => {
   schedule();
 });
 matchMedia("(prefers-color-scheme: dark)").addEventListener("change", schedule);
+
+// Follow the docs' light or dark choice. Inside the docs preview this is
+// the parent page's scheme; otherwise it is the palette the docs saved.
+function docsScheme() {
+  try {
+    if (window.parent && window.parent !== window)
+      return window.parent.document.body.getAttribute("data-md-color-scheme");
+    const key = new URL("docs/", location.href).pathname + ".__palette";
+    const saved = JSON.parse(localStorage.getItem(key) || "null");
+    return saved && saved.color ? saved.color.scheme : null;
+  } catch {
+    return null;
+  }
+}
+function followDocs() {
+  const scheme = docsScheme();
+  if (!scheme) return;
+  const theme = scheme === "slate" ? "dark" : "light";
+  if (document.documentElement.getAttribute("data-theme") === theme) return;
+  document.documentElement.setAttribute("data-theme", theme);
+  schedule();
+}
+followDocs();
+try {
+  if (window.parent && window.parent !== window) {
+    document.documentElement.classList.add("embedded");
+    new MutationObserver(followDocs).observe(window.parent.document.body, {
+      attributes: true,
+      attributeFilter: ["data-md-color-scheme"]
+    });
+  }
+} catch {
+  // a parent on another origin: keep the page's own theme
+}
 let lastWidth = 0;
 new ResizeObserver(entries => {
   const w = Math.round(entries[0].contentRect.width);
@@ -1219,7 +1253,7 @@ new ResizeObserver(entries => {
 }).observe(document.querySelector(".charts"));
 
 // ---------- step-through of the methods on the current scenario ----------
-const STEP = { method: "hub", step: 0, iter: 40, timer: null };
+const STEP = { method: "backsampling", step: 0, iter: 40, timer: null };
 const STEP_TITLES = [
   "What is observed",
   "The delay the method uses",
@@ -1322,8 +1356,8 @@ function stepText(key, step, v) {
   if (step === 0)
     return `A sample of cases from this scenario, using the data as of ${day}. Each has an onset (dot) and a report day (square). Some have no onset date (?). On ${day}, about ${((100 * v.missT) / Math.max(v.repT, 1e-9)).toFixed(0)}% of cases reported have no onset date. The three at the bottom are the ones we follow.`;
   if (step === 1) {
-    if (key === "hub")
-      return `The hub method pools the delays of every case with both dates in the data so far, mean ${v.gMean.toFixed(1)} days. Ink is the true delay for missing cases reported on ${day}, mean ${v.bMean.toFixed(1)} days. It depends on how onsets were changing before then. The pooled delay is the same whatever day a case was reported.`;
+    if (key === "backsampling")
+      return `Back-sampling pools the delays of every case with both dates in the data so far, mean ${v.gMean.toFixed(1)} days. Ink is the true delay for missing cases reported on ${day}, mean ${v.bMean.toFixed(1)} days. It depends on how onsets were changing before then. The pooled delay is the same whatever day a case was reported.`;
     if (key === "mean")
       return `The mean shift keeps only the mean of the pooled delays, ${v.gMean.toFixed(1)} days, rounded to ${v.m}. Ink is the true delay for missing cases reported on ${day}, mean ${v.bMean.toFixed(1)} days.`;
     if (key === "fwd")
@@ -1338,7 +1372,7 @@ function stepText(key, step, v) {
     return `${nm} gives each onset day the probability of the matching delay. Ink is where such cases truly had their onsets.`;
   }
   if (step === 3) {
-    if (key === "hub" || key === "fwd")
+    if (key === "backsampling" || key === "fwd")
       return `Each missing case gets one random delay from the distribution, so one imputed onset (filled dot). The ring is its true onset, which real data would not show.`;
     if (key === "mean")
       return `Each missing case moves back exactly ${v.m} days (filled dot). The ring is its true onset, which real data would not show.`;
@@ -1379,7 +1413,7 @@ function drawCases(el, o) {
       faded = step >= 2 && !cs.focus;
     const op = faded ? 0.3 : 1;
     if (!cs.missing) {
-      const hl = step === 1 && (key === "hub" || key === "mean");
+      const hl = step === 1 && (key === "backsampling" || key === "mean");
       g += `<line x1="${X(cs.onset)}" x2="${X(cs.report)}" y1="${y}" y2="${y}" stroke="${hl ? color : "var(--text-secondary)"}" stroke-width="${hl ? 3 : 2}" opacity="${op}"/>`;
       g += `<circle cx="${X(cs.onset)}" cy="${y}" r="4" fill="var(--text-primary)" opacity="${op}"/>`;
     } else {
@@ -1479,7 +1513,11 @@ function drawSteps() {
     if (s >= 0 && s < sc.S) fts[d] = sc.f[s][d];
   }
   const dist =
-    key === "hub" || key === "mean" ? R.g : key === "fwd" ? sc.fbar : fts;
+    key === "backsampling" || key === "mean"
+      ? R.g
+      : key === "fwd"
+        ? sc.fbar
+        : fts;
   const lamAll = lambdaOf(vt);
   const lam = new Float64Array(D + 1);
   const w = new Float64Array(D + 1);
@@ -1487,7 +1525,7 @@ function drawSteps() {
     const s = ti - d;
     if (s < 0 || s >= sc.S) continue;
     lam[d] = lamAll[s];
-    if (key === "hub") w[d] = R.g[d];
+    if (key === "backsampling") w[d] = R.g[d];
     else if (key === "fwd") w[d] = sc.fbar[d];
     else if (key === "gen") w[d] = lamAll[s] * fts[d];
   }

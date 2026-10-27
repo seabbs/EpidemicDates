@@ -5,7 +5,9 @@ import assert from "node:assert/strict";
 import { M, byWeek, linelist, sum } from "./helpers.mjs";
 
 const finite = r =>
-  ["backsampling", "mean", "gen"].every(k => r.imputed[k].every(Number.isFinite));
+  ["backsampling", "mean", "gen"].every(k =>
+    r.imputed[k].every(Number.isFinite)
+  );
 
 test("generative method recovers onsets with an estimated delay", () => {
   const set = {
