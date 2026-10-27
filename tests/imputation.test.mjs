@@ -18,7 +18,10 @@ function run(set) {
 }
 const maxRelErr = (mw, tw) => Math.max(...Array.from(mw, (v, w) =>
   tw[w] >= 10 ? Math.abs(v / tw[w] - 1) : 0));
-const steady = r => ({ knots: M.KNOTS.map(() => r) });
+// longer delays and more missing onsets than the baseline, so effects are
+// large enough to test
+const LONG = { mu0: 8, mu1: 8, cv: 1, pi0: 0.4, pi1: 0.4 };
+const steady = r => ({ knots: M.KNOTS.map(() => r), ...LONG });
 const bvd = M.PRESETS[0].set;
 
 test("rounded Gamma delay has the requested mean", () => {
@@ -50,7 +53,7 @@ test("forward draw overstates counts in steady growth", () => {
 });
 
 test("hub method differs from truth when growth changes", () => {
-  const { mw, tw } = run(M.PRESETS.find(p => p.name === "Sharp turnaround").set);
+  const { mw, tw } = run({ ...M.PRESETS.find(p => p.name === "Sharp turnaround").set, ...LONG });
   assert.ok(maxRelErr(mw.hub, tw) > 0.05);
 });
 
