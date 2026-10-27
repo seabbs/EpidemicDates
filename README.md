@@ -155,6 +155,24 @@ task sim      # run the simulation (pass arguments after --)
 task serve    # serve the page on http://localhost:8000
 ```
 
+## Citation
+
+If you use this, please cite:
+
+> Abbott S (2026). *Onset imputation by back-sampling reporting delays: an interactive demonstration*. <https://github.com/seabbs/epidemic-imputation-demonstration>
+
+```bibtex
+@software{abbott2026imputation,
+  author = {Abbott, Sam},
+  title  = {Onset imputation by back-sampling reporting delays: an interactive demonstration},
+  year   = {2026},
+  url    = {https://github.com/seabbs/epidemic-imputation-demonstration}
+}
+```
+
+The same details are in `CITATION.cff`, which GitHub shows as "Cite this repository".
+Note the warning at the top: the code is LLM generated and only the interactive page has been checked.
+
 ## Licence
 
 MIT.
