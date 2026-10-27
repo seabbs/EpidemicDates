@@ -90,7 +90,7 @@ test("comparisonSeries stops the mean shift at T - m in real time", () => {
   const cs = M.comparisonSeries(p, sc, ex, R);
   assert.equal(cs.m, R.m);
   assert.equal(cs.lastDay.mean, 150 - R.m);
-  for (const k of ["hub", "fwd", "gen"]) assert.equal(cs.lastDay[k], null);
+  for (const k of ["backsampling", "fwd", "gen"]) assert.equal(cs.lastDay[k], null);
   const retro = pipeline({ ...bvd, retro: true });
   const cr = M.comparisonSeries(retro.p, retro.sc, retro.ex, retro.R);
   assert.equal(cr.lastDay.mean, null);
@@ -106,7 +106,7 @@ test("run() leaves the mean shift's last weeks out in real time", () => {
     if (masked) assert.equal(res.rt.mean[w], null);
   });
   assert.equal(res.imputed.mean[W - 1], null);
-  assert.ok(res.imputed.hub.every(Number.isFinite));
+  assert.ok(res.imputed.backsampling.every(Number.isFinite));
   // the metrics skip the masked weeks
   const met = res.metrics.mean;
   assert.ok(Number.isFinite(met.maxRel) && Number.isFinite(met.meanAbs));
@@ -144,5 +144,5 @@ test("stochastic bands leave out the mean shift's last week", () => {
   const st = M.stochastic(sc, W, 6, true, 3);
   const lastX = sc.wk0 + 7 * (W - 1) + 3.5;
   assert.ok(!st.bands.mean.some(b => b.x === lastX));
-  assert.ok(st.bands.hub.some(b => b.x === lastX));
+  assert.ok(st.bands.backsampling.some(b => b.x === lastX));
 });

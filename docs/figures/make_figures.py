@@ -7,8 +7,9 @@ The figures are built at docs build time and are not committed.
 Every figure except the worked example uses expected values, not random
 draws. They are computed here from the scenario settings in
 `epidemic_dates` (`scenario_setup`, `F_DEFAULT`) and its allocation
-functions (`hub_allocate`, `mean_shift_allocate`). The generative method
-is EM back-projection with the true delay, run on the expected counts.
+functions (`backsampling_allocate`, `mean_shift_allocate`).
+The generative method is EM back-projection with the true delay,
+run on the expected counts.
 The worked example uses `impute_linelist` on the example line list.
 
 Run from the repository root:
@@ -38,13 +39,13 @@ CSV = HERE.parent / "data" / "example-linelist.csv"
 
 # Method colours, matching the interactive page.
 COL = {
-    "hub": "#2a78d6",
+    "backsampling": "#2a78d6",
     "mean": "#eb6834",
     "fwd": "#1baf7a",
     "gen": "#eda100",
 }
 LABEL = {
-    "hub": "Hub",
+    "backsampling": "Back-sampling",
     "mean": "Mean shift",
     "fwd": "Forward draw",
     "gen": "Generative (EM)",
@@ -195,9 +196,9 @@ def allocations(ex, cutoff):
     g, f, m = ex["g"], ex["f"], ex["missing"]
     shift = ed.round_half_up(float(np.dot(np.arange(g.size), g)))
     return {
-        "hub": ed.hub_allocate(m, g),
+        "backsampling": ed.backsampling_allocate(m, g),
         "mean": ed.mean_shift_allocate(m, shift),
-        "fwd": ed.hub_allocate(m, f),
+        "fwd": ed.backsampling_allocate(m, f),
         "gen": em_known_delay(ex["complete"], m, f, cutoff),
     }
 
@@ -265,7 +266,10 @@ def fig_delays(theme):
         back /= back.sum()
         ax.plot(d, f[: dmax + 1], color=COL["fwd"], label="Forward delay")
         ax.plot(
-            d, g[: dmax + 1], color=COL["hub"], label="Pooled empirical (hub)"
+            d,
+            g[: dmax + 1],
+            color=COL["backsampling"],
+            label="Pooled empirical (back-sampling)",
         )
         ax.plot(
             d,
@@ -298,7 +302,7 @@ def fig_placement(theme):
     inside = lag < f.size
     post = np.where(inside, prior * f[np.clip(lag, 0, f.size - 1)], 0.0)
     post /= post.sum()
-    hub = np.where(inside, g[np.clip(lag, 0, f.size - 1)], 0.0)
+    backsampled = np.where(inside, g[np.clip(lag, 0, f.size - 1)], 0.0)
     fwd = np.where(inside, f[np.clip(lag, 0, f.size - 1)], 0.0)
     shift = ed.round_half_up(float(np.dot(np.arange(g.size), g)))
     # the generative method's posterior at the EM fixed point
@@ -341,9 +345,11 @@ def fig_placement(theme):
     )
     ax.plot(
         x,
-        hub[window],
-        color=COL["hub"],
-        label=f"{LABEL['hub']}, mean day {mean_day(hub):.1f}",
+        backsampled[window],
+        color=COL["backsampling"],
+        label=(
+            f"{LABEL['backsampling']}, mean day {mean_day(backsampled):.1f}"
+        ),
     )
     ax.plot(
         x,
@@ -363,7 +369,7 @@ def fig_placement(theme):
     ax.set_xlabel(f"Onset day (case reported on day {t})")
     ax.set_ylabel("Probability")
     ax.set_xlim(x.min(), t)
-    ax.set_ylim(0, max(hub.max(), post.max(), fwd.max()) * 1.15)
+    ax.set_ylim(0, max(backsampled.max(), post.max(), fwd.max()) * 1.15)
     ax.legend(loc="upper left", bbox_to_anchor=(0.0, 1.0))
     fig.tight_layout()
     save(fig, "placement", theme)
@@ -386,7 +392,7 @@ def fig_changepoint(theme):
             ax = axes[i, j]
             ax.axhline(0, color=th["truth"], lw=0.8)
             ax.axvline(TURN_DAY / 7, color=th["muted"], lw=0.8, ls=":")
-            for m in ["hub", "mean", "fwd", "gen"]:
+            for m in ["backsampling", "mean", "fwd", "gen"]:
                 ls = (0, (3, 2)) if m == "fwd" else "-"
                 ax.plot(
                     res["week"],
@@ -449,7 +455,7 @@ def fig_truncation(theme):
     days = np.arange(TRUNC_T + 1)
     win = days >= TRUNC_T - 35
     fig, axes = plt.subplots(1, 2, figsize=(8, 3.2), sharey=True)
-    for ax, m in zip(axes, ["hub", "mean"], strict=True):
+    for ax, m in zip(axes, ["backsampling", "mean"], strict=True):
         raw = ex["complete"] + alloc[m]
         ax.plot(
             days[win],
@@ -523,7 +529,11 @@ def fig_linelist(theme):
         ls=(0, (3, 2)),
         label="Complete onsets only",
     )
-    for m, key in [("hub", "hub"), ("mean", "mean"), ("gen", "em")]:
+    for m, key in [
+        ("backsampling", "backsampling"),
+        ("mean", "mean"),
+        ("gen", "em"),
+    ]:
         ax.plot(
             mid,
             to_weeks(res["imputed"][key]),
@@ -564,7 +574,7 @@ def main():
         fig_truncation(theme)
     for res, title in cols:
         print(title)
-        for m in ["hub", "mean", "fwd", "gen"]:
+        for m in ["backsampling", "mean", "fwd", "gen"]:
             rel = np.abs(res["rel"][m]).max()
             rt = np.abs(res["rt"][m]).max()
             print(f"  {m:5} max |rel| {rel:.3f}  max |Rt err| {rt:.3f}")

@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import { M, byWeek, linelist, sum } from "./helpers.mjs";
 
 const finite = r =>
-  ["hub", "mean", "gen"].every(k => r.imputed[k].every(Number.isFinite));
+  ["backsampling", "mean", "gen"].every(k => r.imputed[k].every(Number.isFinite));
 
 test("generative method recovers onsets with an estimated delay", () => {
   const set = {
@@ -83,9 +83,9 @@ test("imputed onsets before day 0 are counted, not lost silently", () => {
   const report = [3, 4, 5, 6, 0, 1, 2, 6];
   const res = M.imputeLinelist({ onset, report, iterations: 0 });
   assert.deepEqual(res.empiricalDelay.slice(0, 4), [0, 0, 0, 1]);
-  assert.equal(res.droppedImputed.hub, 3);
+  assert.equal(res.droppedImputed.backsampling, 3);
   assert.equal(res.droppedImputed.mean, 3);
-  for (const k of ["hub", "mean"]) {
+  for (const k of ["backsampling", "mean"]) {
     const kept = sum(res.imputed[k]) - sum(res.complete);
     assert.equal(kept + res.droppedImputed[k], sum(res.missingByReport), k);
   }
@@ -106,10 +106,10 @@ test("no complete cases: nothing is NaN and every missing case is counted", () =
   });
   assert.ok(finite(res));
   assert.deepEqual(res.empiricalDelay.slice(0, 3), [0, 0, 0]);
-  assert.equal(res.droppedImputed.hub, 3);
+  assert.equal(res.droppedImputed.backsampling, 3);
   // EM estimates a delay from the missing cases alone, so it places them
   assert.ok(Math.abs(sum(res.imputed.gen) + res.droppedImputed.gen - 3) < 1e-9);
-  assert.equal(sum(res.imputed.hub), 0);
+  assert.equal(sum(res.imputed.backsampling), 0);
 });
 
 test("an empty line list with a cut-off gives zeros", () => {

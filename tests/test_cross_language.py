@@ -68,7 +68,7 @@ def test_delay_pmf_matches(mean, cv):
     assert np.allclose(js, py, atol=1e-8)
 
 
-def test_linelist_hub_and_mean_match(linelist):
+def test_linelist_backsampling_and_mean_match(linelist):
     js = run_js(
         "M.imputeLinelist({...input, maxDelay: 60, iterations: 0}).imputed",
         linelist,
@@ -77,7 +77,7 @@ def test_linelist_hub_and_mean_match(linelist):
         [np.nan if o is None else o for o in linelist["onset"]], dtype=float
     )
     py = ed.impute_linelist(obs, linelist["report"], cutoff=140)["imputed"]
-    assert np.allclose(js["hub"], py["hub"], atol=1e-9)
+    assert np.allclose(js["backsampling"], py["backsampling"], atol=1e-9)
     assert np.allclose(js["mean"], py["mean"], atol=1e-9)
 
 

@@ -54,7 +54,7 @@ const rows = fs
 const onset = rows.map((r) => day(r[1]));
 const report = rows.map((r) => day(r[2]));
 const res = imputeLinelist({ onset, report, cutoff: Math.max(...report) });
-for (const m of ["hub", "mean", "gen"]) {
+for (const m of ["backsampling", "mean", "gen"]) {
   const weeks = [];
   res.imputed[m].forEach((x, i) => {
     const w = Math.floor(i / 7);
@@ -65,7 +65,7 @@ for (const m of ["hub", "mean", "gen"]) {
 ```
 
 ```text
-hub 4.2 0.5 3.2 6.8 7.2 10.6 19.8 27.3 35.5 43.4 41.9 63.2 54.0 50.5 38.6 25.4 5.0
+backsampling 4.2 0.5 3.2 6.8 7.2 10.6 19.8 27.3 35.5 43.4 41.9 63.2 54.0 50.5 38.6 25.4 5.0
 mean 4.0 0.0 5.0 6.0 6.0 11.0 19.0 29.0 34.0 43.0 43.0 62.0 55.0 53.0 38.0 25.0 4.0
 gen 4.2 0.0 2.5 7.8 7.0 10.1 20.0 27.3 35.9 43.7 41.0 65.7 54.2 50.1 37.5 24.8 5.1
 ```
@@ -92,7 +92,7 @@ The [worked example](../real-linelist.md) explains each step.
 - `maxDelay` and `iterations`: the longest delay kept and the number of EM iterations.
 
 It returns a [`LinelistResult`](reference.md#module_epidemic-dates.LinelistResult).
-`imputed` holds daily onset counts for `hub`, `mean`, `fwd` and `gen`.
+`imputed` holds daily onset counts for `backsampling`, `mean`, `fwd` and `gen`.
 `fwd` is `null` without `delay`.
 `generativeDelay` is the delay used or estimated by EM.
 
@@ -115,10 +115,10 @@ const res = run({
 });
 
 res.truth;               // weekly true onsets
-res.imputed.hub;         // weekly onsets after imputation: hub, mean, fwd, gen
-res.rt.hub;              // weekly Rt from the imputed counts
-res.metrics.hub.maxRel;  // largest weekly relative error
-res.metrics.hub.maxR;    // largest Rt error
+res.imputed.backsampling;         // weekly onsets after imputation: backsampling, mean, fwd, gen
+res.rt.backsampling;              // weekly Rt from the imputed counts
+res.metrics.backsampling.maxRel;  // largest weekly relative error
+res.metrics.backsampling.maxR;    // largest Rt error
 ```
 
 The result is a [`RunResult`](reference.md#module_epidemic-dates.RunResult).
@@ -127,12 +127,12 @@ The error measures are described under [`Metrics`](reference.md#module_epidemic-
 ## The page's scenarios
 
 The scenarios on the page are in `EpidemicDates.PRESETS`.
-This prints the largest weekly relative error of the hub and generative methods for each one:
+This prints the largest weekly relative error of the back-sampling and generative methods for each one:
 
 ```js
 for (const p of EpidemicDates.PRESETS) {
   const m = run(p.set).metrics;
-  console.log(p.name.padEnd(40), m.hub.maxRel.toFixed(3), m.gen.maxRel.toFixed(3));
+  console.log(p.name.padEnd(40), m.backsampling.maxRel.toFixed(3), m.gen.maxRel.toFixed(3));
 }
 ```
 

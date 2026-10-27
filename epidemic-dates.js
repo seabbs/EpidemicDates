@@ -17,7 +17,7 @@
  * dates. It imputes the missing onsets four ways and compares them with the
  * true onsets of the same cases. The question is the bias from imputing a
  * missing onset as the report day minus a delay drawn from the pooled
- * empirical onset-to-report delays (the `hub` method). The other methods
+ * empirical onset-to-report delays (the `backsampling` method). The other methods
  * are a mean shift (`mean`), a draw from the forward delay (`fwd`) and EM
  * back-projection (`gen`). See {@link module:epidemic-dates.METHODS METHODS}.
  *
@@ -36,7 +36,7 @@
  *
  * - **Correct posterior** for the onset of a missing case:
  *   `P(s | t) ∝ C(s) fₛ(t − s) π(t, t − s)`.
- * - **Hub** ({@link module:epidemic-dates.convImpute convImpute} with the
+ * - **Back-sampling** ({@link module:epidemic-dates.convImpute convImpute} with the
  *   pooled empirical delay): `P(s | t) = g(t − s)`, where
  *   `g(d) ∝ Σ_{s ≤ T − d} C(s) fₛ(d) (1 − π(s + d, d))`.
  *   Under constant growth `r` and constant delay and missingness,
@@ -71,9 +71,9 @@
  * const res = EpidemicDates.run({ knots, mu0: 8, mu1: 8, pi0: 0.4, pi1: 0.4 });
  *
  * res.truth;              // weekly true onsets
- * res.imputed.hub;        // weekly onsets after imputation, by method
- * res.rt.hub;             // weekly Rt from the imputed counts
- * res.metrics.hub.maxRel; // largest weekly relative error
+ * res.imputed.backsampling;        // weekly onsets after imputation, by method
+ * res.rt.backsampling;             // weekly Rt from the imputed counts
+ * res.metrics.backsampling.maxRel; // largest weekly relative error
  * ```
  *
  * For a real line list use
@@ -515,7 +515,7 @@
 
   /**
    * Key of an imputation method.
-   * @typedef {"hub" | "mean" | "fwd" | "gen"} MethodKey
+   * @typedef {"backsampling" | "mean" | "fwd" | "gen"} MethodKey
    * @memberof module:epidemic-dates
    */
   /**
@@ -528,7 +528,7 @@
   /**
    * Imputation methods, by key:
    *
-   * - `hub`: draw a delay from the pooled empirical delays of cases with
+   * - `backsampling`: draw a delay from the pooled empirical delays of cases with
    *   both dates and subtract it from the report day.
    * - `mean`: subtract the rounded mean of those delays.
    * - `fwd`: draw from the forward (onset-weighted) delay. In simulation this
@@ -541,7 +541,7 @@
    * @alias module:epidemic-dates.METHODS
    */
   const METHODS = deepFreeze([
-    { key: "hub", name: "Hub: draw from pooled empirical delays" },
+    { key: "backsampling", name: "Back-sampling: draw from pooled empirical delays" },
     { key: "mean", name: "Mean shift" },
     { key: "fwd", name: "Draw from forward delay" },
     { key: "gen", name: "Generative (EM back-projection)" }
@@ -960,10 +960,10 @@
   }
   /**
    * Allocate missing-onset cases back in time with a single delay pmf: the
-   * expected result of drawing each delay from `g` (`hub` and `fwd`).
+   * expected result of drawing each delay from `g` (`backsampling` and `fwd`).
    *
    * A case reported on day `t` gets onset `s` with `P(s | t) = g(t − s)`.
-   * For `hub`, `g` is the pooled empirical delay,
+   * For `backsampling`, `g` is the pooled empirical delay,
    * `g(d) ∝ Σ_{s ≤ T − d} C(s) fₛ(d) (1 − π(s + d, d))`. Under constant
    * growth `r` this is `g(d) ∝ f(d) e^(−r d)`, the correct backward delay.
    * For `fwd`, `g = f̄`, the onset-weighted forward delay. The correct
@@ -1040,7 +1040,7 @@
    * @param {ArrayLike<number>} miss Missing-onset cases by report day.
    * @param {Scenario} sc Scenario, for `f`, `F`, `S`, `T`.
    * @param {ArrayLike<number>} start Starting onset curve, for example the
-   *   `hub` result.
+   *   `backsampling` result.
    * @param {number} [iterations=80] Number of EM iterations.
    * @param {?EmCallback} [onIter=null] Called after each iteration. Used by
    *   the page to show the iterations.
@@ -1089,7 +1089,7 @@
    * onsets by method on the internal day index, plus the pooled empirical
    * delay and its rounded mean.
    * @typedef {Object} MethodResults
-   * @property {Float64Array} hub Hub method.
+   * @property {Float64Array} backsampling Back-sampling method.
    * @property {Float64Array} mean Mean shift.
    * @property {Float64Array} fwd Forward draw.
    * @property {Float64Array} gen EM back-projection.
@@ -1109,12 +1109,12 @@
   function runMethods(sc, comp, miss, empCounts) {
     const g = normalise(empCounts);
     const m = Math.round(pmfMean(g));
-    const hub = convImpute(comp, miss, g, sc.S);
+    const backsampled = convImpute(comp, miss, g, sc.S);
     return {
-      hub,
+      backsampling: backsampled,
       mean: shiftImpute(comp, miss, m, sc.S),
       fwd: convImpute(comp, miss, sc.fbar, sc.S),
-      gen: emImpute(comp, miss, sc, hub),
+      gen: emImpute(comp, miss, sc, backsampled),
       g,
       m
     };
@@ -1280,7 +1280,7 @@
    */
   /**
    * Poisson replicates of a scenario. Each replicate draws complete and
-   * missing cases for every (onset, delay) cell, then imputes. `hub` and
+   * missing cases for every (onset, delay) cell, then imputes. `backsampling` and
    * `fwd` draw delays multinomially. `mean` and `gen` are as in expectation.
    * Draws come from a generator seeded with `seed`, so the same inputs give
    * the same bands.
@@ -1306,7 +1306,7 @@
     const { S, T, C, f, pim } = sc;
     const rng = makeRng(seed, 1);
     /** @returns {Record<MethodKey, Array<Array<?number>>>} */
-    const byMethod = () => ({ hub: [], mean: [], fwd: [], gen: [] });
+    const byMethod = () => ({ backsampling: [], mean: [], fwd: [], gen: [] });
     const relErr = byMethod(),
       gr = byMethod(),
       gerr = byMethod();
@@ -1338,8 +1338,8 @@
       }
       const nEmp = empCounts.reduce((a, b) => a + b, 0);
       const g = normalise(empCounts);
-      // hub and forward: each missing case gets an independent delay draw
-      const hub = Float64Array.from(comp);
+      // back-sampling and forward: each missing case gets an independent delay draw
+      const backsampled = Float64Array.from(comp);
       const fwd = Float64Array.from(comp);
       for (let t = 0; t <= T; t++) {
         if (!miss[t]) continue;
@@ -1348,17 +1348,17 @@
         for (let d = 0; d <= D; d++) {
           const s = t - d;
           if (s < 0 || s >= S) continue;
-          hub[s] += ah[d];
+          backsampled[s] += ah[d];
           fwd[s] += af[d];
         }
       }
       const mRep = Math.round(pmfMean(g));
       /** @type {Record<MethodKey, Float64Array>} */
       const res = {
-        hub,
+        backsampling: backsampled,
         fwd,
         mean: shiftImpute(comp, miss, mRep, S),
-        gen: emImpute(comp, miss, sc, hub)
+        gen: emImpute(comp, miss, sc, backsampled)
       };
       if (nowcast) {
         for (const M of METHODS) res[M.key] = correctTruncation(res[M.key], sc);
@@ -1422,7 +1422,7 @@
      * @returns {Record<MethodKey, Band[]>}
      */
     const bandsOf = src => ({
-      hub: band(src.hub),
+      backsampling: band(src.backsampling),
       mean: band(src.mean),
       fwd: band(src.fwd),
       gen: band(src.gen)
@@ -1688,7 +1688,7 @@
     }
     const truth = nowcast ? Float64Array.from(sc.C) : ex.truth;
     /** @type {Object<string, ?number>} */
-    const lastDay = { hub: null, mean: null, fwd: null, gen: null };
+    const lastDay = { backsampling: null, mean: null, fwd: null, gen: null };
     if (!p.retro) lastDay.mean = sc.Td - R.m;
     return { truth, methods, nowcast, lastDay, m: R.m };
   }
@@ -1696,7 +1696,7 @@
   /**
    * Weekly results of {@link module:epidemic-dates.run run}. Series are
    * indexed by week. Objects keyed by method hold one entry per
-   * {@link module:epidemic-dates.METHODS METHODS} key (`hub`, `mean`,
+   * {@link module:epidemic-dates.METHODS METHODS} key (`backsampling`, `mean`,
    * `fwd`, `gen`).
    * @typedef {Object} RunResult
    * @property {ScenarioParams} params Parameters used.
@@ -1715,7 +1715,7 @@
    * @property {Object<string, Metrics>} metrics Error
    *   metrics, by method.
    * @property {number[]} pooledDelay Pooled empirical delay pmf of complete
-   *   cases (used by `hub` and `mean`).
+   *   cases (used by `backsampling` and `mean`).
    * @property {number[]} forwardDelay Forward delay pmf (used by `fwd`).
    * @memberof module:epidemic-dates
    */
@@ -1733,7 +1733,7 @@
    *   knots: EpidemicDates.knotsFrom([[0, 0.05], [60, 0.05], [120, -0.01]]),
    *   mu0: 8, mu1: 8, pi0: 0.4, pi1: 0.4
    * });
-   * res.metrics.hub.maxRel; // largest weekly relative error, hub method
+   * res.metrics.backsampling.maxRel; // largest weekly relative error, back-sampling method
    * @example
    * // a preset, in real time
    * const p = EpidemicDates.PRESETS[0].set;
@@ -1807,10 +1807,10 @@
    * @property {number} dropped Cases dropped: report day not a whole number
    *   in `0..cutoff`, or a known onset that is not a whole number, before
    *   day 0, after the report or with a delay over `maxDelay`.
-   * @property {{hub: number, mean: number, fwd: ?number,
+   * @property {{backsampling: number, mean: number, fwd: ?number,
    *   gen: number}} droppedImputed Missing-onset cases each method could not
-   *   place, in expected cases. For `hub`, `mean` and `fwd` these are
-   *   imputed onsets before day 0, or all missing-onset cases for `hub` when
+   *   place, in expected cases. For `backsampling`, `mean` and `fwd` these are
+   *   imputed onsets before day 0, or all missing-onset cases for `backsampling` when
    *   there are no complete cases. For `gen` they are cases reported on a
    *   day with no possible onset under the delay. `fwd` is null without
    *   `delay`.
@@ -1820,7 +1820,7 @@
    *   complete cases.
    * @property {number[]} generativeDelay Delay pmf used by `gen`: the given
    *   `delay`, or the estimate.
-   * @property {{hub: number[], mean: number[], fwd: ?number[],
+   * @property {{backsampling: number[], mean: number[], fwd: ?number[],
    *   gen: number[]}} imputed Onsets after imputation by method. `fwd` is
    *   null without `delay`. `gen` is not truncation adjusted.
    * @memberof module:epidemic-dates
@@ -1828,7 +1828,7 @@
   /**
    * Impute missing onsets in a real line list with all four methods.
    *
-   * Methods are as on the overview page, with `T = cutoff`. `hub` uses
+   * Methods are as on the overview page, with `T = cutoff`. `backsampling` uses
    * `P(s | t) = g(t − s)` for the pooled empirical delay `g`, `mean` uses
    * `s = t − round(Σ_d d g(d))` and `fwd` uses `P(s | t) = f(t − s)` for
    * the given `delay`.
@@ -1855,7 +1855,7 @@
    *   report: [3, 5, 6, 8, 9, 10],
    *   cutoff: 10
    * });
-   * res.imputed.hub; // daily onsets, hub method
+   * res.imputed.backsampling; // daily onsets, back-sampling method
    * res.imputed.gen; // daily onsets, EM back-projection
    * res.generativeDelay; // estimated delay pmf
    * @alias module:epidemic-dates.imputeLinelist
@@ -1905,7 +1905,7 @@
     const g = normalise(emp);
     const m = Math.round(pmfMean(g));
     const fd = delay ? normalise(Float64Array.from(delay)) : null;
-    const hub = convImpute(comp, miss, g, S);
+    const backsampled = convImpute(comp, miss, g, S);
     const mean = shiftImpute(comp, miss, m, S);
     const fwd = fd ? convImpute(comp, miss, fd, S) : null;
     // expected missing-onset cases a delay pmf cannot place: onsets before
@@ -1937,7 +1937,7 @@
           Float64Array.from({ length: maxDelay + 1 }, (_, d) => delay[d] ?? 0)
         )
       : Float64Array.from(g);
-    const lam = Float64Array.from(hub, v => v + 1e-6);
+    const lam = Float64Array.from(backsampled, v => v + 1e-6);
     let alloc = new Float64Array(S);
     for (let it = 0; it < iterations; it++) {
       const Fc = cumsum(f);
@@ -1982,7 +1982,7 @@
       cutoff: T,
       dropped,
       droppedImputed: {
-        hub: unplaced(g),
+        backsampling: unplaced(g),
         mean: lostMean,
         fwd: fd ? unplaced(fd) : null,
         gen: lostGen
@@ -1992,7 +1992,7 @@
       empiricalDelay: Array.from(g),
       generativeDelay: Array.from(f),
       imputed: {
-        hub: Array.from(hub),
+        backsampling: Array.from(backsampled),
         mean: Array.from(mean),
         fwd: fwd ? Array.from(fwd) : null,
         gen: Array.from(gen)

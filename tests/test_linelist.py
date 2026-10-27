@@ -39,7 +39,7 @@ def test_outputs_have_documented_shapes(scenario_c):
     for key in ("empirical_delay", "em_delay"):
         assert res[key].shape == (DMAX + 1,)
         assert np.isclose(res[key].sum(), 1)
-    assert set(res["imputed"]) == {"hub", "mean", "em"}
+    assert set(res["imputed"]) == {"backsampling", "mean", "em"}
     assert res["dropped"] == 0
     assert np.isclose(res["missing_by_report"].sum(), np.isnan(observed).sum())
 
@@ -65,31 +65,31 @@ def test_dropped_counts_out_of_range_cases():
 
 
 def test_short_linelist_runs():
-    # Regression: a cut-off below DMAX made hub and mean fail with a
+    # Regression: a cut-off below DMAX made back-sampling and mean fail with a
     # broadcasting error. This is the README example.
     onset = np.array([0, 2, np.nan, 5, np.nan])
     report = np.array([3, 6, 7, 9, 12])
     res = impute_linelist(onset, report, cutoff=12)
-    for method in ("hub", "mean", "em"):
+    for method in ("backsampling", "mean", "em"):
         assert res["imputed"][method].shape == (13,)
     assert np.isclose(res["imputed"]["em"].sum(), 5)
 
 
 def test_imputed_before_day0_is_reported():
-    # Regression: hub and mean discarded imputed onsets before day 0
+    # Regression: back-sampling and mean discarded imputed onsets before day 0
     # without reporting them.
     onset = [0, 0, np.nan, np.nan]
     report = [2, 4, 1, 10]
     res = impute_linelist(onset, report, cutoff=10)
     n_missing = 2
-    for method in ("hub", "mean"):
+    for method in ("backsampling", "mean"):
         total = res["imputed"][method].sum() - res["complete"].sum()
         lost = res["imputed_before_day0"][method]
         assert np.isclose(total + lost, n_missing)
     # delays 2 and 4: mean 3, so the case reported on day 1 is lost
     assert np.isclose(res["imputed_before_day0"]["mean"], 1)
-    # hub: day-1 case lost with P(delay > 1) = 1
-    assert np.isclose(res["imputed_before_day0"]["hub"], 1)
+    # backsampling: day-1 case lost with P(delay > 1) = 1
+    assert np.isclose(res["imputed_before_day0"]["backsampling"], 1)
 
 
 def test_mean_shift_rounds_halves_up():

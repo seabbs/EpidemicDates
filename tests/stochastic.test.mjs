@@ -4,15 +4,15 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { M, bvd, pipeline } from "./helpers.mjs";
 
-test("expected hub error lies inside the stochastic 90% band", () => {
+test("expected back-sampling error lies inside the stochastic 90% band", () => {
   const { sc, W, mw, tw } = pipeline(bvd);
   const st = M.stochastic(sc, W, 60);
   let inside = 0,
     n = 0;
-  for (const b of st.bands.hub) {
+  for (const b of st.bands.backsampling) {
     const w = (b.x - 3.5 - sc.wk0) / 7;
     if (tw[w] < 50) continue;
-    const e = mw.hub[w] / tw[w] - 1;
+    const e = mw.backsampling[w] / tw[w] - 1;
     n++;
     if (e >= b.lo - 0.01 && e <= b.hi + 0.01) inside++;
   }
@@ -25,7 +25,7 @@ test("stochastic replicates are reproducible with the same seed", () => {
   const b = M.stochastic(sc, W, 10, false, 7);
   assert.deepEqual(a, b);
   const c = M.stochastic(sc, W, 10, false, 8);
-  assert.notDeepEqual(a.bands.hub, c.bands.hub);
+  assert.notDeepEqual(a.bands.backsampling, c.bands.backsampling);
 });
 
 test("stochastic replicates default to the scenario seed", () => {
@@ -57,5 +57,5 @@ test("stochastic bands are ordered and keyed by method", () => {
   assert.ok(st.truthBand.length > 0);
   // too few replicates for any band
   const none = M.stochastic(sc, W, 2);
-  assert.equal(none.bands.hub.length, 0);
+  assert.equal(none.bands.backsampling.length, 0);
 });

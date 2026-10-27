@@ -48,12 +48,12 @@ onset = np.array([day(r["onset_date"]) for r in rows])
 report = np.array([day(r["report_date"]) for r in rows])
 res = ed.impute_linelist(onset, report, cutoff=int(report.max()))
 week = np.arange(int(report.max()) + 1) // 7
-for m in ["hub", "mean", "em"]:
+for m in ["backsampling", "mean", "em"]:
     print(m, np.bincount(week, weights=res["imputed"][m]).round(1))
 ```
 
 ```text
-hub [ 4.2  0.5  3.2  6.8  7.2 10.6 19.8 27.3 35.5 43.4 41.9 63.2 54.  50.5 38.6 25.4  5. ]
+backsampling [ 4.2  0.5  3.2  6.8  7.2 10.6 19.8 27.3 35.5 43.4 41.9 63.2 54.  50.5 38.6 25.4  5. ]
 mean [ 4.  0.  5.  6.  6. 11. 19. 29. 34. 43. 43. 62. 55. 53. 38. 25.  4.]
 em [ 4.2  0.   2.5  7.8  7.  10.1 20.  27.3 35.9 43.7 41.  65.7 54.2 50.1 37.5 24.8  5.1]
 ```
@@ -79,7 +79,7 @@ The [worked example](../real-linelist.md) explains each step.
 - `n_iter`: the number of EM iterations.
 
 It returns a dict.
-`imputed` holds daily onset counts for `hub`, `mean` and `em`.
+`imputed` holds daily onset counts for `backsampling`, `mean` and `em`.
 `complete` holds the cases with a known onset, `missing_by_report` the missing-onset cases by report day, and `empirical_delay` the pooled delay pmf.
 `dropped` counts cases that could not be used.
 

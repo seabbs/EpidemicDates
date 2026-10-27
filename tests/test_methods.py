@@ -5,16 +5,16 @@ import pytest
 from epidemic_dates.delays import DMAX
 from epidemic_dates.methods import (
     METHODS,
+    backsampling_allocate,
     em_backproject,
     em_fit,
-    hub_allocate,
     mean_shift_allocate,
     round_half_up,
 )
 
 
 def test_methods_are_an_immutable_tuple():
-    assert METHODS == ("hub", "mean", "forward", "em")
+    assert METHODS == ("backsampling", "mean", "forward", "em")
     assert isinstance(METHODS, tuple)
 
 
@@ -31,24 +31,26 @@ def test_round_half_up_rejects_nan():
         round_half_up(float("nan"))
 
 
-def test_hub_allocate_spreads_by_delay():
+def test_backsampling_allocate_spreads_by_delay():
     missing = np.array([0.0, 0.0, 0.0, 4.0])
     pmf = np.array([0.25, 0.25, 0.5])
-    assert np.allclose(hub_allocate(missing, pmf), [0, 2, 1, 1])
+    assert np.allclose(backsampling_allocate(missing, pmf), [0, 2, 1, 1])
 
 
-def test_hub_allocate_drops_mass_before_day_zero():
+def test_backsampling_allocate_drops_mass_before_day_zero():
     missing = np.array([0.0, 4.0])
     pmf = np.array([0.25, 0.25, 0.5])
-    alloc = hub_allocate(missing, pmf)
+    alloc = backsampling_allocate(missing, pmf)
     assert np.allclose(alloc, [1, 1])
     assert np.isclose(missing.sum() - alloc.sum(), 2)
 
 
-def test_hub_allocate_handles_series_shorter_than_pmf():
+def test_backsampling_allocate_handles_series_shorter_than_pmf():
     # Regression: a line list shorter than the maximum delay used to fail
     # with a broadcasting error.
-    alloc = hub_allocate(np.array([1.0, 2.0]), np.full(DMAX + 1, 1 / 61))
+    alloc = backsampling_allocate(
+        np.array([1.0, 2.0]), np.full(DMAX + 1, 1 / 61)
+    )
     assert alloc.shape == (2,)
 
 

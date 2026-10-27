@@ -132,7 +132,7 @@ Cases with an onset after their report, or a delay longer than the maximum, are 
     print(f"dropped: {res['dropped']}")
     ```
 
-    `res["imputed"]` holds daily onset counts for `hub`, `mean` and `em`.
+    `res["imputed"]` holds daily onset counts for `backsampling`, `mean` and `em`.
     `res["complete"]` holds the cases with a known onset.
     `res["empirical_delay"]` is the pooled delay pmf of complete cases.
 
@@ -143,7 +143,7 @@ Cases with an onset after their report, or a delay longer than the maximum, are 
     console.log(`dropped: ${res.dropped}`);
     ```
 
-    `res.imputed` holds daily onset counts for `hub`, `mean` and `gen`.
+    `res.imputed` holds daily onset counts for `backsampling`, `mean` and `gen`.
     `res.imputed.fwd` is `null` unless you pass a forward delay as `delay`.
     `res.complete` holds the cases with a known onset.
     `res.generativeDelay` is the delay estimated by EM, allowing for right truncation.
@@ -170,7 +170,7 @@ Week 0 is days 0 to 6.
         return np.bincount(weeks, weights=daily)
 
     complete = to_weeks(res["complete"])
-    weekly = {m: to_weeks(res["imputed"][m]) for m in ["hub", "mean", "em"]}
+    weekly = {m: to_weeks(res["imputed"][m]) for m in ["backsampling", "mean", "em"]}
     ```
 
 === "JavaScript"
@@ -182,7 +182,7 @@ Week 0 is days 0 to 6.
       return weeks;
     };
     const complete = toWeeks(res.complete);
-    const methods = ["hub", "mean", "gen"];
+    const methods = ["backsampling", "mean", "gen"];
     const weekly = Object.fromEntries(
       methods.map((m) => [m, toWeeks(res.imputed[m])])
     );
@@ -193,17 +193,17 @@ Week 0 is days 0 to 6.
 === "Python"
 
     ```python
-    print(f"{'week from':<11}{'complete':>9}{'hub':>8}{'mean':>8}{'em':>8}")
+    print(f"{'week from':<11}{'complete':>9}{'backsampling':>8}{'mean':>8}{'em':>8}")
     for w in range(len(complete)):
         start = day0 + dt.timedelta(days=7 * w)
         print(
             f"{start.isoformat():<11}{complete[w]:>9.0f}"
-            + "".join(f"{weekly[m][w]:>8.1f}" for m in ["hub", "mean", "em"])
+            + "".join(f"{weekly[m][w]:>8.1f}" for m in ["backsampling", "mean", "em"])
         )
     ```
 
     ```text
-    week from   complete     hub    mean      em
+    week from   complete  backsampling    mean      em
     2026-05-08         4     4.2     4.0     4.2
     2026-05-15         0     0.5     0.0     0.0
     2026-05-22         2     3.2     5.0     2.5
@@ -237,7 +237,7 @@ Week 0 is days 0 to 6.
 
     ```text
     ┌─────────┬──────────────┬──────────┬──────┬──────┬──────┐
-    │ (index) │ week from    │ complete │ hub  │ mean │ gen  │
+    │ (index) │ week from    │ complete │ backsampling │ mean │ gen  │
     ├─────────┼──────────────┼──────────┼──────┼──────┼──────┤
     │ 0       │ '2026-05-08' │ 4        │ 4.2  │ 4    │ 4.2  │
     │ 1       │ '2026-05-15' │ 0        │ 0.5  │ 0    │ 0    │
@@ -275,7 +275,7 @@ Week 0 is days 0 to 6.
 ## Reading the output
 
 - Every method adds the 76 missing-onset cases back to the onset curve, so each column sums to about 437.
-- The hub method and EM back-projection agree closely in most weeks here, because the delay is short and growth changes slowly.
+- The back-sampling method and EM back-projection agree closely in most weeks here, because the delay is short and growth changes slowly.
   On the [interactive page](https://seabbs.github.io/epidemic-imputation-demonstration/) you can see when they part.
 - The mean shift moves every missing case by the same number of days, so it is lumpier.
 - The last weeks are incomplete under every method.

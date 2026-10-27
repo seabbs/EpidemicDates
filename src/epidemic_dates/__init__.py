@@ -61,7 +61,7 @@ onset = np.array([0, 2, np.nan, 5, np.nan])
 report = np.array([3, 6, 7, 9, 12])
 res = ed.impute_linelist(onset, report, cutoff=12)
 
-res["imputed"]["hub"]    # daily onset counts, pooled empirical delays
+res["imputed"]["backsampling"]    # daily onset counts, pooled empirical delays
 res["imputed"]["mean"]   # daily onset counts, mean shift
 res["imputed"]["em"]     # daily onset counts, EM back-projection
 res["empirical_delay"]   # pooled delay pmf of cases with both dates
@@ -87,8 +87,8 @@ The correct posterior for the onset day is
 
 $$P(s \mid t) \propto C(s) \, f(t - s) \, \pi(t, t - s).$$
 
-**Hub** (`hub`) draws a delay from the pooled empirical delays of
-complete cases reported by the cut-off:
+**Back-sampling** (`backsampling`) draws a delay from the pooled
+empirical delays of complete cases reported by the cut-off:
 
 $$P(s \mid t) = g(t - s), \qquad
 g(d) \propto \sum_{s \le T - d} C(s) \, f(d)
@@ -193,7 +193,7 @@ import numpy as np
 onset = np.array([0, 2, np.nan, 5, np.nan])
 report = np.array([3, 6, 7, 9, 12])
 res = sim.impute_linelist(onset, report, cutoff=12)
-res["imputed"]["hub"]  # daily onset counts, index = onset day
+res["imputed"]["backsampling"]  # daily onset counts, index = onset day
 res["imputed"]["em"]
 ```
 
@@ -209,9 +209,9 @@ from .linelist import LinelistResult, impute_linelist
 from .methods import (
     METHODS,
     EMFit,
+    backsampling_allocate,
     em_backproject,
     em_fit,
-    hub_allocate,
     mean_shift_allocate,
     round_half_up,
 )
@@ -250,10 +250,10 @@ __all__ = [
     "ScenarioSetup",
     "__version__",
     "analytic",
+    "backsampling_allocate",
     "em_backproject",
     "em_fit",
     "gamma_pmf",
-    "hub_allocate",
     "impute_linelist",
     "main",
     "mean_shift_allocate",

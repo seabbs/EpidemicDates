@@ -10,8 +10,8 @@ from numpy.typing import ArrayLike, NDArray
 
 from .delays import DMAX
 from .methods import (
+    backsampling_allocate,
     em_fit,
-    hub_allocate,
     mean_shift_allocate,
     round_half_up,
 )
@@ -35,10 +35,10 @@ class LinelistResult(TypedDict):
     em_delay : numpy.ndarray of float
         Static delay pmf (0..DMAX) estimated by EM back-projection.
     imputed : dict of str to numpy.ndarray
-        Daily onset counts (complete plus imputed) for `hub`, `mean` and
-        `em`.
+        Daily onset counts (complete plus imputed) for `backsampling`,
+        `mean` and `em`.
     imputed_before_day0 : dict of str to float
-        Expected number of missing-onset cases that `hub` and `mean`
+        Expected number of missing-onset cases that `backsampling` and `mean`
         place before day 0. These are not in `imputed`.
     dropped : int
         Number of cases dropped before imputation.
@@ -93,9 +93,9 @@ def impute_linelist(
           cases.
         - `em_delay`: static delay pmf (0..DMAX) estimated by EM.
         - `imputed`: dict of daily onset counts (complete plus imputed)
-          for `hub`, `mean` and `em`.
+          for `backsampling`, `mean` and `em`.
         - `imputed_before_day0`: dict with the expected number of
-          missing-onset cases that `hub` and `mean` place before day 0.
+          missing-onset cases that `backsampling` and `mean` place before day 0.
         - `dropped`: number of cases dropped.
 
     Raises
@@ -108,7 +108,7 @@ def impute_linelist(
 
     Notes
     -----
-    - `hub` spreads each missing case over report day minus each delay,
+    - `backsampling` spreads each missing case over report day minus each delay,
       weighted by `empirical_delay`. It is the expected allocation of
       the random draw, not a draw.
     - `mean` shifts each missing case back by the mean of
@@ -120,7 +120,7 @@ def impute_linelist(
       day. If missingness depends on the delay, all are biased.
     - Complete cases with a negative onset, an onset after report or a
       delay over `DMAX` are dropped. They are not imputed.
-    - For `hub` and `mean`, imputed onsets before day 0 are not in
+    - For `backsampling` and `mean`, imputed onsets before day 0 are not in
       `imputed`, so totals can be below the number of cases kept. The
       amount is in `imputed_before_day0`.
     - Outputs are expected counts and need not be whole numbers.
@@ -132,7 +132,7 @@ def impute_linelist(
     >>> onset = np.array([0, 2, np.nan, 5, np.nan])
     >>> report = np.array([3, 6, 7, 9, 12])
     >>> res = impute_linelist(onset, report, cutoff=12)
-    >>> res["imputed"]["hub"].shape
+    >>> res["imputed"]["backsampling"].shape
     (13,)
     """
     onset_days = np.asarray(onset, dtype=np.float64)
@@ -188,7 +188,7 @@ def impute_linelist(
     empirical = np.bincount(delay_c, minlength=DMAX + 1).astype(np.float64)
     empirical /= empirical.sum()
 
-    hub = hub_allocate(missing_by_report, empirical)
+    backsampled = backsampling_allocate(missing_by_report, empirical)
     shift = round_half_up(float(np.dot(np.arange(DMAX + 1), empirical)))
     mean = mean_shift_allocate(missing_by_report, shift)
     fit = em_fit((onset_c, delay_c), report_m, cutoff, n_iter=n_iter)
@@ -199,12 +199,12 @@ def impute_linelist(
         "empirical_delay": empirical,
         "em_delay": fit.delay,
         "imputed": {
-            "hub": complete + hub,
+            "backsampling": complete + backsampled,
             "mean": complete + mean,
             "em": complete + fit.allocation,
         },
         "imputed_before_day0": {
-            "hub": max(n_missing - float(hub.sum()), 0.0),
+            "backsampling": max(n_missing - float(backsampled.sum()), 0.0),
             "mean": n_missing - float(mean.sum()),
         },
         "dropped": int((~keep).sum() + (~ok).sum()),

@@ -46,8 +46,9 @@ def main() -> None:
     obs = np.array([np.nan if o is None else o for o in onset], dtype=float)
     res = ed.impute_linelist(obs, np.array(report), cutoff=cutoff)
     out = {
-        "note": "Reference outputs from the Python package. hub and mean "
-        "must match exactly; em within 2% on weeks with at least 50 cases.",
+        "note": "Reference outputs from the Python package. "
+        "back-sampling and mean must match exactly; "
+        "em within 2% on weeks with at least 50 cases.",
         "delay_pmfs": pmfs,
         "linelist": {
             "onset": onset,

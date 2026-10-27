@@ -1,5 +1,5 @@
 {
- "note": "Reference outputs from the Python package. hub and mean must match exactly; em within 2% on weeks with at least 50 cases.",
+ "note": "Reference outputs from the Python package. back-sampling and mean must match exactly; em within 2% on weeks with at least 50 cases.",
  "delay_pmfs": [
   {
    "mean": 8.0,
@@ -1088,7 +1088,7 @@
   "cutoff": 115,
   "max_delay": 60,
   "imputed": {
-   "hub": [
+   "backsampling": [
     1.002770083102493,
     0.02493074792243767,
     1.0193905817174516,

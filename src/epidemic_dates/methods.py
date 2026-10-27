@@ -4,8 +4,8 @@ r"""Imputation methods for cases with a missing onset.
 Complete cases keep their true onset.
 Cases with a missing onset are imputed by one of `METHODS`:
 
-- `hub`: onset = report - delay drawn from the pooled empirical delays
-  of complete cases reported by the cut-off (`hub_allocate` gives the
+- `backsampling`: onset = report - delay drawn from the pooled empirical delays
+  of complete cases reported by the cut-off (`backsampling_allocate` gives the
   expected allocation).
 - `mean`: onset = report - round(mean empirical delay), with halves
   rounded up (`mean_shift_allocate`).
@@ -30,14 +30,14 @@ from .delays import DMAX
 __all__ = [
     "METHODS",
     "EMFit",
+    "backsampling_allocate",
     "em_backproject",
     "em_fit",
-    "hub_allocate",
     "mean_shift_allocate",
     "round_half_up",
 ]
 
-METHODS: Final[tuple[str, ...]] = ("hub", "mean", "forward", "em")
+METHODS: Final[tuple[str, ...]] = ("backsampling", "mean", "forward", "em")
 """Imputation methods compared, in the order used in summary rows."""
 
 
@@ -72,12 +72,12 @@ def round_half_up(x: float) -> int:
     return math.floor(x + 0.5)
 
 
-def hub_allocate(
+def backsampling_allocate(
     missing_by_report: NDArray[np.float64], delay_pmf: NDArray[np.float64]
 ) -> NDArray[np.float64]:
     """Allocate missing-onset cases back from report day by a delay pmf.
 
-    This is the expected allocation of the `hub` method: each case
+    This is the expected allocation of the `backsampling` method: each case
     reported on day t is spread over onset days t - d with weight
     `delay_pmf[d]`. It is not a random draw.
 

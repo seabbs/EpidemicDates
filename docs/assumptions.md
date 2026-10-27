@@ -5,7 +5,7 @@ The maths is on the [Methods](methods.md) page.
 
 ## In the simulations
 
-**The hub method.**
+**The back-sampling method.**
 We assume each missing onset is drawn from the raw empirical delays of cases with both dates.
 The delays are pooled over the whole data vintage, with no correction for right truncation and no stratification by time or place.
 This follows the description in [issue #61](https://github.com/InsightNet-US/BDBV-Modeling-Hub/issues/61) but is not confirmed.

@@ -1,4 +1,9 @@
-# <img src="assets/logo-mark.svg" alt="" height="36" align="top"> EpidemicDates
+<h1>
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/logo-dark.svg">
+    <img src="assets/logo.svg" alt="EpidemicDates" height="44">
+  </picture>
+</h1>
 
 **Comparing methods for imputing missing symptom onsets.**
 
@@ -29,7 +34,7 @@ It compares four ways of imputing missing onsets against the true onsets of the 
 
 | Key | Method |
 |---|---|
-| `hub` | Draw a delay from the pooled empirical delays of cases with both dates |
+| `backsampling` | Draw a delay from the pooled empirical delays of cases with both dates |
 | `mean` | Shift by the rounded mean empirical delay |
 | `fwd` | Draw a delay from the forward delay distribution |
 | `gen` | EM back-projection, a partial deconvolution of the missing-onset cases |
@@ -48,7 +53,7 @@ Presets use Ebola settings from [epiforecasts/BVDOutbreakSize](https://github.co
 
 ## Assumptions
 
-- **The hub method.** We assume each missing onset is drawn from the raw empirical delays of cases with both dates, pooled over the whole data vintage, with no correction for right truncation and no stratification by time or place. This follows the description in [issue #61](https://github.com/InsightNet-US/BDBV-Modeling-Hub/issues/61) but is not confirmed. If the delays were corrected for truncation, the method would behave like the forward draw.
+- **The back-sampling method.** We assume each missing onset is drawn from the raw empirical delays of cases with both dates, pooled over the whole data vintage, with no correction for right truncation and no stratification by time or place. This follows the description in [issue #61](https://github.com/InsightNet-US/BDBV-Modeling-Hub/issues/61) but is not confirmed. If the delays were corrected for truncation, the method would behave like the forward draw.
 - **The target.** By default the data are cut at the last day and every method is corrected for right truncation using the true delay, as if the hub had done this correctly. Truth is all onsets that will eventually be reported. With the nowcast off, truth is the onsets of cases reported by the cut-off. In real data the delay used for the correction would itself have to be estimated.
 - **Missingness.** Onsets are missing at random given the report day, unless missingness is set to depend on the delay.
 - **Delays.** Double interval censored daily Gamma, the same for every case unless the mean is set to change over time. Real delays have heavier tails.
@@ -66,7 +71,7 @@ In a browser it defines a global `EpidemicDates`; in Node, load it with `require
 ```js
 const EpidemicDates = require("./epidemic-dates.js");
 const res = EpidemicDates.run(EpidemicDates.PRESETS[0].set);
-res.metrics.hub.maxRel;   // largest weekly relative error, hub method
+res.metrics.backsampling.maxRel;   // largest weekly relative error, back-sampling method
 ```
 
 **Python.** The simulation is the `epidemic_dates` package, managed with [uv](https://docs.astral.sh/uv/).
@@ -104,7 +109,7 @@ onset = (ll["onset_date"] - day0).dt.days        # NaN where onset is missing
 report = (ll["report_date"] - day0).dt.days
 
 res = sim.impute_linelist(onset, report, cutoff=report.max())
-res["imputed"]["hub"]    # back-sampling from pooled empirical delays
+res["imputed"]["backsampling"]    # back-sampling from pooled empirical delays
 res["imputed"]["em"]     # EM back-projection with an estimated delay
 res["empirical_delay"]   # pooled delay pmf from cases with both dates
 ```
@@ -120,7 +125,7 @@ const res = imputeLinelist({
   cutoff: 12,
   delay: null                     // or a forward delay pmf to hold fixed
 });
-res.imputed.hub;   // daily onset counts, hub method
+res.imputed.backsampling;   // daily onset counts, back-sampling method
 res.imputed.gen;   // daily onset counts, EM back-projection
 res.generativeDelay;
 ```

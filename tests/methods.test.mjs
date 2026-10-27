@@ -16,9 +16,9 @@ import {
 // use mu0, mu1, pi0 and pi1 in place of the baseline curves
 const linear = { muKnots: null, piKnots: null };
 
-test("hub method is unbiased in steady growth, real time", () => {
+test("back-sampling method is unbiased in steady growth, real time", () => {
   const { mw, tw } = pipeline({ ...steady(0.05), retro: false, cutoff: 150 });
-  assert.ok(maxRelErr(mw.hub, tw) < 0.005);
+  assert.ok(maxRelErr(mw.backsampling, tw) < 0.005);
 });
 
 test("forward draw overstates counts in steady growth", () => {
@@ -26,9 +26,9 @@ test("forward draw overstates counts in steady growth", () => {
   assert.ok(maxRelErr(mw.fwd, tw) > 0.05);
 });
 
-test("hub method differs from truth when growth changes", () => {
+test("back-sampling method differs from truth when growth changes", () => {
   const { mw, tw } = pipeline({ ...preset("Sharp turnaround"), ...LONG });
-  assert.ok(maxRelErr(mw.hub, tw) > 0.05);
+  assert.ok(maxRelErr(mw.backsampling, tw) > 0.05);
 });
 
 test("EM back-projection recovers the truth when missing at random", () => {
@@ -135,7 +135,7 @@ test("run() matches the lower-level pipeline", () => {
   const cs = M.comparisonSeries(p, sc, ex, R);
   const wk = x => Array.from(M.weekly(x, W, sc.B + sc.wk0));
   assert.deepEqual(res.truth, wk(cs.truth));
-  assert.deepEqual(res.imputed.hub, wk(cs.methods.hub));
+  assert.deepEqual(res.imputed.backsampling, wk(cs.methods.backsampling));
   assert.ok(Math.abs(res.metrics.gen.maxRel) < 1e-6);
 });
 
@@ -156,7 +156,7 @@ test("run() returns one entry per week and method", () => {
     assert.equal(Math.abs(met.lastMaxAbs), big);
     assert.ok(met.lastWeeks.includes(met.lastMaxAbs));
   }
-  const retro = M.run({ ...bvd, retro: true }).metrics.hub;
+  const retro = M.run({ ...bvd, retro: true }).metrics.backsampling;
   assert.deepEqual(retro.lastWeeks, []);
   assert.equal(retro.lastMaxAbs, null);
 });
@@ -179,7 +179,7 @@ test("nowcast: corrected generative method recovers all eventual onsets", () => 
   });
 });
 
-test("nowcast: hub method is unbiased in steady growth", () => {
+test("nowcast: back-sampling method is unbiased in steady growth", () => {
   const res = M.run({
     ...steady(0.05),
     retro: false,
@@ -188,7 +188,7 @@ test("nowcast: hub method is unbiased in steady growth", () => {
   });
   res.truth.forEach((t, w) => {
     if (t >= 10 && res.complete[w]) {
-      assert.ok(Math.abs(res.imputed.hub[w] / t - 1) < 0.005);
+      assert.ok(Math.abs(res.imputed.backsampling[w] / t - 1) < 0.005);
     }
   });
 });

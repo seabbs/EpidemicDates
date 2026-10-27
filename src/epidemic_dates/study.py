@@ -128,7 +128,9 @@ def run_rep(
         comp_d = (rep - on)[~mi]
         rm = rep[mi]
         base = weekly(comp_on)
-        res["hub"] = base + weekly(rm - rng.choice(comp_d, size=rm.size))
+        res["backsampling"] = base + weekly(
+            rm - rng.choice(comp_d, size=rm.size)
+        )
         res["mean"] = base + weekly(rm - round_half_up(comp_d.mean()))
         if forward_pmf_by_day is None:
             fd = rng.choice(DMAX + 1, size=rm.size, p=F_DEFAULT)
@@ -308,7 +310,8 @@ def analytic() -> list[str]:
         Lines of text:
 
         - for r = 0.05, 0.008 and -0.03, the forward and backward mean
-          delays, the retrospective level factor of `hub` imputed cases,
+          delays, the retrospective level factor of `backsampling`
+          imputed cases,
           E[exp(-rD)] E[exp(rD)], and of `mean` imputed cases,
           exp(rm) E[exp(-rD)], with D ~ `F_DEFAULT` and m its mean
           rounded with halves up;
@@ -328,7 +331,8 @@ def analytic() -> list[str]:
         shift = round_half_up(float(np.dot(d, f)))
         lines.append(
             f"r={r:+.3f}: forward mean {np.dot(d, f):.2f}, backward mean "
-            f"{np.dot(d, backward):.2f}; retrospective hub level factor for "
+            f"{np.dot(d, backward):.2f}; retrospective back-sampling level "
+            "factor for "
             f"imputed cases E[e^-rD]E[e^rD]={mgf_neg * mgf_pos:.3f}; "
             f"mean-shift factor e^(r m)E[e^-rD]="
             f"{np.exp(r * shift) * mgf_neg:.3f}"
