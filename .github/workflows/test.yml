@@ -43,6 +43,10 @@ jobs:
         run: uv run pytest -q --cov=epidemic_dates --cov-report=term-missing
       - name: Command line smoke test
         run: uv run epidemic-dates --reps 2 --scenarios A W --out output
+      - name: Python JAX layer, including a NumPyro fit
+        run: |
+          uv sync --extra jax
+          uv run --extra jax pytest -q tests/test_jax.py tests/test_jax_import.py
 
   r:
     runs-on: ubuntu-latest

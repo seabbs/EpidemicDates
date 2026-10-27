@@ -33,6 +33,10 @@ classifiers = [
   "Typing :: Typed",
 ]
 
+[project.optional-dependencies]
+# Planned to become main dependencies when the core moves to JAX.
+jax = ["jax>=0.4", "numpyro>=0.15"]
+
 [project.urls]
 Homepage = "https://seabbs.github.io/EpidemicDates/"
 Documentation = "https://seabbs.github.io/EpidemicDates/"
@@ -87,6 +91,9 @@ convention = "numpy"
 testpaths = ["tests"]
 addopts = ["-ra", "--strict-markers", "--strict-config"]
 xfail_strict = true
+markers = [
+  "slow: slow tests, such as MCMC fits (deselect with '-m \"not slow\"')",
+]
 
 [tool.coverage.run]
 source = ["epidemic_dates"]
@@ -103,5 +110,5 @@ warn_unreachable = true
 files = ["src"]
 
 [[tool.mypy.overrides]]
-module = ["scipy", "scipy.*"]
+module = ["scipy", "scipy.*", "jax", "jax.*", "numpyro", "numpyro.*"]
 ignore_missing_imports = true

@@ -12,6 +12,11 @@ tasks:
     cmds:
       - npm test
       - uv run pytest -q --cov=epidemic_dates
+  test-jax:
+    desc: Test the optional JAX layer, including a NumPyro fit
+    cmds:
+      - uv sync --extra jax
+      - uv run --extra jax pytest -q tests/test_jax.py tests/test_jax_import.py
   sim:
     desc: Run the independent stochastic simulation
     cmds:
