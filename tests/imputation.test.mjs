@@ -1,21 +1,12 @@
-// Tests of the maths in index.html, run with `node --test tests/`.
-// The page's script is loaded up to the chart code, so no DOM is needed.
+// Tests of the maths in imputation.js, run with `node --test "tests/*.test.mjs"`.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
-import vm from "node:vm";
+import { createRequire } from "node:module";
 
-const html = readFileSync(new URL("../index.html", import.meta.url), "utf8");
-const maths = html.split("<script>")[1].split("// ---------- chart drawing")[0];
-const ctx = vm.createContext({ Math, Float64Array, Array, Map, JSON, Number });
-const M = vm.runInContext(`${maths}
-;({ scenario, expectedData, runMethods, weekly, growth, metrics, stochastic,
-   PRESETS, DEFAULTS, METHODS, KNOTS, pmfMean, delayPmf, knotsFrom,
-   setP: v => { P = v; } })`, ctx);
+const M = createRequire(import.meta.url)("../imputation.js");
 
 function run(set) {
   const p = { ...M.DEFAULTS, ...set };
-  M.setP(p);
   const sc = M.scenario(p);
   const ex = M.expectedData(sc);
   const R = M.runMethods(sc, ex.comp, ex.miss, ex.empCounts);
@@ -28,7 +19,7 @@ function run(set) {
 const maxRelErr = (mw, tw) => Math.max(...Array.from(mw, (v, w) =>
   tw[w] >= 10 ? Math.abs(v / tw[w] - 1) : 0));
 const steady = r => ({ knots: M.KNOTS.map(() => r) });
-const bvd = M.PRESETS.find(p => p.name === "BVD 2026: slowing").set;
+const bvd = M.PRESETS[0].set;
 
 test("rounded Gamma delay has the requested mean", () => {
   for (const mu of [4, 8, 14]) {
@@ -59,7 +50,7 @@ test("forward draw overstates counts in steady growth", () => {
 });
 
 test("hub method differs from truth when growth changes", () => {
-  const { mw, tw } = run(bvd);
+  const { mw, tw } = run(M.PRESETS.find(p => p.name === "Sharp turnaround").set);
   assert.ok(maxRelErr(mw.hub, tw) > 0.05);
 });
 
@@ -91,6 +82,19 @@ test("expected hub error lies inside the stochastic 90% band", () => {
     if (e >= b.lo - 0.01 && e <= b.hi + 0.01) inside++;
   }
   assert.ok(n > 5 && inside / n > 0.8, `${inside}/${n}`);
+});
+
+test("run() matches the lower-level pipeline", () => {
+  const res = M.run(bvd);
+  const { mw, tw } = run(bvd);
+  assert.deepEqual(res.truth, Array.from(tw));
+  assert.deepEqual(res.imputed.hub, Array.from(mw.hub));
+  assert.ok(Math.abs(res.metrics.gen.maxRel) < 1e-6);
+});
+
+test("Rt is 1 at zero growth and above 1 in growth", () => {
+  assert.ok(Math.abs(M.rToR(0) - 1) < 1e-12);
+  assert.ok(M.rToR(0.05) > 1 && M.rToR(-0.05) < 1);
 });
 
 test("every preset runs without non-finite values", () => {

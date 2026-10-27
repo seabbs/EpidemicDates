@@ -13,8 +13,9 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - run: node --test tests/
+      - run: node --test "tests/*.test.mjs"
       - uses: astral-sh/setup-uv@v6
-      - run: uv run ruff check sim
-      - run: uv run ruff format --check sim
-      - run: uv run sim/sim_onset_imputation.py 2
+      - run: uv run ruff check src tests
+      - run: uv run ruff format --check src tests
+      - run: uv run pytest -q
+      - run: uv run imputation-sim --reps 2 --scenarios A W

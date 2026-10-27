@@ -9,29 +9,40 @@ Methods for cases with missing onset (complete cases keep true onset):
             a static f estimated jointly from all cases with right
             truncation at T; imputed counts are the expected allocation
 
-Run with: uv run sim/sim_onset_imputation.py [replicates]
-Results are written to sim/output/.
+Command line: uv run imputation-sim --reps 200 --out output
+From Python: see run_scenario() and run_study().
 """
 
+import argparse
 import csv
 import os
-import sys
 
 import numpy as np
 from scipy import stats
 
-OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "output")
 DMAX = 60
-NREP = int(sys.argv[1]) if len(sys.argv) > 1 else 200
 METHODS = ["hub", "mean", "forward", "em"]
 OFF = 70  # day offset so negative imputed onsets bin correctly
 
 
 def gamma_pmf(mean, sd, dmax=DMAX):
+    """Double interval censored daily Gamma pmf (primarycensored form).
+
+    Primary event uniform within its day, secondary censored to its day:
+    P(d) = G(d + 1) - 2 G(d) + G(d - 1), with G the integral of the Gamma
+    CDF. Truncated at dmax and renormalised.
+    """
     shape = (mean / sd) ** 2
     scale = sd**2 / mean
-    cdf = stats.gamma.cdf(np.arange(dmax + 2), shape, scale=scale)
-    p = np.diff(cdf)
+
+    def g(x):
+        x = np.maximum(x, 0.0)
+        return x * stats.gamma.cdf(x, shape, scale=scale) - (
+            shape * scale * stats.gamma.cdf(x, shape + 1, scale=scale)
+        )
+
+    d = np.arange(dmax + 1, dtype=float)
+    p = np.maximum(g(d + 1) - 2 * g(d) + g(d - 1), 0.0)
     return p / p.sum()
 
 
@@ -318,37 +329,74 @@ def analytic():
     return lines
 
 
-def main():
-    rng = np.random.default_rng(20261027)
-    allrows = []
-    for name in SCEN:
-        sp = scenario_setup(name)
-        retroT = sp["L"] - 1 + 60
-        cutoffs = [retroT, 90, 120] if name != "A" else [retroT, 70, 90]
-        fwd = sp["fmat"] if name == "F" else None
-        reps = [run_rep(name, sp, rng, cutoffs, fwd) for _ in range(NREP)]
-        for T in cutoffs:
-            allrows += summarise(name, sp, T, reps, T == retroT)
-        print(f"done {name}", flush=True)
+def run_scenario(name, reps=200, seed=20261027, cutoffs=None):
+    """Simulate one scenario and summarise each method's bias.
+
+    name: a key of SCEN (see DESC for descriptions).
+    reps: number of stochastic replicates.
+    cutoffs: data cut-off days; defaults to retrospective plus two
+        real-time cut-offs.
+    Returns a list of dicts, one per cut-off and method.
+    """
+    rng = np.random.default_rng(seed)
+    sp = scenario_setup(name)
+    retro_t = sp["L"] - 1 + 60
+    if cutoffs is None:
+        cutoffs = [retro_t, 90, 120] if name != "A" else [retro_t, 70, 90]
+    fwd = sp["fmat"] if name == "F" else None
+    sims = [run_rep(name, sp, rng, cutoffs, fwd) for _ in range(reps)]
+    rows = []
+    for T in cutoffs:
+        rows += summarise(name, sp, T, sims, T == retro_t)
+    return rows
+
+
+def run_study(reps=200, seed=20261027, scenarios=None, verbose=True):
+    """Run every scenario (or those named) and return all summary rows."""
+    rows = []
+    for i, name in enumerate(scenarios or SCEN):
+        rows += run_scenario(name, reps=reps, seed=seed + i)
+        if verbose:
+            print(f"done {name}", flush=True)
+    return rows
+
+
+def write_results(rows, out):
+    """Write summary rows to out/results.csv and analytic checks to
+    out/analytic.txt."""
     keys = []
-    for r in allrows:
+    for r in rows:
         for k in r:
             if k not in keys:
                 keys.append(k)
-    os.makedirs(OUT, exist_ok=True)
-    path = os.path.join(OUT, "results.csv")
-    with open(path, "w", newline="") as fh:
+    os.makedirs(out, exist_ok=True)
+    with open(os.path.join(out, "results.csv"), "w", newline="") as fh:
         w = csv.DictWriter(fh, fieldnames=keys)
         w.writeheader()
-        for r in allrows:
+        for r in rows:
             w.writerow(
                 {
                     k: (f"{v:.4f}" if isinstance(v, float) else v)
                     for k, v in r.items()
                 }
             )
-    with open(os.path.join(OUT, "analytic.txt"), "w") as fh:
+    with open(os.path.join(out, "analytic.txt"), "w") as fh:
         fh.write("\n".join(analytic()) + "\n")
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(
+        description="Simulation study of onset-date imputation bias."
+    )
+    parser.add_argument("--reps", type=int, default=200)
+    parser.add_argument("--seed", type=int, default=20261027)
+    parser.add_argument("--out", default="output")
+    parser.add_argument(
+        "--scenarios", nargs="*", choices=list(SCEN), default=None
+    )
+    args = parser.parse_args(argv)
+    rows = run_study(args.reps, args.seed, args.scenarios)
+    write_results(rows, args.out)
     print("\n".join(analytic()))
 
 
