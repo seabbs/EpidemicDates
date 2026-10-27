@@ -1,14 +1,19 @@
 {
   "source": {
-    "include": ["imputation.js"]
+    "include": [
+      "onset-imputation.js"
+    ]
   },
-  "plugins": ["plugins/markdown"],
+  "plugins": [
+    "plugins/markdown"
+  ],
   "markdown": {
     "idInHeadings": true
   },
   "opts": {
     "encoding": "utf8",
-    "recurse": false
+    "recurse": false,
+    "readme": "docs/js-index.md"
   },
   "templates": {
     "cleverLinks": true,
