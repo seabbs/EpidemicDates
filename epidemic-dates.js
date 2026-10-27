@@ -1497,7 +1497,8 @@
       sumAbs = 0,
       nAbs = 0;
     for (let w = 0; w < W; w++) {
-      if (tw[w] < 10 || !Number.isFinite(mw[w])) continue;
+      // weeks too incomplete to trust (shaded on the page) are left out
+      if (!ok[w] || tw[w] < 10 || !Number.isFinite(mw[w])) continue;
       const rel = mw[w] / tw[w] - 1;
       sumAbs += Math.abs(rel);
       nAbs++;
@@ -1558,7 +1559,7 @@
     const lastWeeks = [];
     if (!retro) {
       for (let w = W - 1; w >= 0 && lastWeeks.length < 3; w--)
-        if (tw[w] > 0 && Number.isFinite(mw[w]))
+        if (ok[w] && tw[w] > 0 && Number.isFinite(mw[w]))
           lastWeeks.unshift(mw[w] / tw[w] - 1);
     }
     let lastMaxAbs = null;
