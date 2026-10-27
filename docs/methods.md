@@ -4,6 +4,13 @@ This page sets out the maths behind each method.
 The [interactive page](https://seabbs.github.io/EpidemicDates/interactive/) shows the same maths under "How the methods work".
 What each result relies on is listed under [Assumptions](assumptions.md).
 
+<figure class="doc-figure" markdown="span">
+  ![Schematic of the four methods on a line list of seven cases, two with a missing onset, and a cut-off T. Back-sampling spreads the missing case reported on day t over the pooled delays of complete cases. The mean shift moves it back by the rounded mean delay of 2 days. The forward draw spreads it over the onset-to-report delay. The generative method weights the delay by the onset curve lambda, then alternates an E-step that shares missing cases over onset days with an M-step that re-estimates lambda and the delay, dividing by the fraction reported to allow for right truncation.](diagrams/methods_overview.svg#only-light) ![Schematic of the four methods on a line list of seven cases, two with a missing onset, and a cut-off T. Back-sampling spreads the missing case reported on day t over the pooled delays of complete cases. The mean shift moves it back by the rounded mean delay of 2 days. The forward draw spreads it over the onset-to-report delay. The generative method weights the delay by the onset curve lambda, then alternates an E-step that shares missing cases over onset days with an M-step that re-estimates lambda and the delay, dividing by the fraction reported to allow for right truncation.](diagrams/methods_overview-dark.svg#only-dark)
+  <figcaption markdown="1">
+    How each method gives the missing-onset case reported on day $t$ an onset day $s$, with illustrative bar heights.
+  </figcaption>
+</figure>
+
 ## Notation
 
 A case with a missing onset is reported on day $t$.
@@ -180,6 +187,13 @@ The code runs a fixed number of iterations rather than testing convergence.
 Delays often change over an outbreak, for example falling as a response scales up.
 One static delay is then too long late on and too short early on.
 Back-projection places recent missing onsets too early, and the nowcast over-corrects the latest weeks.
+
+<figure class="doc-figure" markdown="span">
+  ![Schematic of time-varying delays and the nowcast. Onset days up to the cut-off T are split into four periods counted back from T, each with its own delay f_k that is shrunk towards the delay of the period before. The latest period borrows delays of P days or more from the period before. Below, the nowcast divides imputed onsets by the fraction reported, then each sample refits the delay, draws the missing onsets from a multinomial and the cases not yet reported from a negative binomial, before taking quantiles.](diagrams/delays_nowcast.svg#only-light) ![Schematic of time-varying delays and the nowcast. Onset days up to the cut-off T are split into four periods counted back from T, each with its own delay f_k that is shrunk towards the delay of the period before. The latest period borrows delays of P days or more from the period before. Below, the nowcast divides imputed onsets by the fraction reported, then each sample refits the delay, draws the missing onsets from a multinomial and the cases not yet reported from a negative binomial, before taking quantiles.](diagrams/delays_nowcast-dark.svg#only-dark)
+  <figcaption markdown="1">
+    One delay per period of onset days, each shrunk towards the period before, and the steps of each [nowcast](#nowcast-with-uncertainty) sample.
+  </figcaption>
+</figure>
 
 **Periods.**
 With `delay_period` $P$, onset days are split into $K = \lceil (T + 1) / P \rceil$ periods counted back from the cut-off.

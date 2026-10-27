@@ -1,0 +1,73 @@
+% Shared style for the method diagrams in this folder.
+% Each diagram is a standalone document that loads fix-cm, then
+% \documentclass[tikz,border=6pt]{standalone}, then inputs this file.
+% scripts/build_diagrams.sh compiles every diagram except this file, once
+% for the light theme and once with \darkmode defined for the dark theme.
+
+\usepackage[T1]{fontenc}
+\usepackage[scaled=0.95]{helvet}
+\renewcommand{\familydefault}{\sfdefault}
+\usepackage{amsmath,amssymb}
+\usetikzlibrary{arrows.meta,positioning,calc,shapes.misc}
+
+% Method colours, matching the interactive page and docs/figures.
+% Onsets are blue and reports orange, as in the logo.
+\definecolor{bscol}{HTML}{2A78D6}
+\definecolor{meancol}{HTML}{EB6834}
+\definecolor{fwdcol}{HTML}{1BAF7A}
+\definecolor{gencol}{HTML}{EDA100}
+\definecolor{onsetcol}{HTML}{2A78D6}
+\definecolor{reportcol}{HTML}{EB6834}
+
+% Theme colours, as in docs/figures/make_figures.py. `paper` is the page
+% background, used for label backgrounds and tinted fills.
+\ifdefined\darkmode
+  \definecolor{ink}{HTML}{F2F2F0}
+  \definecolor{textcol}{HTML}{D6D6D4}
+  \definecolor{muted}{HTML}{9A9A97}
+  \definecolor{gridcol}{HTML}{3A3A38}
+  \definecolor{barcol}{HTML}{6A6A66}
+  \definecolor{paper}{HTML}{1E2029}
+  \def\tint{18}
+\else
+  \definecolor{ink}{HTML}{0B0B0B}
+  \definecolor{textcol}{HTML}{333333}
+  \definecolor{muted}{HTML}{6B6B6B}
+  \definecolor{gridcol}{HTML}{E2E2DF}
+  \definecolor{barcol}{HTML}{C4C4BF}
+  \definecolor{paper}{HTML}{FFFFFF}
+  \def\tint{9}
+\fi
+
+\color{textcol}
+
+\tikzset{
+  every node/.style={font=\small, text=textcol,
+    execute at begin node={\thickmuskip=5mu\medmuskip=4mu\thinmuskip=3mu
+      \hyphenpenalty=10000\exhyphenpenalty=10000}},
+  panel/.style={rectangle, rounded corners=4pt, draw=#1, line width=0.9pt,
+    fill=#1!\tint!paper},
+  box/.style={rectangle, rounded corners=3pt, draw=#1, line width=0.8pt,
+    fill=#1!\tint!paper, align=center, inner sep=5pt, minimum height=9mm},
+  paneltitle/.style={font=\normalsize\bfseries, text=#1, anchor=north west,
+    inner sep=0pt},
+  flow/.style={-{Stealth[length=2.4mm,width=1.9mm]}, line width=0.9pt,
+    draw=ink!80},
+  axis/.style={line width=0.6pt, draw=muted},
+  cutoff/.style={line width=0.8pt, draw=ink, dash pattern=on 2.5pt off 2pt},
+  onset/.style={circle, fill=onsetcol, inner sep=0pt, minimum size=1.9mm},
+  report/.style={rectangle, fill=reportcol, inner sep=0pt,
+    minimum size=1.8mm},
+  missing/.style={circle, draw=onsetcol, densely dotted, line width=0.7pt,
+    inner sep=0pt, minimum size=1.9mm},
+  link/.style={line width=0.6pt, draw=ink!55},
+  bar/.style={fill=#1, draw=none},
+  note/.style={font=\footnotesize, text=muted, align=center},
+  label/.style={font=\footnotesize, text=textcol, inner sep=1.5pt},
+  edgelabel/.style={font=\footnotesize, text=textcol, fill=paper,
+    inner sep=1.5pt, align=center},
+}
+
+% The smallest text size. The figures are scaled to the page column, about
+% 1.2 times their natural width, so 8.5 pt renders at about 13 px.
+\renewcommand{\footnotesize}{\fontsize{8.5}{10.2}\selectfont}

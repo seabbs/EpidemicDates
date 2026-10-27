@@ -17,6 +17,8 @@ exclude_docs: |
   figures/*.py
   r/*.R
   julia/*.jl
+  diagrams/*.tex
+  diagrams/*.sh
 
 nav:
   - Home: index.md
