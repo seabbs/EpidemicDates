@@ -36,6 +36,15 @@ Presets use Ebola settings from [epiforecasts/BVDOutbreakSize](https://github.co
 | `src/imputation_sim/` | An independent stochastic simulation in Python, used to cross-check the page. |
 | `tests/` | Node tests for `imputation.js` and pytest tests for `imputation_sim`. |
 
+## Assumptions
+
+- **The hub method.** We assume each missing onset is drawn from the raw empirical delays of cases with both dates, pooled over the whole data vintage, with no correction for right truncation and no stratification by time or place. This follows the description in [issue #61](https://github.com/InsightNet-US/BDBV-Modeling-Hub/issues/61) but is not confirmed. If the delays were corrected for truncation, the method would behave like the forward draw.
+- **The target.** Truth is the onsets of the cases reported by the cut-off, so recent weeks are incomplete for the truth and every method alike. Neither the hub target, as far as we know, nor this repo corrects for right truncation. The comparisons isolate imputation error. They say nothing about the much larger truncation in recent weeks, or about scoring forecasts against later vintages.
+- **Missingness.** Onsets are missing at random given the report day, unless missingness is set to depend on the delay.
+- **Delays.** Double interval censored daily Gamma, the same for every case unless the mean is set to change over time. Real delays have heavier tails.
+- **The generative method.** It is given the true delay and noise-free expected counts on the page, so it is a best case.
+- **Outputs.** Expected values unless stochastic replicates are used. Counts are summed to onset weeks. Rt uses a Gamma generation interval with mean 15 days and SD 9.
+
 ## Using the code
 
 Both parts are documented in full, with the maths for each method, in the API docs:

@@ -216,6 +216,7 @@ table.maths td:nth-child(2) { white-space: nowrap; }
       <h2 style="margin:0 12px 0 0">How the methods work</h2>
       <button type="button" role="tab" class="tab active" data-tab="demo" aria-selected="true">Demo</button>
       <button type="button" role="tab" class="tab" data-tab="maths" aria-selected="false">Maths</button>
+      <button type="button" role="tab" class="tab" data-tab="assumptions" aria-selected="false">Assumptions</button>
     </div>
     <div class="tabpanel" id="tab-demo">
       <p class="sub">A case is reported on day t with no onset date. Where does each method put its onset? Ink is where it truly falls, given the simulated epidemic. Uses the scenario set below.</p>
@@ -225,6 +226,16 @@ table.maths td:nth-child(2) { white-space: nowrap; }
       </div>
       <div class="legend" id="legendD"></div>
       <div class="chart" id="chartD"></div>
+    </div>
+    <div class="tabpanel prose" id="tab-assumptions" hidden>
+      <ul>
+        <li><b>The hub method.</b> We assume each missing onset is drawn from the raw empirical delays of cases with both dates, pooled over the whole data vintage, with no correction for right truncation and no stratification by time or place. This follows the description in issue #61 but is not confirmed. If the delays were corrected for truncation, the method would behave like the forward draw.</li>
+        <li><b>The target.</b> Truth is the onsets of the cases reported by the cut-off. Recent weeks are therefore incomplete for the truth and every method alike. Neither the hub target, as far as we know, nor this page corrects for right truncation. The comparisons isolate imputation error. They say nothing about the much larger truncation in recent weeks, or about scoring forecasts against later vintages.</li>
+        <li><b>Missingness.</b> Onsets are missing at random given the report day, unless "Extra missingness with long delays" is set above 0.</li>
+        <li><b>Delays.</b> Double interval censored daily Gamma, the same for every case unless the mean is set to change over time. Real delays have heavier tails.</li>
+        <li><b>The generative method.</b> It is given the true delay and noise-free expected counts, so it is a best case.</li>
+        <li><b>Outputs.</b> Expected values unless replicates are switched on. Counts are summed to onset weeks. Rt uses a Gamma generation interval with mean 15 days and SD 9.</li>
+      </ul>
     </div>
     <div class="tabpanel prose" id="tab-maths" hidden>
       <p>Notation: a case reported on day <i>t</i> has unknown onset day <i>s</i>. <i>C</i>(<i>s</i>) is expected confirmed onsets, <i>f</i>(<i>d</i>) the forward onset-to-report delay, <i>F</i> its CDF, π(<i>t</i>, <i>d</i>) the chance an onset is missing, and <i>T</i> the data cut-off.</p>
