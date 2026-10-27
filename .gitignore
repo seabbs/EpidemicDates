@@ -10,3 +10,5 @@ docs/figures/*.svg
 docs/r/reference.md
 r/*.Rcheck/
 r/*.tar.gz
+docs/julia/reference.md
+julia/Manifest.toml

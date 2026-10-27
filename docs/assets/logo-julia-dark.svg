@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 -6 40 40" role="img">
+  <title>EpidemicDates for Julia (dark backgrounds)</title>
+  <!-- Epidemic curve of onsets -->
+  <path d="M2 20C9 20 11 3.5 16.5 3.5S24 20 30 20Z"
+        fill="#2a78d6" fill-opacity="0.22"/>
+  <path d="M2 20C9 20 11 3.5 16.5 3.5S24 20 30 20"
+        fill="none" stroke="#2a78d6" stroke-width="2.4"
+        stroke-linecap="round"/>
+  <!-- Arrow from the report date back to the onset date -->
+  <path d="M12.5 26.5H21.5M15.5 23.5l-3 3 3 3"
+        fill="none" stroke="#f0efec" stroke-width="1.8"
+        stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- Onset date (dot) and report date (square) -->
+  <circle cx="7.5" cy="26.5" r="3.5" fill="#2a78d6"/>
+  <rect x="21.5" y="23" width="7" height="7" rx="1" fill="#eb6834"/>
+  <!-- Package badge -->
+  <rect x="25" y="-6" width="15" height="11" rx="3" fill="#9558b2"/>
+  <text x="32.5" y="2.6" text-anchor="middle" fill="#ffffff"
+        font-family="Inter, 'Helvetica Neue', Helvetica, Arial, sans-serif"
+        font-size="8.5" font-weight="700">jl</text>
+</svg>

@@ -6,6 +6,7 @@ tasks:
     cmds:
       - npm ci
       - uv sync
+      - julia --project=julia -e 'using Pkg; Pkg.instantiate()'
   test:
     desc: Test the JavaScript and Python code
     cmds:
@@ -35,6 +36,7 @@ tasks:
         epidemic-dates.js > docs/javascript/reference.md
       - uv run --with matplotlib python docs/figures/make_figures.py
       - Rscript docs/r/make_reference.R
+      - julia --project=julia docs/julia/make_reference.jl
       - >-
         uv run --with mkdocs-material --with "mkdocstrings[python]"
         mkdocs build --strict
@@ -51,6 +53,14 @@ tasks:
     cmds:
       - Rscript -e 'styler::style_pkg("r")'
       - Rscript -e 'pkgload::load_all("r"); lintr::lint_package("r")'
+  julia-test:
+    desc: Test the Julia package
+    cmds:
+      - julia --project=julia -e 'using Pkg; Pkg.test()'
+  julia-format:
+    desc: Format the Julia package
+    cmds:
+      - julia -e 'using Pkg; Pkg.activate(temp=true); Pkg.add("JuliaFormatter"); using JuliaFormatter; format("julia")'
   serve:
     desc: Serve the page locally
     cmds:

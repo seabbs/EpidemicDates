@@ -1,0 +1,226 @@
+_is_missing_day(x) = ismissing(x) || isnothing(x) || (x isa Real && isnan(x))
+
+_is_whole(x::Real) = isfinite(x) && x == round(x)
+
+# Convert date vectors to whole days since the earliest date.
+function _dates_to_days(onset::AbstractVector, report::AbstractVector,
+        cutoff)
+    known = [x for x in onset if !_is_missing_day(x)]
+    all(x -> x isa Date, known) || throw(ArgumentError(
+        "onset must hold dates or missing when report holds dates"))
+    reports = [x for x in report if !_is_missing_day(x)]
+    all(x -> x isa Date, reports) ||
+        throw(ArgumentError("report must hold only dates"))
+    day0 = minimum(vcat(Date[x for x in reports], Date[x for x in known]))
+    as_day(x) = _is_missing_day(x) ? missing : Dates.value(x - day0)
+    cut = cutoff isa Date ? Dates.value(cutoff - day0) : cutoff
+    return map(as_day, onset), map(as_day, report), cut, day0
+end
+
+function _check_delay(delay)
+    delay === nothing && return nothing
+    v = collect(Float64, delay)
+    isempty(v) && throw(ArgumentError("delay must not be empty"))
+    all(x -> isfinite(x) && x >= 0, v) || throw(ArgumentError(
+        "delay must hold non-negative finite probabilities"))
+    sum(v) > 0 || throw(ArgumentError("delay must have a positive sum"))
+    return v ./ sum(v)
+end
+
+"""
+    impute_linelist(onset, report; cutoff = nothing, delay = nothing,
+                    max_delay = 60, n_iter = 150)
+
+Impute missing onsets in a line list with each method.
+
+Days are whole numbers, for example days since the first report.
+`onset` holds the onset day of each case, with `missing` (or `NaN`)
+where it is unknown.
+`report` holds the report day of each case and must have no missing
+values.
+`onset` and `report` can instead be `Date` vectors.
+Days are then counted from the earliest date in either vector, and
+`cutoff` can be a `Date`.
+
+Daily outputs have length `T + 1`, where `T` is the cut-off, and element
+`i` is onset day `i - 1`.
+They are expected counts, so they need not be whole numbers.
+Sum them to weeks with [`weekly`](@ref) before comparing methods.
+
+# Methods
+- `backsampling` spreads each missing case over report day minus each
+  delay, weighted by `empirical_delay`.
+  It is the expected allocation of the random draw, not a draw.
+- `mean` shifts each missing case back by the mean of `empirical_delay`,
+  rounded with halves up (as JavaScript's `Math.round`).
+- `em` is EM back-projection.
+  It estimates a static delay jointly with the onset curve, allowing
+  for right truncation at the cut-off.
+  It always estimates the delay, even when `delay` is given.
+- `fwd`, only when `delay` is given, back-samples from that delay
+  instead of the empirical one.
+
+All methods assume onsets are missing at random given the report day.
+If missingness depends on the delay, all are biased.
+
+# Arguments
+- `onset`: onset day per case, `missing` where unknown.
+- `report`: report day per case.
+- `cutoff`: data cut-off day `T`, by default the last report day.
+  Must be a non-negative whole number.
+  Cases reported before day 0 or after `T` are dropped.
+- `delay`: optional forward delay pmf on delays `0, 1, ...`, for
+  example from [`delay_pmf`](@ref).
+  It is normalised before use.
+- `max_delay`: longest delay kept.
+  Complete cases with a longer delay are dropped.
+- `n_iter`: number of EM iterations. Must be at least 1.
+
+# Returns
+A NamedTuple with:
+- `complete`: onset counts of cases with a known onset;
+- `missing_by_report`: missing-onset cases by report day;
+- `empirical_delay`: pooled delay pmf on `0:max_delay` of complete cases;
+- `imputed`: a NamedTuple of daily onset counts (complete plus imputed)
+  for `backsampling`, `mean`, `em` and, with `delay`, `fwd`;
+- `em_delay`: the delay pmf on `0:max_delay` estimated by EM;
+- `imputed_before_day0`: expected missing-onset cases that
+  `backsampling`, `mean` and `fwd` place before day 0, which are not in
+  `imputed`;
+- `dropped`: the number of cases dropped;
+- `cutoff`: the cut-off used;
+- `day0`: the date of day 0 for `Date` input, otherwise `nothing`.
+
+Complete cases with a negative onset, an onset after report or a delay
+over `max_delay` are dropped, as are cases reported outside `0:T`.
+
+# Throws
+`ArgumentError` if the line list is empty, `onset` and `report` differ
+in length, a report day is missing or infinite, an onset is infinite, a
+day is not a whole number, `cutoff` is negative or not whole,
+`max_delay` is negative, `n_iter` is below 1, `delay` is not a valid
+pmf, or no complete case is left after dropping.
+
+# Examples
+```jldoctest
+julia> res = impute_linelist([0, 2, missing, 5, missing], [3, 6, 7, 9, 12]);
+
+julia> length(res.imputed.backsampling)
+13
+
+julia> res.imputed.mean
+13-element Vector{Float64}:
+ 1.0
+ 0.0
+ 1.0
+ 1.0
+ 0.0
+ 1.0
+ 0.0
+ 0.0
+ 1.0
+ 0.0
+ 0.0
+ 0.0
+ 0.0
+
+julia> round(sum(res.imputed.em); digits = 6)
+5.0
+```
+
+!!! warning
+    This code was generated by an LLM.
+    Sam Abbott has only checked the interactive page, not this package.
+    Treat the results as exploratory.
+"""
+function impute_linelist(onset::AbstractVector, report::AbstractVector;
+        cutoff = nothing, delay = nothing, max_delay::Integer = DMAX,
+        n_iter::Integer = 150)
+    length(onset) == length(report) || throw(ArgumentError(
+        "onset and report must have the same length, got " *
+        "$(length(onset)) and $(length(report))"))
+    isempty(report) && throw(ArgumentError("the line list is empty"))
+    day0 = nothing
+    if any(x -> x isa Date, report) || any(x -> x isa Date, onset)
+        onset, report, cutoff, day0 = _dates_to_days(onset, report, cutoff)
+    end
+    n_bad = count(x -> _is_missing_day(x) || (x isa Real && !isfinite(x)),
+        report)
+    n_bad > 0 && throw(ArgumentError(
+        "report day is missing or infinite for $n_bad case(s); " *
+        "every case needs a report day"))
+    all(x -> x isa Real, report) ||
+        throw(ArgumentError("report days must be numbers or dates"))
+    known = [x for x in onset if !_is_missing_day(x)]
+    all(x -> x isa Real, known) ||
+        throw(ArgumentError("onset days must be numbers, dates or missing"))
+    any(isinf, known) && throw(ArgumentError(
+        "onset days must not be infinite; use missing if unknown"))
+    all(_is_whole, report) ||
+        throw(ArgumentError("report days must be whole numbers of days"))
+    all(_is_whole, known) ||
+        throw(ArgumentError("onset days must be whole numbers of days"))
+    report_days = Int[Int(x) for x in report]
+    if cutoff === nothing
+        cutoff = maximum(report_days)
+    elseif !(cutoff isa Real && _is_whole(cutoff))
+        throw(ArgumentError("cutoff must be a whole number, got $cutoff"))
+    end
+    T = Int(cutoff)
+    T >= 0 || throw(ArgumentError("cutoff must be non-negative, got $T"))
+    max_delay >= 0 ||
+        throw(ArgumentError("max_delay must be non-negative, got $max_delay"))
+    n_iter >= 1 ||
+        throw(ArgumentError("n_iter must be at least 1, got $n_iter"))
+    fwd_pmf = _check_delay(delay)
+
+    n_days = T + 1
+    complete = zeros(n_days)
+    missing_by_report = zeros(n_days)
+    empirical = zeros(max_delay + 1)
+    onset_c, delay_c, report_m = Int[], Int[], Int[]
+    dropped = 0
+    for (o, t) in zip(onset, report_days)
+        if !(0 <= t <= T)
+            dropped += 1
+        elseif _is_missing_day(o)
+            push!(report_m, t)
+            missing_by_report[t + 1] += 1
+        else
+            s = Int(o)
+            d = t - s
+            if s < 0 || d < 0 || d > max_delay
+                dropped += 1
+            else
+                push!(onset_c, s)
+                push!(delay_c, d)
+                complete[s + 1] += 1
+                empirical[d + 1] += 1
+            end
+        end
+    end
+    isempty(onset_c) && throw(ArgumentError(
+        "no complete cases (cases with both an onset and a report day " *
+        "in range) are left, so the delay cannot be estimated"))
+    empirical ./= sum(empirical)
+
+    backsampling = backsampling_allocate(missing_by_report, empirical)
+    shift = round_half_up(sum((0:max_delay) .* empirical))
+    mean_alloc = mean_shift_allocate(missing_by_report, shift)
+    fit = em_fit(onset_c, delay_c, report_m, T; max_delay, n_iter)
+    n_missing = sum(missing_by_report)
+    lost(a) = max(n_missing - sum(a), 0.0)
+    imputed = (backsampling = complete .+ backsampling,
+        mean = complete .+ mean_alloc, em = complete .+ fit.allocation)
+    before_day0 = (backsampling = lost(backsampling),
+        mean = n_missing - sum(mean_alloc))
+    if fwd_pmf !== nothing
+        fwd = backsampling_allocate(missing_by_report, fwd_pmf)
+        imputed = merge(imputed, (fwd = complete .+ fwd,))
+        before_day0 = merge(before_day0, (fwd = lost(fwd),))
+    end
+    return (complete = complete, missing_by_report = missing_by_report,
+        empirical_delay = empirical, imputed = imputed,
+        em_delay = fit.delay, imputed_before_day0 = before_day0,
+        dropped = dropped, cutoff = T, day0 = day0)
+end
