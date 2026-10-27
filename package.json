@@ -37,7 +37,9 @@
   },
   "scripts": {
     "test": "node --test \"tests/*.test.mjs\"",
-    "coverage": "node --test --experimental-test-coverage --test-coverage-exclude=\"tests/**\" --test-coverage-lines=94 --test-coverage-functions=86 --test-coverage-branches=91 --test-reporter=spec --test-reporter-destination=stdout --test-reporter=lcov --test-reporter-destination=lcov.info \"tests/*.test.mjs\"",
+    "coverage": "npm run coverage:gate && npm run coverage:lcov",
+    "coverage:gate": "node --test --experimental-test-coverage --test-coverage-include=epidemic-dates.js --test-coverage-lines=98 --test-coverage-functions=98 --test-coverage-branches=95 \"tests/*.test.mjs\"",
+    "coverage:lcov": "node --test --experimental-test-coverage --test-coverage-include=epidemic-dates.js --test-coverage-include=page.js --test-reporter=lcov --test-reporter-destination=lcov.info \"tests/*.test.mjs\"",
     "lint": "eslint .",
     "format": "prettier --write epidemic-dates.js page.js tests/*.mjs eslint.config.mjs package.json jsconfig.json .prettierrc",
     "format:check": "prettier --check epidemic-dates.js page.js tests/*.mjs eslint.config.mjs package.json jsconfig.json .prettierrc",

@@ -37,8 +37,8 @@ jobs:
           cache: npm
       - run: npm ci
       - name: Tests (module and page) with coverage
-        # Writes lcov.info and fails below the thresholds in package.json.
-        # page.js runs in a vm with its file name, so V8 counts it too.
+        # Fails if epidemic-dates.js is below the thresholds in package.json,
+        # then writes lcov.info for Codecov with page.js counted too.
         run: npm run coverage
       - uses: codecov/codecov-action@v5
         with:
