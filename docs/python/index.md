@@ -38,7 +38,7 @@ import epidemic_dates as ed
 
 np.set_printoptions(linewidth=100)
 
-day0 = dt.date(2026, 5, 8)  # earliest date in the file
+day0 = dt.date(2026, 5, 3)  # earliest date in the file
 def day(x):
     return (dt.date.fromisoformat(x) - day0).days if x else np.nan
 
@@ -53,19 +53,20 @@ for m in ["backsampling", "mean", "em"]:
 ```
 
 ```text
-backsampling [ 4.2  0.5  3.2  6.8  7.2 10.6 19.8 27.3 35.5 43.4 41.9 63.2 54.  50.5 38.6 25.4  5. ]
-mean [ 4.  0.  5.  6.  6. 11. 19. 29. 34. 43. 43. 62. 55. 53. 38. 25.  4.]
-em [ 4.2  0.   2.5  7.8  7.  10.1 20.  27.3 35.9 43.7 41.  65.7 54.2 50.1 37.5 24.8  5.1]
+backsampling [  6.8  14.9  16.8  27.9  44.7  81.9 122.9 200.2 251.1 353.7 595.8 697.1 455.2 174. ]
+mean [  7.  15.  14.  31.  38.  84. 119. 197. 250. 351. 609. 708. 488. 132.]
+em [  7.   15.4  15.9  26.5  43.5  81.3 121.4 203.2 246.3 346.2 614.2 723.5 440.4 159.2]
 ```
 
 <figure class="doc-figure" markdown="span">
-  ![Weekly cases in the example line list from May to early September 2026. Grey bars show cases by report week. Lines show onsets with a known date and onsets after imputation by the back-sampling, mean shift and EM methods. The three imputed curves lie close together, peak in the week of 24 July and sit above the known-onset curve.](../figures/linelist.svg#only-light) ![Weekly cases in the example line list from May to early September 2026. Grey bars show cases by report week. Lines show onsets with a known date and onsets after imputation by the back-sampling, mean shift and EM methods. The three imputed curves lie close together, peak in the week of 24 July and sit above the known-onset curve.](../figures/linelist-dark.svg#only-dark)
+  ![Weekly cases in the example line list from May to early August 2026. Grey bars show cases by report week. Lines show the true onsets, onsets with a known date, and onsets after imputation by the back-sampling, mean shift and EM methods. All curves peak in the week of 19 July and fall after the turn. In the last two weeks EM lies on the true onsets, back-sampling is above them in the final week, and the mean shift is above them and then below.](../figures/linelist.svg#only-light) ![Weekly cases in the example line list from May to early August 2026. Grey bars show cases by report week. Lines show the true onsets, onsets with a known date, and onsets after imputation by the back-sampling, mean shift and EM methods. All curves peak in the week of 19 July and fall after the turn. In the last two weeks EM lies on the true onsets, back-sampling is above them in the final week, and the mean shift is above them and then below.](../figures/linelist-dark.svg#only-dark)
   <figcaption markdown="1">
     Weekly counts from the example line list.
     Grey bars are cases by report week.
     The dashed line counts cases with a known onset.
-    Coloured lines add the 76 missing-onset cases back by each method.
-    The data are cut on 31 August, so the last weeks are incomplete under every method.
+    The solid black line is the true onsets of the cases in the line list.
+    Coloured lines add the 753 missing-onset cases back by each method.
+    The data are cut on 8 August, 17 days after growth turns, so the last weeks are incomplete under every method.
   </figcaption>
 </figure>
 
@@ -76,11 +77,15 @@ The [worked example](../real-linelist.md) explains each step.
 - `onset`: onset day per case, `NaN` where missing;
 - `report`: report day per case, never missing;
 - `cutoff`: the last report day to use, by default the latest;
-- `n_iter`: the number of EM iterations.
+- `n_iter`: the number of EM iterations;
+- `delay`: an optional known delay, one pmf or a matrix with one pmf per onset day, which EM holds fixed and which adds `forward`;
+- `delay_period`: the length in days of periods that each get their own EM delay, by default none;
+- `delay_shrinkage`: how strongly each period's delay is pulled towards the previous period's, 10 expected cases by default.
 
 It returns a dict.
-`imputed` holds daily onset counts for `backsampling`, `mean` and `em`.
+`imputed` holds daily onset counts for `backsampling`, `mean` and `em`, and `forward` if `delay` is given.
 `complete` holds the cases with a known onset, `missing_by_report` the missing-onset cases by report day, and `empirical_delay` the pooled delay pmf.
+`em_delay` is the delay EM used, `em_delay_by_period` has one row per period and `delay_period_start` gives the first day of each period.
 `dropped` counts cases that could not be used.
 
 ## Nowcast with uncertainty
@@ -91,28 +96,103 @@ This continues the quick start above.
 ```python
 nc = ed.nowcast_linelist(onset, report, method="em", seed=1, origin=day0)
 for r in nc["weekly_quantiles"][-7:]:
-    print(r["week_start"], r["target_end_date"], r["quantile"], r["value"])
+    print(r["week_start"], r["target_end_date"], r["quantile"], round(r["value"], 1))
 ed.write_nowcast_csv(nc, "nowcast.csv")
 ```
 
 ```text
-2026-08-18 2026-08-24 0.025 39.0
-2026-08-18 2026-08-24 0.1 42.0
-2026-08-18 2026-08-24 0.25 44.0
-2026-08-18 2026-08-24 0.5 48.0
-2026-08-18 2026-08-24 0.75 51.0
-2026-08-18 2026-08-24 0.9 55.0
-2026-08-18 2026-08-24 0.975 60.0
+2026-08-02 2026-08-08 0.025 328.0
+2026-08-02 2026-08-08 0.1 351.0
+2026-08-02 2026-08-08 0.25 369.0
+2026-08-02 2026-08-08 0.5 393.0
+2026-08-02 2026-08-08 0.75 415.2
+2026-08-02 2026-08-08 0.9 440.0
+2026-08-02 2026-08-08 0.975 466.1
 ```
 
 The table has one row per week and quantile.
 Weeks end on the cut-off.
-The week ending on the cut-off has no estimate, because under 5% of the cases with onset that day are reported (`min_reported`).
+A day with under 5% of its cases reported gets no estimate, and nor does its week (`min_reported`); here every week has one.
 `write_nowcast_csv` writes the table to CSV.
 `method` can also be `backsampling`, `mean` or `forward`, and `delay` holds the delay fixed.
 The bands include the draw of missing onsets, the cases not yet reported and, by resampling, uncertainty in the delay.
-They do not include a delay that changes over time.
+They do not include a delay that changes over time, unless you set `delay_period` or pass a delay matrix.
 See [Step 6 of the worked example](../real-linelist.md#step-6-nowcast-the-recent-weeks) and the [Methods](../methods.md#nowcast-with-uncertainty).
+
+<figure class="doc-figure" markdown="span">
+  ![Weekly onsets in the example line list from May to early August 2026. A dashed line counts cases with a known onset. A dotted line adds the imputed missing-onset cases and falls away in the last two weeks. The nowcast median lies on the eventual true onsets up to the week of 26 July. In the final week it is 393 against a truth of 494, and its 95% band stops below the truth.](../figures/nowcast.svg#only-light) ![Weekly onsets in the example line list from May to early August 2026. A dashed line counts cases with a known onset. A dotted line adds the imputed missing-onset cases and falls away in the last two weeks. The nowcast median lies on the eventual true onsets up to the week of 26 July. In the final week it is 393 against a truth of 494, and its 95% band stops below the truth.](../figures/nowcast-dark.svg#only-dark)
+  <figcaption markdown="1">
+    Weekly nowcast of the example line list with EM back-projection, from the code above.
+    The solid black line is the eventual true onsets, known because the data are simulated.
+    The dashed line counts cases with a known onset.
+    The dotted line adds the imputed missing-onset cases, with no correction for right truncation.
+    The coloured line is the nowcast median, with 50% and 95% bands.
+    In the final week few cases are reported yet, and this nowcast is too low.
+  </figcaption>
+</figure>
+
+## Delays that change over time
+
+EM can use the delay in three ways:
+
+- one static delay, estimated (the default);
+- one delay per period of onset days, estimated, with `delay_period`, each shrunk towards the one before it with strength `delay_shrinkage`;
+- a known delay, passed as `delay`: one pmf, or a matrix with one row per onset day for a delay that changes over time, used as given.
+
+`impute_linelist`, `nowcast_linelist` and `em_fit` all take it.
+The nowcast then uses each day's own delay for the truncation correction, the bootstrap and the draws of cases not yet reported.
+
+This uses the second example line list, whose mean delay falls from 12 to 5 days, and the true delay of each onset day, known because the data are simulated.
+It prints the estimated mean delay of each 14-day period, then the point nowcast of the last four weeks with each of the three delays.
+This continues the quick start above.
+
+```python
+with open("docs/data/example-linelist-changing-delays.csv") as fh:
+    rows2 = list(csv.DictReader(fh))
+onset2 = np.array([day(r["onset_date"]) for r in rows2])
+report2 = np.array([day(r["report_date"]) for r in rows2])
+cut2 = int(report2.max())
+with open("docs/data/example-changing-delays-true-delay.csv") as fh:
+    true_delay = np.array(
+        [[float(r[f"p{d}"]) for d in range(61)] for r in csv.DictReader(fh)]
+    )
+res = ed.impute_linelist(onset2, report2, cutoff=cut2, delay_period=14)
+print((res["em_delay_by_period"] @ np.arange(61)).round(1))
+for name, opts in [
+    ("static", {}),
+    ("periods", {"delay_period": 14}),
+    ("plug-in", {"delay": true_delay}),
+]:
+    nc = ed.nowcast_linelist(
+        onset2, report2, cutoff=cut2, n_samples=1, bootstrap=False,
+        min_reported=0.01, **opts
+    )
+    print(f"{name:<8}" + " ".join(f"{x:.1f}" for x in nc["point_weekly"][-4:]))
+```
+
+```text
+[ 8.5 10.2 12.3 11.9  9.6  8.9  7.1  5.9  5.4]
+static  487.5 458.0 421.2 444.1
+periods 466.1 428.6 361.0 297.8
+plug-in 460.7 420.6 356.5 320.4
+```
+
+The true mean delay falls from 12 days in the first periods to 5 in the last.
+The eventual true onsets in the last four weeks are 456, 414, 374 and 317.
+The static delay is too long for recent onsets, so its nowcast is up to 40% too high.
+Per-period delays bring the error down to 4% on average, and the true delay to 2%.
+
+<figure class="doc-figure" markdown="span">
+  ![Two panels of weekly onsets in the second example line list from May to late August 2026, where the mean delay falls from 12 to 5 days. Left, one static delay: the nowcast median rises above the eventual true onsets from late July and ends at about 440 against a truth of 317. Right, a delay for each 14-day period: the median follows the truth down to the cut-off. In both panels the dashed complete-onset line and the dotted uncorrected line fall away in the last weeks.](../figures/changing-delays.svg#only-light) ![Two panels of weekly onsets in the second example line list from May to late August 2026, where the mean delay falls from 12 to 5 days. Left, one static delay: the nowcast median rises above the eventual true onsets from late July and ends at about 440 against a truth of 317. Right, a delay for each 14-day period: the median follows the truth down to the cut-off. In both panels the dashed complete-onset line and the dotted uncorrected line fall away in the last weeks.](../figures/changing-delays-dark.svg#only-dark)
+  <figcaption markdown="1">
+    Weekly EM nowcasts of the second example line list, with 50% and 95% bands.
+    Left: one static delay.
+    Right: one delay for each 14-day period.
+    The solid black line is the eventual true onsets.
+  </figcaption>
+</figure>
+
+[Delays that change over time](../real-linelist.md#delays-that-change-over-time) in the worked example goes through this in all four languages, and the [Methods](../methods.md#delays-that-change-over-time) page has the maths.
 
 ## Run the simulation study
 
@@ -183,7 +263,9 @@ onset, report, missing = ed.simulate("C", sp, np.random.default_rng(1))
 
 - `gamma_pmf(mean, sd)` gives a double interval censored daily Gamma delay pmf on `0..DMAX`.
 - `em_backproject` runs EM back-projection on complete and missing-onset cases.
-  `em_fit` returns the delay and onset curve too, and can hold a given delay fixed.
+  `em_fit` returns the delay and onset curve too, can hold a given delay fixed, and takes `delay_period`.
+- `delay_periods(cutoff, delay_period)` gives the period of each onset day.
+- `posterior_allocate` allocates missing cases by $\lambda(s) f_s(t - s)$, for a delay that changes over time.
 - `METHODS` lists the methods compared and `DMAX` the maximum delay.
 
 ## See also

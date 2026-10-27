@@ -218,7 +218,12 @@ def test_write_nowcast_csv(small, tmp_path):
         ({"quantiles": [0.5, 1.2]}, "quantiles"),
         ({"delay": [0.0, 0.0]}, "positive mass"),
         ({"delay": [0.5, -0.1]}, "non-negative"),
-        ({"delay": [[0.5, 0.5]]}, "one-dimensional"),
+        ({"delay": [[0.5, 0.5]]}, "one row per onset day"),
+        ({"delay": [[[0.5, 0.5]]]}, "matrix of pmfs"),
+        ({"delay": [0.5, 0.5], "delay_period": 7}, "not both"),
+        ({"delay_period": 0}, "delay_period"),
+        ({"delay_period": 2.5}, "delay_period"),
+        ({"delay_shrinkage": 0}, "delay_shrinkage"),
         ({"cutoff": -1}, "cutoff"),
     ],
 )

@@ -10,9 +10,12 @@ from numpy.typing import ArrayLike, NDArray
 
 from .delays import DMAX
 from .methods import (
+    DELAY_SHRINKAGE,
+    as_delay,
     backsampling_allocate,
     em_fit,
     mean_shift_allocate,
+    posterior_allocate,
     round_half_up,
 )
 
@@ -33,13 +36,19 @@ class LinelistResult(TypedDict):
     empirical_delay : numpy.ndarray of float
         Pooled delay pmf (0..DMAX) of complete cases.
     em_delay : numpy.ndarray of float
-        Static delay pmf (0..DMAX) estimated by EM back-projection.
+        Delay pmf (0..DMAX) estimated by EM back-projection: the static
+        delay, or with `delay_period` the pooled delay.
+    em_delay_by_period : numpy.ndarray of float
+        Delay pmf of each period, shape `(n_periods, DMAX + 1)`. One row,
+        equal to `em_delay`, without `delay_period`.
+    delay_period_start : numpy.ndarray of int
+        First onset day of each period. `[0]` without `delay_period`.
     imputed : dict of str to numpy.ndarray
         Daily onset counts (complete plus imputed) for `backsampling`,
-        `mean` and `em`.
+        `mean` and `em`, and `forward` if a delay is given.
     imputed_before_day0 : dict of str to float
-        Expected number of missing-onset cases that `backsampling` and `mean`
-        place before day 0. These are not in `imputed`.
+        Expected number of missing-onset cases that `backsampling`, `mean`
+        and `forward` place before day 0. These are not in `imputed`.
     dropped : int
         Number of cases dropped before imputation.
     """
@@ -48,6 +57,8 @@ class LinelistResult(TypedDict):
     missing_by_report: NDArray[np.float64]
     empirical_delay: NDArray[np.float64]
     em_delay: NDArray[np.float64]
+    em_delay_by_period: NDArray[np.float64]
+    delay_period_start: NDArray[np.int64]
     imputed: dict[str, NDArray[np.float64]]
     imputed_before_day0: dict[str, float]
     dropped: int
@@ -134,8 +145,11 @@ def impute_linelist(
     report: ArrayLike,
     cutoff: int | None = None,
     n_iter: int = 150,
+    delay: ArrayLike | None = None,
+    delay_period: int | None = None,
+    delay_shrinkage: float = DELAY_SHRINKAGE,
 ) -> LinelistResult:
-    """Impute missing onsets in a real line list.
+    r"""Impute missing onsets in a real line list.
 
     Parameters
     ----------
@@ -149,6 +163,20 @@ def impute_linelist(
         report day. Cases reported before day 0 or after T are dropped.
     n_iter : int, optional
         Number of EM iterations passed to `em_fit`. Must be at least 1.
+    delay : array_like of float, optional
+        A known forward delay, used as given (a plug-in). Either one pmf
+        indexed by delay in days, or a matrix with one pmf per onset day
+        0..T. If given, `em` holds it fixed instead of estimating a
+        delay, and `imputed` also holds `forward`. Cannot be combined
+        with `delay_period`.
+    delay_period : int, optional
+        Length in days of the periods of onset days that get their own
+        EM delay, counted back from the cut-off. `None` (the default)
+        estimates one static delay. See `em_fit`.
+    delay_shrinkage : float, optional
+        Strength, in expected onsets, of the shrinkage of each period's
+        delay towards the previous period's delay. Must be positive.
+        Only used with `delay_period`.
 
     Returns
     -------
@@ -160,11 +188,18 @@ def impute_linelist(
           day.
         - `empirical_delay`: pooled delay pmf (0..DMAX) of complete
           cases.
-        - `em_delay`: static delay pmf (0..DMAX) estimated by EM.
+        - `em_delay`: delay pmf (0..DMAX) used by EM: the static
+          estimate, the pooled estimate with `delay_period`, or the given
+          `delay` (its onset-weighted mean if it is a matrix).
+        - `em_delay_by_period`: delay pmf of each period, one row per
+          period.
+        - `delay_period_start`: first onset day of each period.
         - `imputed`: dict of daily onset counts (complete plus imputed)
-          for `backsampling`, `mean` and `em`.
+          for `backsampling`, `mean` and `em`, and `forward` with
+          `delay`.
         - `imputed_before_day0`: dict with the expected number of
-          missing-onset cases that `backsampling` and `mean` place before day 0.
+          missing-onset cases that `backsampling`, `mean` and `forward`
+          place before day 0.
         - `dropped`: number of cases dropped.
 
     Raises
@@ -172,8 +207,10 @@ def impute_linelist(
     ValueError
         If the line list is empty, `onset` and `report` differ in
         length, a report day is missing or infinite, a day is not a
-        whole number, `cutoff` is negative, or no complete case is left
-        after dropping.
+        whole number, `cutoff` is negative, no complete case is left
+        after dropping, `delay` is not a valid pmf or matrix of pmfs,
+        `delay_period` or `delay_shrinkage` is out of range, or both
+        `delay` and `delay_period` are given.
 
     Notes
     -----
@@ -184,7 +221,15 @@ def impute_linelist(
       `empirical_delay`, rounded with halves up (as JavaScript's
       `Math.round`).
     - `em` uses `em_fit`. It estimates a static delay jointly with the
-      onset curve, allowing for right truncation at the cut-off.
+      onset curve, allowing for right truncation at the cut-off. With
+      `delay_period` it estimates one delay per period instead, each
+      shrunk towards the previous period's delay. With `delay` it uses
+      that delay as given and estimates only the onset curve. `backsampling` and
+      `mean` always use the pooled empirical delay of the data.
+    - `forward` places each missing case by the given delay,
+      $P(s \mid t) = f_s(t - s)$. With a static delay mass before day 0
+      is lost, as for `backsampling`. With a matrix the weights are
+      renormalised over onset days 0..t.
     - All methods assume onsets are missing at random given the report
       day. If missingness depends on the delay, all are biased.
     - Complete cases with a negative onset, an onset after report or a
@@ -208,6 +253,7 @@ def impute_linelist(
     onset_c, delay_c, report_m = prep.onset, prep.delay, prep.missing_report
     cutoff = prep.cutoff
     n_days = cutoff + 1
+    fixed = None if delay is None else as_delay(delay, cutoff)
     complete = np.bincount(onset_c, minlength=n_days)[:n_days].astype(
         np.float64
     )
@@ -220,21 +266,42 @@ def impute_linelist(
     backsampled = backsampling_allocate(missing_by_report, empirical)
     shift = round_half_up(float(np.dot(np.arange(DMAX + 1), empirical)))
     mean = mean_shift_allocate(missing_by_report, shift)
-    fit = em_fit((onset_c, delay_c), report_m, cutoff, n_iter=n_iter)
+    fit = em_fit(
+        (onset_c, delay_c),
+        report_m,
+        cutoff,
+        n_iter=n_iter,
+        delay=fixed,
+        delay_period=delay_period,
+        delay_shrinkage=delay_shrinkage,
+    )
     n_missing = float(missing_by_report.sum())
+    imputed = {
+        "backsampling": complete + backsampled,
+        "mean": complete + mean,
+        "em": complete + fit.allocation,
+    }
+    before_day0 = {
+        "backsampling": max(n_missing - float(backsampled.sum()), 0.0),
+        "mean": n_missing - float(mean.sum()),
+    }
+    if fixed is not None:
+        if fixed.ndim == 1:
+            forward = backsampling_allocate(missing_by_report, fixed)
+        else:
+            forward = posterior_allocate(
+                missing_by_report, np.ones(n_days), fixed
+            )
+        imputed["forward"] = complete + forward
+        before_day0["forward"] = max(n_missing - float(forward.sum()), 0.0)
     return {
         "complete": complete,
         "missing_by_report": missing_by_report,
         "empirical_delay": empirical,
         "em_delay": fit.delay,
-        "imputed": {
-            "backsampling": complete + backsampled,
-            "mean": complete + mean,
-            "em": complete + fit.allocation,
-        },
-        "imputed_before_day0": {
-            "backsampling": max(n_missing - float(backsampled.sum()), 0.0),
-            "mean": n_missing - float(mean.sum()),
-        },
+        "em_delay_by_period": fit.delay_by_period,
+        "delay_period_start": fit.period_start,
+        "imputed": imputed,
+        "imputed_before_day0": before_day0,
         "dropped": prep.dropped,
     }

@@ -47,7 +47,7 @@ def main() -> None:
     res = ed.impute_linelist(obs, np.array(report), cutoff=cutoff)
     out = {
         "note": "Reference outputs from the Python package. "
-        "back-sampling and mean must match exactly; "
+        "back-sampling, mean and forward must match exactly; "
         "em within 2% on weeks with at least 50 cases.",
         "delay_pmfs": pmfs,
         "linelist": {
@@ -61,7 +61,54 @@ def main() -> None:
             "empirical_delay": np.asarray(res["empirical_delay"]).tolist(),
         },
     }
+    out.update(delay_change_cases())
     (HERE / "cross-language.json").write_text(json.dumps(out, indent=1))
+
+
+def delay_change_cases() -> dict[str, object]:
+    """Cases with a delay that changes over time.
+
+    A scenario F line list (mean delay falling from 12 to 4 days), cut at
+    day 100, imputed with per-period EM delays and with the true delay of
+    each onset day supplied as a matrix.
+    """
+    rng = np.random.default_rng(7)
+    setup = ed.scenario_setup("F")
+    onset, report, missing = ed.simulate("F", setup, rng)
+    cutoff, period = 100, 14
+    keep = report <= cutoff
+    onset, report, missing = onset[keep], report[keep], missing[keep]
+    obs = np.where(missing, np.nan, onset).astype(float)
+    base = {
+        "onset": [
+            None if m else int(o) for o, m in zip(onset, missing, strict=True)
+        ],
+        "report": [int(r) for r in report],
+        "cutoff": cutoff,
+        "max_delay": ed.DMAX,
+    }
+    res = ed.impute_linelist(obs, report, cutoff=cutoff, delay_period=period)
+    delay = setup["fmat"][: cutoff + 1]
+    plug = ed.impute_linelist(obs, report, cutoff=cutoff, delay=delay)
+
+    def as_lists(imputed: dict[str, np.ndarray]) -> dict[str, list[float]]:
+        return {k: np.asarray(v).tolist() for k, v in imputed.items()}
+
+    return {
+        "linelist_periods": {
+            **base,
+            "delay_period": period,
+            "delay_shrinkage": ed.DELAY_SHRINKAGE,
+            "imputed": as_lists(res["imputed"]),
+            "em_delay_by_period": res["em_delay_by_period"].tolist(),
+            "delay_period_start": res["delay_period_start"].tolist(),
+        },
+        "linelist_delay_matrix": {
+            **base,
+            "delay": delay.tolist(),
+            "imputed": as_lists(plug["imputed"]),
+        },
+    }
 
 
 if __name__ == "__main__":

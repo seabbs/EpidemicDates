@@ -43,7 +43,7 @@ This reads the [example line list](../data/example-linelist.csv), imputes the mi
 const fs = require("node:fs");
 const { imputeLinelist } = require("./epidemic-dates.js");
 
-const t0 = Date.parse("2026-05-08"); // earliest date in the file
+const t0 = Date.parse("2026-05-03"); // earliest date in the file
 const day = (x) => (x ? (Date.parse(x) - t0) / 86400000 : null);
 const rows = fs
   .readFileSync("docs/data/example-linelist.csv", "utf8")
@@ -65,19 +65,20 @@ for (const m of ["backsampling", "mean", "gen"]) {
 ```
 
 ```text
-backsampling 4.2 0.5 3.2 6.8 7.2 10.6 19.8 27.3 35.5 43.4 41.9 63.2 54.0 50.5 38.6 25.4 5.0
-mean 4.0 0.0 5.0 6.0 6.0 11.0 19.0 29.0 34.0 43.0 43.0 62.0 55.0 53.0 38.0 25.0 4.0
-gen 4.2 0.0 2.5 7.8 7.0 10.1 20.0 27.3 35.9 43.7 41.0 65.7 54.2 50.1 37.5 24.8 5.1
+backsampling 6.8 14.9 16.8 27.9 44.7 81.9 122.9 200.2 251.1 353.7 595.8 697.1 455.2 174.0
+mean 7.0 15.0 14.0 31.0 38.0 84.0 119.0 197.0 250.0 351.0 609.0 708.0 488.0 132.0
+gen 7.0 15.4 15.9 26.5 43.5 81.3 121.4 203.2 246.3 346.2 614.2 723.5 440.4 159.2
 ```
 
 <figure class="doc-figure" markdown="span">
-  ![Weekly cases in the example line list from May to early September 2026. Grey bars show cases by report week. Lines show onsets with a known date and onsets after imputation by the back-sampling, mean shift and EM methods. The three imputed curves lie close together, peak in the week of 24 July and sit above the known-onset curve.](../figures/linelist.svg#only-light) ![Weekly cases in the example line list from May to early September 2026. Grey bars show cases by report week. Lines show onsets with a known date and onsets after imputation by the back-sampling, mean shift and EM methods. The three imputed curves lie close together, peak in the week of 24 July and sit above the known-onset curve.](../figures/linelist-dark.svg#only-dark)
+  ![Weekly cases in the example line list from May to early August 2026. Grey bars show cases by report week. Lines show the true onsets, onsets with a known date, and onsets after imputation by the back-sampling, mean shift and EM methods. All curves peak in the week of 19 July and fall after the turn. In the last two weeks EM lies on the true onsets, back-sampling is above them in the final week, and the mean shift is above them and then below.](../figures/linelist.svg#only-light) ![Weekly cases in the example line list from May to early August 2026. Grey bars show cases by report week. Lines show the true onsets, onsets with a known date, and onsets after imputation by the back-sampling, mean shift and EM methods. All curves peak in the week of 19 July and fall after the turn. In the last two weeks EM lies on the true onsets, back-sampling is above them in the final week, and the mean shift is above them and then below.](../figures/linelist-dark.svg#only-dark)
   <figcaption markdown="1">
     Weekly counts from the example line list.
     Grey bars are cases by report week.
     The dashed line counts cases with a known onset.
-    Coloured lines add the 76 missing-onset cases back by each method.
-    The data are cut on 31 August, so the last weeks are incomplete under every method.
+    The solid black line is the true onsets of the cases in the line list.
+    Coloured lines add the 753 missing-onset cases back by each method.
+    The data are cut on 8 August, 17 days after growth turns, so the last weeks are incomplete under every method.
   </figcaption>
 </figure>
 
@@ -88,13 +89,16 @@ The [worked example](../real-linelist.md) explains each step.
 - `onset`: onset day per case, `null` where missing;
 - `report`: report day per case;
 - `cutoff`: the last report day to use, by default the latest;
-- `delay`: a forward delay pmf indexed by day, to hold the delay fixed and to fill in the forward draw;
-- `maxDelay` and `iterations`: the longest delay kept and the number of EM iterations.
+- `delay`: a forward delay pmf indexed by day, or an array with one pmf per onset day, to hold the delay fixed and to fill in the forward draw;
+- `maxDelay` and `iterations`: the longest delay kept and the number of EM iterations;
+- `delayPeriod`: the length in days of periods that each get their own EM delay, by default none;
+- `delayShrinkage`: how strongly each period's delay is pulled towards the previous period's, 10 expected cases by default.
 
 It returns a [`LinelistResult`](reference.md#module_epidemic-dates.LinelistResult).
 `imputed` holds daily onset counts for `backsampling`, `mean`, `fwd` and `gen`.
 `fwd` is `null` without `delay`.
 `generativeDelay` is the delay used or estimated by EM.
+`generativeDelayByPeriod` has one delay per period and `delayPeriodStart` the first day of each period.
 
 ## Nowcast with uncertainty
 
@@ -109,31 +113,102 @@ const nc = nowcastLinelist({
   report,
   method: "gen",
   seed: 1,
-  origin: "2026-05-08"
+  origin: "2026-05-03"
 });
 for (const r of nc.weeklyQuantiles.slice(-7)) {
-  console.log(r.week_start, r.target_end_date, r.quantile, r.value);
+  console.log(r.week_start, r.target_end_date, r.quantile, +r.value.toFixed(1));
 }
 ```
 
 ```text
-2026-08-18 2026-08-24 0.025 39
-2026-08-18 2026-08-24 0.1 42
-2026-08-18 2026-08-24 0.25 45
-2026-08-18 2026-08-24 0.5 48
-2026-08-18 2026-08-24 0.75 51
-2026-08-18 2026-08-24 0.9 55
-2026-08-18 2026-08-24 0.975 58
+2026-08-02 2026-08-08 0.025 328
+2026-08-02 2026-08-08 0.1 350
+2026-08-02 2026-08-08 0.25 371
+2026-08-02 2026-08-08 0.5 391
+2026-08-02 2026-08-08 0.75 416
+2026-08-02 2026-08-08 0.9 439
+2026-08-02 2026-08-08 0.975 469
 ```
 
 The table has one row per week and quantile.
 Weeks end on the cut-off.
-The week ending on the cut-off has no estimate, because under 5% of the cases with onset that day are reported (`minReported`).
+A day with under 5% of its cases reported gets no estimate, and nor does its week (`minReported`); here every week has one.
 `method` can also be `backsampling`, `mean` or `fwd`, and `delay` holds the delay fixed.
 The point nowcast matches Python's `nowcast_linelist`, but the random draws differ.
 The bands include the draw of missing onsets, the cases not yet reported and, by resampling, uncertainty in the delay.
-They do not include a delay that changes over time.
+They do not include a delay that changes over time, unless you set `delayPeriod` or pass a delay matrix.
 See [Step 6 of the worked example](../real-linelist.md#step-6-nowcast-the-recent-weeks) and the [Methods](../methods.md#nowcast-with-uncertainty).
+
+<figure class="doc-figure" markdown="span">
+  ![Weekly onsets in the example line list from May to early August 2026. A dashed line counts cases with a known onset. A dotted line adds the imputed missing-onset cases and falls away in the last two weeks. The nowcast median lies on the eventual true onsets up to the week of 26 July. In the final week it is 393 against a truth of 494, and its 95% band stops below the truth.](../figures/nowcast.svg#only-light) ![Weekly onsets in the example line list from May to early August 2026. A dashed line counts cases with a known onset. A dotted line adds the imputed missing-onset cases and falls away in the last two weeks. The nowcast median lies on the eventual true onsets up to the week of 26 July. In the final week it is 393 against a truth of 494, and its 95% band stops below the truth.](../figures/nowcast-dark.svg#only-dark)
+  <figcaption markdown="1">
+    Weekly nowcast of the example line list with EM back-projection, drawn from Python's `nowcast_linelist`, which gives the same point nowcast as the code above.
+    The solid black line is the eventual true onsets, known because the data are simulated.
+    The dashed line counts cases with a known onset.
+    The dotted line adds the imputed missing-onset cases, with no correction for right truncation.
+    The coloured line is the nowcast median, with 50% and 95% bands.
+    In the final week few cases are reported yet, and this nowcast is too low.
+  </figcaption>
+</figure>
+
+## Delays that change over time
+
+EM can use the delay in three ways:
+
+- one static delay, estimated (the default);
+- one delay per period of onset days, estimated, with `delayPeriod`, each shrunk towards the one before it with strength `delayShrinkage`;
+- a known delay, passed as `delay`: one pmf, or an array with one pmf per onset day for a delay that changes over time, used as given.
+
+`imputeLinelist` and `nowcastLinelist` both take it.
+The nowcast then uses each day's own delay for the truncation correction, the bootstrap and the draws of cases not yet reported.
+
+This uses the second example line list, whose mean delay falls from 12 to 5 days, and the true delay of each onset day, known because the data are simulated.
+It prints the estimated mean delay of each 14-day period, then the point nowcast of the last four weeks with each of the three delays.
+This continues the quick start above.
+
+```js
+const { pmfMean } = require("./epidemic-dates.js");
+
+const lines2 = (path) =>
+  fs.readFileSync(path, "utf8").trim().split(/\r?\n/).slice(1).map((l) => l.split(","));
+const rows2 = lines2("docs/data/example-linelist-changing-delays.csv");
+const onset2 = rows2.map((r) => day(r[1]));
+const report2 = rows2.map((r) => day(r[2]));
+const trueDelay = lines2("docs/data/example-changing-delays-true-delay.csv").map((r) =>
+  r.slice(2).map(Number)
+);
+const per = imputeLinelist({ onset: onset2, report: report2, delayPeriod: 14 });
+console.log(per.generativeDelayByPeriod.map((f) => pmfMean(f).toFixed(1)).join(" "));
+for (const [name, opts] of [
+  ["static", {}],
+  ["periods", { delayPeriod: 14 }],
+  ["plug-in", { delay: trueDelay }]
+]) {
+  const nc = nowcastLinelist({
+    onset: onset2,
+    report: report2,
+    nSamples: 1,
+    bootstrap: false,
+    minReported: 0.01,
+    ...opts
+  });
+  console.log(name.padEnd(8) + nc.pointWeekly.slice(-4).map((x) => x.toFixed(1)).join(" "));
+}
+```
+
+```text
+8.5 10.2 12.3 11.9 9.6 8.9 7.1 5.9 5.4
+static  487.5 458.0 421.2 444.1
+periods 466.1 428.6 361.0 297.8
+plug-in 460.7 420.6 356.5 320.4
+```
+
+The true mean delay falls from 12 days in the first periods to 5 in the last.
+The eventual true onsets in the last four weeks are 456, 414, 374 and 317.
+The static delay is too long for recent onsets, so its nowcast is up to 40% too high.
+Per-period delays bring the error down to 4% on average, and the true delay to 2%.
+
+[Delays that change over time](../real-linelist.md#delays-that-change-over-time) in the worked example goes through this in all four languages, and the [Methods](../methods.md#delays-that-change-over-time) page has the maths.
 
 ## Simulate a scenario and compare the methods
 
@@ -176,14 +251,14 @@ for (const p of EpidemicDates.PRESETS) {
 ```
 
 ```text
-Baseline                                 -0.016 0.000
-Baseline, all reported                   0.013 0.000
-Late cases miss onsets                   0.124 0.120
-Missing rises 5% to 25%                  -0.026 0.000
-Delays shorten                           -0.044 0.000
-Ascertainment falls                      -0.016 0.000
-Longer delays: 8 days, 40% missing       0.064 0.000
-Longer delays: 14 days, 70% missing      0.310 -0.162
+Baseline (BDBV-like)                     0.039 0.000
+Baseline, all reported                   -0.019 0.000
+Late cases miss onsets                   -0.133 -0.110
+More missing later                       -0.030 0.000
+Delays shorten more                      0.032 0.000
+Ascertainment falls                      0.043 0.000
+Longer delays, more missing              0.188 0.000
+Much longer delays, far more missing     0.821 0.000
 Two waves                                0.044 0.000
 Oscillating                              0.015 0.000
 Sharp turnaround                         0.040 0.000
@@ -196,7 +271,6 @@ Steady decline                           0.005 -0.000
 
 The generative method is unbiased in most scenarios because it is given the true delay.
 It is biased in "Late cases miss onsets", where missingness depends on the delay and every method fails.
-It is also off in "Longer delays: 14 days, 70% missing".
 
 ## Building blocks
 

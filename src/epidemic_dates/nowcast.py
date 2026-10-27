@@ -21,12 +21,16 @@ from numpy.typing import ArrayLike, NDArray
 from .delays import DMAX
 from .linelist import _prepare
 from .methods import (
+    DELAY_SHRINKAGE,
     EMFit,
-    _as_delay_pmf,
+    _check_shrinkage,
     _em_iterate,
+    as_delay,
     backsampling_allocate,
+    delay_periods,
     em_fit,
     mean_shift_allocate,
+    posterior_allocate,
     round_half_up,
 )
 
@@ -74,11 +78,17 @@ class NowcastResult(TypedDict):
     dropped : int
         Number of cases dropped before imputation.
     delay : numpy.ndarray of float
-        Forward delay pmf (0..DMAX) used for the point nowcast: the
-        given `delay` or the EM estimate.
+        Forward delay pmf (0..DMAX) for the point nowcast: the given
+        static `delay`, the EM estimate, or with periods or a delay
+        matrix the pooled or onset-weighted mean delay.
+    delay_by_period : numpy.ndarray of float
+        Delay pmf of each period, one row per period. Each onset day is
+        its own period when a delay matrix is given.
+    period_start : numpy.ndarray of int
+        First onset day of each period.
     reported : numpy.ndarray of float
         Fraction of each onset day's cases reported by the cut-off,
-        $F(T - s)$, under `delay`.
+        $F_{k(s)}(T - s)$, under the delay of the day's period.
     point : numpy.ndarray of float
         Point nowcast by onset day.
     point_weekly : numpy.ndarray of float
@@ -102,6 +112,8 @@ class NowcastResult(TypedDict):
     cutoff: int
     dropped: int
     delay: NDArray[np.float64]
+    delay_by_period: NDArray[np.float64]
+    period_start: NDArray[np.int64]
     reported: NDArray[np.float64]
     point: NDArray[np.float64]
     point_weekly: NDArray[np.float64]
@@ -158,18 +170,20 @@ def _draw_backwards(
 def _draw_em(
     missing: NDArray[np.float64],
     onsets: NDArray[np.float64],
-    delay: NDArray[np.float64],
+    delay_by_day: NDArray[np.float64],
     rng: np.random.Generator,
 ) -> NDArray[np.float64]:
     r"""Draw onsets of missing cases from the EM posterior.
 
     A case reported on day $t$ has onset $s$ with probability
-    proportional to $\lambda(s) f(t - s)$.
+    proportional to $\lambda(s) f_s(t - s)$, with $f_s$ row $s$ of
+    `delay_by_day`.
     """
     out = np.zeros(missing.size)
+    n_delays = delay_by_day.shape[1]
     for t in np.flatnonzero(missing):
-        d = np.arange(min(delay.size, t + 1))
-        w = onsets[t - d] * delay[d]
+        d = np.arange(min(n_delays, t + 1))
+        w = onsets[t - d] * delay_by_day[t - d, d]
         if w.sum() <= 0:
             continue
         out[t - d] += rng.multinomial(int(missing[t]), w / w.sum())
@@ -214,6 +228,8 @@ def nowcast_linelist(
     bootstrap: bool = True,
     n_iter: int = 150,
     origin: dt.date | str | None = None,
+    delay_period: int | None = None,
+    delay_shrinkage: float = DELAY_SHRINKAGE,
 ) -> NowcastResult:
     r"""Nowcast onsets from a line list, with uncertainty.
 
@@ -230,18 +246,24 @@ def nowcast_linelist(
     - `mean`: $s = t - \operatorname{round}\big(\sum_d d \, g(d)\big)$;
     - `forward`: $P(s \mid t) = f(t - s)$.
 
-    Here $f$ is `delay` if given.
-    Otherwise it is the static delay estimated by `em_fit`, which allows
-    for right truncation.
+    Here $f$ is `delay` if given, used as is (a plug-in).
+    It can be one pmf or a matrix with one pmf per onset day, so
+    $f_s$ can change over time.
+    Otherwise it is estimated by `em_fit`, which allows for right
+    truncation: one static delay, or with `delay_period` one delay
+    $f_k$ per period of onset days, shrunk towards the previous period's delay.
+    Write $f_s$ for the delay of onset day $s$ in every case.
+    When $f_s$ changes over time, `forward` uses
+    $P(s \mid t) \propto f_s(t - s)$ over onset days $0, \dots, t$.
     This gives $\hat n(s) = n_c(s) + n_i(s)$, the onsets on day $s$ of
     cases reported by the cut-off $T$.
 
     **2. Correct for right truncation.**
-    With $F$ the CDF of $f$, the point nowcast is
+    With $F_s$ the CDF of $f_s$, the point nowcast is
 
-    $$\hat C(s) = \frac{\hat n(s)}{F\big(\min(T - s, D)\big)}.$$
+    $$\hat C(s) = \frac{\hat n(s)}{F_s\big(\min(T - s, D)\big)}.$$
 
-    Days with $F(T - s)$ below `min_reported` get no estimate (NaN).
+    Days with $F_s(T - s)$ below `min_reported` get no estimate (NaN).
 
     **3. Sample.**
     Each of `n_samples` samples does the following, with a generator
@@ -252,6 +274,8 @@ def nowcast_linelist(
       Refit EM to the resampled complete cases and the missing cases,
       warm-started from the point fit for `max(10, n_iter // 5)`
       iterations, to get $f_b$ and $\lambda_b$.
+      With `delay_period`, $f_b$ holds one delay per period, refitted
+      in the same way.
       With a given `delay`, $f_b$ is that delay and only $\lambda_b$ is
       refitted.
       Without `bootstrap`, $g$, $f_b = f$ and $\lambda_b = \lambda$ are
@@ -260,17 +284,19 @@ def nowcast_linelist(
       `backsampling` and `forward` draw $m(t)$ cases reported on day
       $t$ as a multinomial over delays with $g$ or $f_b$.
       `em` draws a multinomial over onset days with
-      $P(s \mid t) \propto \lambda_b(s) f_b(t - s)$.
+      $P(s \mid t) \propto \lambda_b(s) f_{b,s}(t - s)$.
+      With a delay that changes over time, `forward` draws the same way
+      with $\lambda_b$ constant.
       `mean` shifts every case by the rounded mean of $g$, with no
       draw.
       This gives $n_b(s)$, which adds the complete cases on day $s$.
     - Draw the cases with onset $s$ not yet reported,
 
-      $$U(s) \sim \operatorname{NegBin}\big(n_b(s), F_b(T - s)\big),$$
+      $$U(s) \sim \operatorname{NegBin}\big(n_b(s), F_{b,s}(T - s)\big),$$
 
       the number of failures before $n_b(s)$ successes with success
-      probability $F_b(T - s)$, which has mean
-      $n_b(s) \big(1 - F_b\big) / F_b$.
+      probability $F_{b,s}(T - s)$, the CDF of the onset day's delay,
+      which has mean $n_b(s) \big(1 - F_{b,s}\big) / F_{b,s}$.
       This is the posterior for the total under a prior proportional to
       $1 / C(s)$, given $n_b(s)$ reported with probability $F_b$.
       The sample is $C_b(s) = n_b(s) + U(s)$.
@@ -287,8 +313,9 @@ def nowcast_linelist(
     number of complete cases (and in the onset curve used by `em`).
 
     **What they do not capture.**
-    Error in the model: a delay that changes over time, onsets missing
-    other than at random given report day, or reporting that is not
+    Error in the model: a delay that changes over time but is estimated
+    as static, or that changes within a period; onsets missing other
+    than at random given report day; or reporting that is not
     independent between cases.
     Uncertainty in the given `delay`, if one is passed.
     Noise in the onset process itself: the target is the onsets that
@@ -306,10 +333,12 @@ def nowcast_linelist(
     method : {"em", "backsampling", "mean", "forward"}, optional
         Imputation method. Defaults to `em`.
     delay : array_like of float, optional
-        Forward delay pmf indexed by delay in days. Used for the
-        truncation correction, for `forward`, and held fixed by `em`.
-        If omitted, it is estimated by `em_fit`. Entries beyond `DMAX`
-        are dropped and the rest renormalised.
+        Forward delay, used as given for the truncation correction, for
+        `forward`, and held fixed by `em`. Either one pmf indexed by
+        delay in days, or a matrix with one pmf per onset day 0..T in
+        its rows. If omitted, it is estimated by `em_fit`. Entries
+        beyond `DMAX` are dropped and each pmf renormalised. Cannot be
+        combined with `delay_period`.
     n_samples : int, optional
         Number of samples. Must be at least 1.
     seed : int, optional
@@ -327,6 +356,13 @@ def nowcast_linelist(
         Date of day 0, as a date or an ISO string. If given, dates in
         the quantile tables are ISO strings. Otherwise they are day
         numbers.
+    delay_period : int, optional
+        Length in days of the periods of onset days that get their own
+        estimated delay, counted back from the cut-off. `None` (the
+        default) estimates one static delay. See `em_fit`.
+    delay_shrinkage : float, optional
+        Strength, in expected onsets, of the shrinkage of each period's
+        delay towards the previous period's delay. Must be positive.
 
     Returns
     -------
@@ -339,8 +375,10 @@ def nowcast_linelist(
     ------
     ValueError
         If the line list is invalid (see `impute_linelist`), `method` is
-        unknown, `delay` is not a valid pmf, or `n_samples`,
-        `quantiles`, `min_reported` or `n_iter` are out of range.
+        unknown, `delay` is not a valid pmf or matrix of pmfs, both
+        `delay` and `delay_period` are given, or `n_samples`,
+        `quantiles`, `min_reported`, `n_iter`, `delay_period` or
+        `delay_shrinkage` are out of range.
 
     See Also
     --------
@@ -375,13 +413,21 @@ def nowcast_linelist(
     levels = tuple(float(q) for q in quantiles)
     if not levels or any(not (0 <= q <= 1) for q in levels):
         raise ValueError("quantiles must be a non-empty sequence in [0, 1]")
-    fixed = None if delay is None else _as_delay_pmf(delay)
+    shrinkage = _check_shrinkage(delay_shrinkage)
+    if delay is not None and delay_period is not None:
+        raise ValueError("give either delay or delay_period, not both")
     if isinstance(origin, str):
         origin = dt.date.fromisoformat(origin)
 
     prep = _prepare(onset, report, cutoff)
     cutoff = prep.cutoff
     n_days = cutoff + 1
+    fixed = None if delay is None else as_delay(delay, cutoff)
+    if fixed is not None and fixed.ndim == 2:
+        period = np.arange(n_days, dtype=np.int64)
+    else:
+        period = delay_periods(cutoff, delay_period)
+    varying = int(period[-1]) > 0
     n_samples = int(n_samples)
     complete = np.bincount(prep.onset, minlength=n_days)[:n_days].astype(
         np.float64
@@ -398,21 +444,30 @@ def nowcast_linelist(
 
     need_em = method == "em" or fixed is None
     fit: EMFit | None = None
-    if need_em:
+    if need_em or varying:
         fit = em_fit(
             (prep.onset, prep.delay),
             prep.missing_report,
             cutoff,
             n_iter=n_iter,
             delay=fixed,
+            delay_period=delay_period,
+            delay_shrinkage=shrinkage,
         )
-    if fixed is not None:
+    if fixed is not None and fixed.ndim == 1:
         f = fixed
+        f_periods = fixed[None, :]
+        period_start = np.zeros(1, dtype=np.int64)
     else:
         assert fit is not None
-        f = fit.delay
+        f, f_periods, period_start = (
+            fit.delay,
+            fit.delay_by_period,
+            fit.period_start,
+        )
+    f_days = f_periods[period]
     g = empirical(prep.delay)
-    reported = np.cumsum(f)[days_left]
+    reported = np.cumsum(f_periods, axis=1)[period, days_left]
     ok = reported >= min_reported
 
     if method == "em":
@@ -420,6 +475,9 @@ def nowcast_linelist(
         imputed = complete + fit.allocation
     elif method == "backsampling":
         imputed = complete + backsampling_allocate(missing, g)
+    elif method == "forward" and varying:
+        flat = np.ones(n_days)
+        imputed = complete + posterior_allocate(missing, flat, f_days)
     elif method == "forward":
         imputed = complete + backsampling_allocate(missing, f)
     else:
@@ -432,7 +490,7 @@ def nowcast_linelist(
     samples = np.full((n_samples, n_days), np.nan)
     n_complete = prep.onset.size
     for b in range(n_samples):
-        f_b, g_b = f, g
+        f_b, g_b, f_b_periods = f, g, f_periods
         lam_b = fit.onsets if fit is not None else None
         if bootstrap:
             idx = rng.integers(0, n_complete, n_complete)
@@ -444,25 +502,31 @@ def nowcast_linelist(
                     missing,
                     cutoff,
                     fit.onsets,
-                    fit.delay,
+                    fit.delay_by_period,
                     n_boot_iter,
                     fixed is not None,
+                    period,
+                    shrinkage,
                 )
                 lam_b = refit.onsets
                 if fixed is None:
-                    f_b = refit.delay
+                    f_b, f_b_periods = refit.delay, refit.delay_by_period
         if method == "em":
             assert lam_b is not None
-            drawn = _draw_em(missing, lam_b, f_b, rng)
+            drawn = _draw_em(missing, lam_b, f_b_periods[period], rng)
         elif method == "backsampling":
             drawn = _draw_backwards(missing, g_b, rng)
+        elif method == "forward" and varying:
+            drawn = _draw_em(missing, np.ones(n_days), f_b_periods[period], rng)
         elif method == "forward":
             drawn = _draw_backwards(missing, f_b, rng)
         else:
             shift = round_half_up(float(np.dot(np.arange(DMAX + 1), g_b)))
             drawn = mean_shift_allocate(missing, shift)
         n_b = complete + drawn
-        rep_b = np.clip(np.cumsum(f_b)[days_left], 1e-12, 1.0)
+        rep_b = np.clip(
+            np.cumsum(f_b_periods, axis=1)[period, days_left], 1e-12, 1.0
+        )
         unseen = np.zeros(n_days)
         pos = ok & (n_b > 0) & (rep_b < 1)
         unseen[pos] = rng.negative_binomial(n_b[pos], rep_b[pos])
@@ -479,12 +543,14 @@ def nowcast_linelist(
             return int(day)
         return (origin + dt.timedelta(days=int(day))).isoformat()
 
-    days = [label(s) for s in range(n_days)]
+    day_labels = [label(s) for s in range(n_days)]
     return {
         "method": method,
         "cutoff": cutoff,
         "dropped": prep.dropped,
         "delay": f,
+        "delay_by_period": f_periods,
+        "period_start": period_start,
         "reported": reported,
         "point": point,
         "point_weekly": point_weekly,
@@ -492,7 +558,7 @@ def nowcast_linelist(
         "samples": samples,
         "weekly_samples": weekly_samples,
         "quantiles": levels,
-        "daily_quantiles": _quantile_rows(samples, levels, days),
+        "daily_quantiles": _quantile_rows(samples, levels, day_labels),
         "weekly_quantiles": _quantile_rows(
             weekly_samples,
             levels,

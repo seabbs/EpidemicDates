@@ -7,7 +7,8 @@ test_that("impute_linelist returns the documented structure", {
     res,
     c(
       "complete", "missing_by_report", "empirical_delay", "imputed",
-      "em_delay", "dropped", "imputed_before_day0", "cutoff", "origin"
+      "em_delay", "em_delay_by_period", "delay_period_start", "dropped",
+      "imputed_before_day0", "cutoff", "origin"
     )
   )
   expect_named(res$imputed, c("backsampling", "mean", "em"))

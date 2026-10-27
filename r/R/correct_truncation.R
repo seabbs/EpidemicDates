@@ -10,7 +10,9 @@
 #' Days with \eqn{F(T - s)} below `min_cover` are set to `NA`, as the
 #' corrected count is too uncertain to use.
 #'
-#' The correction assumes the delay is known and static.
+#' The correction assumes the delay is known.
+#' It can be static, or change over time with one pmf per onset day,
+#' in which case \eqn{F} is the CDF of onset day \eqn{s}'s delay.
 #' It does not allow for uncertainty in the delay.
 #'
 #' @section Warning:
@@ -24,6 +26,8 @@
 #'   `d` days, for example from [delay_pmf()] or the `em_delay` output of
 #'   [impute_linelist()].
 #'   It is normalised to sum to 1.
+#'   Alternatively a matrix with one pmf per day of `counts` in its rows,
+#'   for a delay that changes over time.
 #' @param cutoff Data cut-off day \eqn{T}, a whole number.
 #'   Defaults to the last day of `counts`.
 #' @param min_cover Smallest fraction reported to correct.
@@ -46,23 +50,44 @@
 #'   report = c(3, 5, 6, 8, 9, 10)
 #' )
 #' round(correct_truncation(res$imputed$em, res$em_delay, res$cutoff), 2)
+#'
+#' # with a delay for each onset day, from per-period estimates
+#' res <- impute_linelist(
+#'   onset = c(0, 1, NA, 3, NA, 4),
+#'   report = c(3, 5, 6, 8, 9, 10),
+#'   delay_period = 4
+#' )
+#' period <- findInterval(seq(0, res$cutoff), res$delay_period_start)
+#' by_day <- res$em_delay_by_period[period, ]
+#' round(correct_truncation(res$imputed$em, by_day, res$cutoff), 2)
 correct_truncation <- function(counts, delay, cutoff = length(counts) - 1,
                                min_cover = 0.05) {
   if (!is.numeric(counts)) {
     stop("counts must be numeric", call. = FALSE)
   }
-  delay <- .check_pmf(delay, "delay")
+  if (is.matrix(delay)) {
+    if (nrow(delay) != length(counts)) {
+      stop(
+        "a delay matrix needs one row per day of counts (",
+        length(counts), " rows), got ", nrow(delay),
+        call. = FALSE
+      )
+    }
+    cdf <- t(apply(delay, 1L, function(row) cumsum(.check_pmf(row, "delay"))))
+  } else {
+    cdf <- matrix(cumsum(.check_pmf(delay, "delay")), nrow = 1L)
+  }
   cutoff <- .check_scalar_whole(cutoff, "cutoff")
   valid_cover <- is.numeric(min_cover) && length(min_cover) == 1L &&
     is.finite(min_cover) && min_cover >= 0 && min_cover <= 1
   if (!valid_cover) {
     stop("min_cover must be a single number in [0, 1]", call. = FALSE)
   }
-  cdf <- cumsum(delay)
   lag <- cutoff - (seq_along(counts) - 1L)
   cover <- numeric(length(counts))
   seen <- lag >= 0
-  cover[seen] <- cdf[pmin(lag[seen], length(delay) - 1L) + 1L]
+  rows <- if (nrow(cdf) == 1L) 1L else which(seen)
+  cover[seen] <- cdf[cbind(rows, pmin(lag[seen], ncol(cdf) - 1L) + 1L)]
   out <- counts / cover
   out[cover < min_cover] <- NA_real_
   out

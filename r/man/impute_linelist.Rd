@@ -10,7 +10,9 @@ impute_linelist(
   cutoff = NULL,
   delay = NULL,
   max_delay = 60,
-  n_iter = 150
+  n_iter = 150,
+  delay_period = NULL,
+  delay_shrinkage = 10
 )
 }
 \arguments{
@@ -31,13 +33,27 @@ Defaults to the last report day.}
 Element \code{d + 1} is the probability of a delay of \code{d} days, for example
 from \code{\link[=delay_pmf]{delay_pmf()}}.
 It is normalised to sum to 1.
-If given, \code{imputed} also holds \code{fwd}.}
+Alternatively a matrix with one such pmf per onset day
+\verb{0..cutoff} in its rows, for a delay that changes over time.
+A given delay is used as is (a plug-in) by \code{fwd} and held fixed by
+\code{em}.
+If given, \code{imputed} also holds \code{fwd}.
+Cannot be combined with \code{delay_period}.}
 
 \item{max_delay}{Longest delay \eqn{D} kept, a non-negative whole number.
 Defaults to 60.}
 
 \item{n_iter}{Number of EM iterations, at least 1.
 Defaults to 150.}
+
+\item{delay_period}{Length in days of the periods of onset days that
+get their own EM delay, counted back from the cut-off.
+Defaults to \code{NULL}, one static delay.}
+
+\item{delay_shrinkage}{Strength, in expected cases, of the shrinkage of
+each period's delay towards the previous period's delay.
+Must be positive.
+Defaults to 10.}
 }
 \value{
 A list.
@@ -51,7 +67,13 @@ of \code{d} days.
 \item \code{empirical_delay}: pooled delay pmf of complete cases.
 \item \code{imputed}: a list of daily onset counts (complete plus imputed) for
 \code{backsampling}, \code{mean} and \code{em}, and \code{fwd} if \code{delay} is given.
-\item \code{em_delay}: the static delay pmf estimated by EM.
+\item \code{em_delay}: the delay pmf used by EM: the static estimate, the
+pooled estimate with \code{delay_period}, or the given \code{delay} (its
+onset-weighted mean for a matrix).
+\item \code{em_delay_by_period}: a matrix with the delay pmf of each period in
+its rows. One row without \code{delay_period}, and one row per onset day
+for a delay matrix.
+\item \code{delay_period_start}: the first onset day of each period.
 \item \code{dropped}: number of cases dropped.
 \item \code{imputed_before_day0}: a list with the expected number of
 missing-onset cases that \code{backsampling}, \code{mean} and (if \code{delay} is
@@ -82,17 +104,32 @@ up (as JavaScript's \code{Math.round}):
 \item \code{fwd} uses the given forward delay \eqn{f}, so
 \eqn{P(s \mid t) = f(t - s)}.
 It is only returned when \code{delay} is given.
+For a delay matrix, \eqn{P(s \mid t) \propto f_s(t - s)} over onset
+days \eqn{0, \dots, t}.
 \item \code{em} is EM back-projection.
 The E-step allocates missing cases by
-\eqn{P(s \mid t) \propto \lambda(s) f(t - s)}.
+\eqn{P(s \mid t) \propto \lambda(s) f_{k(s)}(t - s)}, where
+\eqn{k(s)} is the period of onset day \eqn{s}.
 The M-step alternates three times between
-\deqn{\lambda(s) = \frac{n(s)}{F\big(\min(T - s, D)\big)}, \qquad
+\deqn{\lambda(s) = \frac{n(s)}{F_{k(s)}\big(\min(T - s, D)\big)},
+    \qquad
     f(d) \propto \frac{n(d)}{\sum_{s \le T - d} \lambda(s)},}
 where \eqn{n} counts complete and allocated cases by onset day or by
-delay and \eqn{F} is the delay CDF.
-The delay \eqn{f} is static and estimated jointly with \eqn{\lambda}
-from all cases, allowing for right truncation.
-It is estimated even when \code{delay} is given.
+delay and \eqn{F_k} is the CDF of \eqn{f_k}.
+By default there is one period and the delay \eqn{f_0 = f} is static,
+estimated jointly with \eqn{\lambda} from all cases, allowing for
+right truncation.
+With \code{delay_period}, onset days are split into periods of that many
+days counted back from the cut-off, and in order
+\deqn{f_k(d) \propto \frac{N_k(d) + \kappa h_k(d)}{E_k(d) + \kappa},}
+where \eqn{N_k(d)} counts cases with onset in period \eqn{k} and
+delay \eqn{d}, \eqn{E_k(d)} sums \eqn{\lambda(s)} over days of
+period \eqn{k} up to \eqn{T - d}, \eqn{\kappa} is
+\code{delay_shrinkage}, \eqn{h_0 = f} and \eqn{h_k = f_{k-1}}.
+Each period is shrunk towards the one before, with a weight on its
+own data that grows with its expected number of cases.
+If \code{delay} is given, \code{em} holds it fixed (a plug-in) and only
+estimates \eqn{\lambda}.
 No convergence check is made.
 }
 
@@ -127,6 +164,11 @@ report_date <- as.Date("2026-05-01") + report + 1
 res <- impute_linelist(onset_date, report_date, delay = delay_pmf(4, 3))
 res$origin
 round(res$imputed$fwd, 2)
+
+# a delay estimated for each 4-day period of onsets
+res <- impute_linelist(onset, report, cutoff = 12, delay_period = 4)
+res$delay_period_start
+round(res$em_delay_by_period[, 1:6], 2)
 }
 \seealso{
 Other linelist:

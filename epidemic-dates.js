@@ -1788,6 +1788,201 @@
 
   // ---------- real line lists ----------
   /**
+   * Default strength of the shrinkage of each period's EM delay towards the
+   * previous period's delay, in expected onsets. See
+   * {@link module:epidemic-dates.imputeLinelist imputeLinelist}.
+   * @type {number}
+   * @constant
+   * @alias module:epidemic-dates.DELAY_SHRINKAGE
+   */
+  const DELAY_SHRINKAGE = 10;
+  /**
+   * Split onset days `0..T` into periods of `delayPeriod` days that end on
+   * the cut-off, so the latest period is always full length. The first
+   * period holds the days left over and can be shorter.
+   * @param {number} T Cut-off, a non-negative whole number.
+   * @param {?number} [delayPeriod=null] Period length in days, a whole
+   *   number of at least 1. Null gives one period.
+   * @returns {number[]} Period index (0, 1, ...) of each onset day.
+   * @throws {Error} If `delayPeriod` is not a whole number of at least 1.
+   * @example
+   * delayPeriods(9, 4); // [0, 0, 1, 1, 1, 1, 2, 2, 2, 2]
+   * @alias module:epidemic-dates.delayPeriods
+   */
+  function delayPeriods(T, delayPeriod = null) {
+    if (delayPeriod === null || delayPeriod === undefined)
+      return new Array(T + 1).fill(0);
+    if (!Number.isInteger(delayPeriod) || delayPeriod < 1)
+      throw new Error(
+        `delayPeriod must be a whole number of days of at least 1, got ${delayPeriod}`
+      );
+    const K = Math.ceil((T + 1) / delayPeriod);
+    return Array.from(
+      { length: T + 1 },
+      (_, s) => K - 1 - Math.floor((T - s) / delayPeriod)
+    );
+  }
+  /**
+   * First onset day of each period.
+   * @param {ArrayLike<number>} period Period index of each onset day.
+   * @returns {number[]}
+   * @private
+   */
+  function periodStarts(period) {
+    /** @type {number[]} */
+    const out = [];
+    for (let s = 0; s < period.length; s++)
+      if (s === 0 || period[s] !== period[s - 1]) out.push(s);
+    return out;
+  }
+  /**
+   * Check a delay shrinkage strength.
+   * @param {number} k Strength.
+   * @returns {number}
+   * @private
+   */
+  function checkShrinkage(k) {
+    if (!(Number.isFinite(k) && k > 0))
+      throw new Error(
+        `delayShrinkage must be a positive finite number, got ${k}`
+      );
+    return k;
+  }
+  /**
+   * Whether a supplied delay is a matrix (one pmf per onset day).
+   * @param {*} delay Supplied delay.
+   * @returns {boolean}
+   * @private
+   */
+  function isDelayMatrix(delay) {
+    return (
+      delay !== null &&
+      delay !== undefined &&
+      delay.length > 0 &&
+      (Array.isArray(delay[0]) || ArrayBuffer.isView(delay[0]))
+    );
+  }
+  /**
+   * Check a supplied delay pmf and return it on `0..L`, renormalised.
+   * @param {ArrayLike<number>} raw Delay pmf indexed by delay in days.
+   * @param {number} L Maximum delay.
+   * @returns {Float64Array}
+   * @private
+   */
+  function asDelayPmf(raw, L) {
+    const v = Array.from(raw);
+    if (v.some(x => typeof x !== "number" || !Number.isFinite(x) || x < 0))
+      throw new Error("delay must be finite and non-negative");
+    const out = normalise(
+      Float64Array.from({ length: L + 1 }, (_, d) => v[d] ?? 0)
+    );
+    if (!out.some(x => x > 0))
+      throw new Error(`delay must have positive mass on 0..${L}`);
+    return out;
+  }
+  /**
+   * Check a supplied delay matrix: one pmf per onset day `0..T`.
+   * @param {ArrayLike<ArrayLike<number>>} rows Delay pmf of each onset day.
+   * @param {number} T Cut-off.
+   * @param {number} L Maximum delay.
+   * @returns {Float64Array[]}
+   * @private
+   */
+  function asDelayMatrix(rows, T, L) {
+    if (rows.length !== T + 1)
+      throw new Error(
+        `a delay matrix needs one row per onset day 0..cutoff (${T + 1} rows), got ${rows.length}`
+      );
+    return Array.from(rows, r => asDelayPmf(r, L));
+  }
+  /**
+   * Shrink each period's right-truncated delay estimate towards the
+   * previous period's delay, and the first towards the pooled delay:
+   * `f_k(d) ∝ (N_k(d) + κ h_k(d)) / (E_k(d) + κ)` with `h_0 = f` and
+   * `h_k = f_{k−1}`. Floored at 1e-12 and renormalised.
+   * @param {Float64Array} pooled Pooled delay `f`.
+   * @param {Float64Array[]} N Counts by period and delay.
+   * @param {Float64Array[]} E Exposure by period and delay.
+   * @param {number} kappa Shrinkage strength `κ`.
+   * @returns {Float64Array[]}
+   * @private
+   */
+  function shrinkPeriods(pooled, N, E, kappa) {
+    /** @type {Float64Array[]} */
+    const out = [];
+    let target = pooled;
+    for (let k = 0; k < N.length; k++) {
+      const row = Float64Array.from(N[k], (n, d) =>
+        Math.max((n + kappa * target[d]) / (E[k][d] + kappa), 1e-12)
+      );
+      target = normalise(row);
+      out.push(target);
+    }
+    return out;
+  }
+  /**
+   * Exposure of each period to each delay:
+   * `E_k(d) = Σ_{s ∈ k, s ≤ T − d} λ(s)`.
+   * @param {ArrayLike<number>} lam Onset curve.
+   * @param {number[]} starts First day of each period.
+   * @param {number} T Cut-off.
+   * @param {number} L Maximum delay.
+   * @returns {Float64Array[]}
+   * @private
+   */
+  function periodExposure(lam, starts, T, L) {
+    const cl = cumsum(lam);
+    return starts.map((s0, k) => {
+      const end = k + 1 < starts.length ? starts[k + 1] - 1 : T;
+      const before = s0 > 0 ? cl[s0 - 1] : 0;
+      return Float64Array.from({ length: L + 1 }, (_, d) => {
+        const upto = Math.min(T - d, end);
+        return upto >= s0 ? Math.max(cl[upto] - before, 0) : 0;
+      });
+    });
+  }
+  /**
+   * Allocate missing-onset cases with `P(s | t) ∝ λ(s) fₛ(t − s)` over
+   * onset days `0..t`. With `λ` constant this is the forward draw with a
+   * delay that changes over time.
+   * @param {ArrayLike<number>} miss Missing-onset cases by report day.
+   * @param {ArrayLike<number>} lam Onset curve.
+   * @param {ArrayLike<ArrayLike<number>>} fDay Delay pmf of each onset day.
+   * @returns {Float64Array} Expected missing-onset cases by onset day.
+   * @private
+   */
+  function posteriorAllocate(miss, lam, fDay) {
+    const S = miss.length;
+    const out = new Float64Array(S);
+    for (let t = 0; t < S; t++) {
+      if (!miss[t]) continue;
+      const n = Math.min(fDay[0].length - 1, t) + 1;
+      let den = 0;
+      for (let d = 0; d < n; d++) den += lam[t - d] * fDay[t - d][d];
+      if (den <= 0) continue;
+      for (let d = 0; d < n; d++)
+        out[t - d] += (miss[t] * lam[t - d] * fDay[t - d][d]) / den;
+    }
+    return out;
+  }
+  /**
+   * Mean of delay pmfs weighted by the onset curve.
+   * @param {ArrayLike<number>} lam Onset curve.
+   * @param {ArrayLike<ArrayLike<number>>} fDay Delay pmf of each onset day.
+   * @returns {Float64Array}
+   * @private
+   */
+  function weightedDelay(lam, fDay) {
+    const out = new Float64Array(fDay[0].length);
+    let w = 0;
+    for (let s = 0; s < fDay.length; s++) w += Math.max(lam[s], 0);
+    for (let s = 0; s < fDay.length; s++) {
+      const ws = w > 0 ? Math.max(lam[s], 0) / w : 1 / fDay.length;
+      for (let d = 0; d < out.length; d++) out[d] += ws * fDay[s][d];
+    }
+    return out;
+  }
+  /**
    * Input to {@link module:epidemic-dates.imputeLinelist imputeLinelist}.
    * Days are whole numbers, for example days since the first report.
    * @typedef {Object} LinelistInput
@@ -1796,11 +1991,21 @@
    * @property {number[]} report Report day per case.
    * @property {?number} [cutoff=null] Last report day to use. Defaults to the
    *   latest report day. Later reports are dropped.
-   * @property {?ArrayLike<number>} [delay=null] Forward delay pmf indexed by
-   *   delay in days. If given, `fwd` uses it and `gen` holds it fixed.
+   * @property {?(ArrayLike<number>|ArrayLike<ArrayLike<number>>)}
+   *   [delay=null] Known forward delay, used as given (a plug-in): one pmf
+   *   indexed by delay in days, or an array with one pmf per onset day
+   *   `0..cutoff`. If given, `fwd` uses it and `gen` holds it fixed. Cannot
+   *   be combined with `delayPeriod`.
    * @property {number} [maxDelay=D] Longest delay kept. Cases with longer
    *   delays are dropped.
    * @property {number} [iterations=300] EM iterations for `gen`.
+   * @property {?number} [delayPeriod=null] Length in days of the periods of
+   *   onset days that get their own EM delay, counted back from the
+   *   cut-off ({@link module:epidemic-dates.delayPeriods delayPeriods}).
+   *   Null estimates one static delay.
+   * @property {number} [delayShrinkage=DELAY_SHRINKAGE] Strength, in
+   *   expected onsets, of the shrinkage of each period's delay towards the
+   *   previous period's delay.
    * @memberof module:epidemic-dates
    */
   /**
@@ -1825,7 +2030,12 @@
    * @property {number[]} empiricalDelay Pooled empirical delay pmf of
    *   complete cases.
    * @property {number[]} generativeDelay Delay pmf used by `gen`: the given
-   *   `delay`, or the estimate.
+   *   `delay` (its onset-weighted mean for a matrix), the static estimate,
+   *   or with `delayPeriod` the pooled estimate.
+   * @property {number[][]} generativeDelayByPeriod Delay pmf of each
+   *   period. One row without `delayPeriod`, and one row per onset day for
+   *   a delay matrix.
+   * @property {number[]} delayPeriodStart First onset day of each period.
    * @property {{backsampling: number[], mean: number[], fwd: ?number[],
    *   gen: number[]}} imputed Onsets after imputation by method. `fwd` is
    *   null without `delay`. `gen` is not truncation adjusted.
@@ -1839,21 +2049,30 @@
    * `s = t − round(Σ_d d g(d))` and `fwd` uses `P(s | t) = f(t − s)` for
    * the given `delay`.
    *
-   * `gen` is EM back-projection with a single static delay `f`:
-   * `P(s | t) ∝ λ(s) f(t − s)` and
-   * `λ(s) = (n_complete(s) + n_alloc(s)) / F(T − s)`. Without `delay` it
-   * also estimates `f`, allowing for right truncation:
+   * `gen` is EM back-projection: `P(s | t) ∝ λ(s) fₛ(t − s)` and
+   * `λ(s) = (n_complete(s) + n_alloc(s)) / Fₛ(T − s)`. With `delay` it holds
+   * that delay fixed, static or one pmf per onset day. Without it, it
+   * estimates one static delay, allowing for right truncation:
    * `f(d) ∝ n(d) / Σ_{s ≤ T − d} λ(s)`, where `n(d)` counts complete and
-   * allocated cases with delay `d`. It assumes onsets are missing at random
-   * given report day and that the delay does not change over time.
+   * allocated cases with delay `d`. With `delayPeriod` it estimates one delay
+   * per period `k` instead, shrunk towards the previous period's delay `h_k`
+   * (the pooled `f` for the first period):
+   * `f_k(d) ∝ (N_k(d) + κ h_k(d)) / (E_k(d) + κ)`, with `N_k(d)` the cases
+   * with onset in period `k` and delay `d`, `E_k(d) = Σ_{s ∈ k, s ≤ T − d} λ(s)`
+   * and `κ = delayShrinkage`. It assumes onsets are missing at random given
+   * report day and that the delay is constant within each period.
    *
-   * A proper generative model would jointly estimate a time-varying delay,
-   * smooth `λ` (for example with a renewal process) and could model
-   * ascertainment, as epinowcast does. Here the delay is given or estimated
-   * as static, which is acceptable for this demonstration.
+   * With a delay matrix, `fwd` uses `P(s | t) ∝ fₛ(t − s)` over onset days
+   * `0..t`.
+   *
+   * A proper generative model would jointly estimate a smoothly
+   * time-varying delay, smooth `λ` (for example with a renewal process) and
+   * could model ascertainment, as epinowcast does.
    * @param {LinelistInput} input Line list and options.
    * @returns {LinelistResult}
-   * @throws {Error} If `onset` and `report` differ in length.
+   * @throws {Error} If `onset` and `report` differ in length, `delay` is not
+   *   a valid pmf or matrix of pmfs, both `delay` and `delayPeriod` are
+   *   given, or `delayPeriod` or `delayShrinkage` is out of range.
    * @example
    * const { imputeLinelist } = require("./epidemic-dates.js");
    * const res = imputeLinelist({
@@ -1872,10 +2091,16 @@
     cutoff = null,
     delay = null,
     maxDelay = D,
-    iterations = 300
+    iterations = 300,
+    delayPeriod = null,
+    delayShrinkage = DELAY_SHRINKAGE
   }) {
     if (onset.length !== report.length)
       throw new Error("onset and report must have the same length");
+    checkShrinkage(delayShrinkage);
+    const given = delay !== null && delay !== undefined;
+    if (given && delayPeriod !== null && delayPeriod !== undefined)
+      throw new Error("give either delay or delayPeriod, not both");
     let T = cutoff;
     if (T === null || T === undefined) {
       T = -1;
@@ -1883,6 +2108,18 @@
       if (T < 0) throw new Error("no valid report days");
     }
     const S = T + 1;
+    const rows = isDelayMatrix(delay)
+      ? asDelayMatrix(
+          /** @type {ArrayLike<ArrayLike<number>>} */ (delay),
+          T,
+          maxDelay
+        )
+      : null;
+    const period = rows
+      ? Array.from({ length: S }, (_, s) => s)
+      : delayPeriods(T, delayPeriod);
+    const K = period[S - 1] + 1;
+    const starts = periodStarts(period);
     const comp = new Float64Array(S),
       miss = new Float64Array(S);
     const emp = new Float64Array(maxDelay + 1);
@@ -1910,10 +2147,19 @@
     }
     const g = normalise(emp);
     const m = Math.round(pmfMean(g));
-    const fd = delay ? normalise(Float64Array.from(delay)) : null;
+    const fd =
+      given && !rows
+        ? normalise(Float64Array.from(/** @type {ArrayLike<number>} */ (delay)))
+        : null;
     const backsampled = convImpute(comp, miss, g, S);
     const mean = shiftImpute(comp, miss, m, S);
-    const fwd = fd ? convImpute(comp, miss, fd, S) : null;
+    let fwd = fd ? convImpute(comp, miss, fd, S) : null;
+    let lostFwd = 0;
+    if (rows) {
+      const a = posteriorAllocate(miss, new Float64Array(S).fill(1), rows);
+      fwd = Float64Array.from(comp, (v, s) => v + a[s]);
+      for (let t = 0; t < S; t++) lostFwd += miss[t] - a[t];
+    }
     // expected missing-onset cases a delay pmf cannot place: onsets before
     // day 0, or every case when the pmf is all zeros (no complete cases)
     /** @param {ArrayLike<number>} pmf Normalised or all-zero delay pmf. */
@@ -1937,38 +2183,48 @@
     for (let t = 0; t < Math.min(m, S); t++) lostMean += miss[t];
     let lostGen = 0;
     for (let t = 0; t < S; t++) lostGen += miss[t];
-    // EM back-projection, optionally estimating a static delay
-    let f = delay
-      ? normalise(
-          Float64Array.from({ length: maxDelay + 1 }, (_, d) => delay[d] ?? 0)
-        )
-      : Float64Array.from(g);
+    // EM back-projection: a given delay, or an estimated static delay or
+    // one delay per period
+    let f = rows
+      ? rows[0]
+      : given
+        ? normalise(
+            Float64Array.from(
+              { length: maxDelay + 1 },
+              (_, d) => /** @type {ArrayLike<number>} */ (delay)[d] ?? 0
+            )
+          )
+        : Float64Array.from(g);
+    /** @type {Float64Array[]} */
+    let fk = rows ?? Array.from({ length: K }, () => f);
     const lam = Float64Array.from(backsampled, v => v + 1e-6);
     let alloc = new Float64Array(S);
     for (let it = 0; it < iterations; it++) {
-      const Fc = cumsum(f);
+      const Fk = fk.map(cumsum);
       const A = Array.from({ length: S }, () => new Float64Array(maxDelay + 1));
       alloc = new Float64Array(S);
       lostGen = 0;
       for (let t = 0; t < S; t++) {
         if (!miss[t]) continue;
         let den = 0;
-        for (let d = 0; d <= maxDelay && d <= t; d++) den += lam[t - d] * f[d];
+        for (let d = 0; d <= maxDelay && d <= t; d++)
+          den += lam[t - d] * fk[period[t - d]][d];
         if (den <= 0) {
           lostGen += miss[t];
           continue;
         }
         for (let d = 0; d <= maxDelay && d <= t; d++) {
-          const a = (miss[t] * lam[t - d] * f[d]) / den;
+          const a = (miss[t] * lam[t - d] * fk[period[t - d]][d]) / den;
           A[t - d][d] += a;
           alloc[t - d] += a;
         }
       }
       for (let s = 0; s < S; s++) {
         const n = comp[s] + alloc[s];
-        lam[s] = (n + 1e-9) / Math.max(Fc[Math.min(T - s, maxDelay)], 1e-4);
+        lam[s] =
+          (n + 1e-9) / Math.max(Fk[period[s]][Math.min(T - s, maxDelay)], 1e-4);
       }
-      if (!delay) {
+      if (!given) {
         // right-truncated delay update: cases with delay d can only be seen
         // for onsets up to T - d
         const cl = cumsum(lam);
@@ -1980,8 +2236,22 @@
           nf[d] = Math.max(nd / Math.max(cl[T - d], 1e-12), 1e-12);
         }
         f = normalise(nf);
+        if (K === 1) fk = [f];
+        else {
+          const N = starts.map(() => new Float64Array(maxDelay + 1));
+          for (let s = 0; s < S; s++)
+            for (let d = 0; d <= maxDelay && s + d <= T; d++)
+              N[period[s]][d] += Nc[s][d] + A[s][d];
+          fk = shrinkPeriods(
+            f,
+            N,
+            periodExposure(lam, starts, T, maxDelay),
+            delayShrinkage
+          );
+        }
       }
     }
+    if (rows) f = weightedDelay(lam, rows);
     const gen = Float64Array.from(comp, (v, s) => v + alloc[s]);
     return {
       days: S,
@@ -1990,13 +2260,15 @@
       droppedImputed: {
         backsampling: unplaced(g),
         mean: lostMean,
-        fwd: fd ? unplaced(fd) : null,
+        fwd: rows ? Math.max(lostFwd, 0) : fd ? unplaced(fd) : null,
         gen: lostGen
       },
       complete: Array.from(comp),
       missingByReport: Array.from(miss),
       empiricalDelay: Array.from(g),
       generativeDelay: Array.from(f),
+      generativeDelayByPeriod: fk.map(r => Array.from(r)),
+      delayPeriodStart: starts,
       imputed: {
         backsampling: Array.from(backsampled),
         mean: Array.from(mean),
@@ -2071,48 +2343,81 @@
    * @property {Float64Array} allocation Expected missing-onset cases by
    *   onset day.
    * @property {Float64Array} onsets Onset curve `λ(s)`.
-   * @property {Float64Array} delay Delay pmf `f(d)`.
+   * @property {Float64Array} delay Pooled delay pmf `f(d)` (for a fixed
+   *   delay matrix, its onset-weighted mean).
+   * @property {Float64Array[]} delayByPeriod Delay pmf of each period.
+   * @property {number[]} periodStart First onset day of each period.
    * @private
    */
   /**
    * EM back-projection from given starting values, as `em_fit` in the
    * Python package. Each iteration allocates missing cases by
-   * `λ(s) f(t − s)`, then alternates three times between
-   * `λ(s) = n(s) / F(min(T − s, L))` and
+   * `λ(s) f_{k(s)}(t − s)`, then alternates three times between
+   * `λ(s) = n(s) / F_{k(s)}(min(T − s, L))` and the pooled delay
    * `f(d) ∝ n(d) / Σ_{s ≤ T − d} λ(s)` (once, updating only `λ`, if the
-   * delay is fixed). `F` is floored at 1e-12 and `f` at 1e-12.
+   * delay is fixed). With several periods each period's delay is then
+   * shrunk towards the previous one's, the first towards `f`
+   * (`shrinkPeriods`). `F` is floored at 1e-12 and `f` at 1e-12.
    * @param {Float64Array[]} Nc Complete cases by onset day then delay.
    * @param {Float64Array} miss Missing-onset cases by report day.
    * @param {number} T Cut-off.
    * @param {number} L Maximum delay.
    * @param {ArrayLike<number>} lam0 Starting onset curve.
-   * @param {ArrayLike<number>} f0 Starting (or fixed) delay pmf.
+   * @param {ArrayLike<number>|ArrayLike<ArrayLike<number>>} f0 Starting
+   *   (or fixed) delay pmf, or one per period.
    * @param {number} iterations Number of iterations.
    * @param {boolean} fixDelay Hold the delay fixed.
+   * @param {?number[]} [period=null] Period index of each onset day. One
+   *   period if null.
+   * @param {number} [shrinkage=DELAY_SHRINKAGE] Shrinkage strength `κ`.
    * @returns {EMFit}
    * @private
    */
-  function emFit(Nc, miss, T, L, lam0, f0, iterations, fixDelay) {
+  function emFit(
+    Nc,
+    miss,
+    T,
+    L,
+    lam0,
+    f0,
+    iterations,
+    fixDelay,
+    period = null,
+    shrinkage = DELAY_SHRINKAGE
+  ) {
     const S = T + 1;
+    const per = period ?? new Array(S).fill(0);
+    const K = per[S - 1] + 1;
+    const starts = periodStarts(per);
     /** @type {Float64Array} */
     let lam = Float64Array.from(lam0);
+    /** @type {Float64Array[]} */
+    let fk = isDelayMatrix(f0)
+      ? Array.from(/** @type {ArrayLike<ArrayLike<number>>} */ (f0), r =>
+          Float64Array.from(r)
+        )
+      : [Float64Array.from(/** @type {ArrayLike<number>} */ (f0))];
+    if (fk.length !== K) fk = Array.from({ length: K }, () => fk[0]);
     /** @type {Float64Array} */
-    let f = Float64Array.from(f0);
+    let f = fk[0];
     let A = Array.from({ length: S }, () => new Float64Array(L + 1));
     const ns = new Float64Array(S),
       nd = new Float64Array(L + 1);
     for (let it = 0; it < iterations; it++) {
       const den = new Float64Array(S);
-      for (let s = 0; s < S; s++)
-        for (let d = 0; d <= L && s + d <= T; d++) den[s + d] += lam[s] * f[d];
+      for (let s = 0; s < S; s++) {
+        const fs = fk[per[s]];
+        for (let d = 0; d <= L && s + d <= T; d++) den[s + d] += lam[s] * fs[d];
+      }
       A = Array.from({ length: S }, () => new Float64Array(L + 1));
       ns.fill(0);
       nd.fill(0);
       for (let s = 0; s < S; s++) {
+        const fs = fk[per[s]];
         for (let d = 0; d <= L; d++) {
           if (s + d <= T) {
             const t = s + d;
-            A[s][d] = lam[s] * f[d] * (miss[t] / Math.max(den[t], 1e-300));
+            A[s][d] = lam[s] * fs[d] * (miss[t] / Math.max(den[t], 1e-300));
           }
           const n = Nc[s][d] + A[s][d];
           ns[s] += n;
@@ -2120,10 +2425,10 @@
         }
       }
       for (let k = 0; k < (fixDelay ? 1 : 3); k++) {
-        const Fc = cumsum(f);
+        const Fk = fk.map(cumsum);
         lam = Float64Array.from(
           ns,
-          (n, s) => n / Math.max(Fc[Math.min(T - s, L)], 1e-12)
+          (n, s) => n / Math.max(Fk[per[s]][Math.min(T - s, L)], 1e-12)
         );
         if (fixDelay) continue;
         const cl = cumsum(lam);
@@ -2131,14 +2436,33 @@
           Math.max(n / Math.max(T - d >= 0 ? cl[T - d] : 0, 1e-300), 1e-12)
         );
         f = normalise(nf);
+        if (K === 1) {
+          fk = [f];
+          continue;
+        }
+        const N = starts.map(() => new Float64Array(L + 1));
+        for (let s = 0; s < S; s++)
+          for (let d = 0; d <= L; d++) N[per[s]][d] += Nc[s][d] + A[s][d];
+        fk = shrinkPeriods(f, N, periodExposure(lam, starts, T, L), shrinkage);
       }
     }
+    if (fixDelay && K > 1)
+      f = weightedDelay(
+        lam,
+        per.map(k => fk[k])
+      );
     const allocation = Float64Array.from(A, row => {
       let x = 0;
       for (let d = 0; d <= L; d++) x += row[d];
       return x;
     });
-    return { allocation, onsets: lam, delay: f };
+    return {
+      allocation,
+      onsets: lam,
+      delay: f,
+      delayByPeriod: fk,
+      periodStart: starts
+    };
   }
 
   /**
@@ -2152,10 +2476,12 @@
    *   latest report day.
    * @property {string} [method="gen"] Imputation method, one of
    *   {@link module:epidemic-dates.NOWCAST_METHODS NOWCAST_METHODS}.
-   * @property {?ArrayLike<number>} [delay=null] Forward delay pmf indexed
-   *   by delay in days. Used for the truncation correction, for `fwd`, and
-   *   held fixed by `gen`. If null it is estimated by EM. Entries beyond
-   *   `maxDelay` are dropped and the rest renormalised.
+   * @property {?(ArrayLike<number>|ArrayLike<ArrayLike<number>>)}
+   *   [delay=null] Forward delay, used as given for the truncation
+   *   correction, for `fwd`, and held fixed by `gen`: one pmf indexed by
+   *   delay in days, or an array with one pmf per onset day `0..T`. If null
+   *   it is estimated by EM. Entries beyond `maxDelay` are dropped and each
+   *   pmf renormalised. Cannot be combined with `delayPeriod`.
    * @property {number} [maxDelay=60] Longest delay kept, as `DMAX` in the
    *   Python package. Complete cases with longer delays are dropped.
    * @property {number} [iterations=150] EM iterations for the point fit.
@@ -2170,6 +2496,12 @@
    *   delay uncertainty.
    * @property {?string} [origin=null] ISO date of day 0. If given, dates in
    *   the quantile tables are ISO strings, otherwise day numbers.
+   * @property {?number} [delayPeriod=null] Length in days of the periods of
+   *   onset days that get their own estimated delay, counted back from the
+   *   cut-off. Null estimates one static delay.
+   * @property {number} [delayShrinkage=DELAY_SHRINKAGE] Strength, in
+   *   expected onsets, of the shrinkage of each period's delay towards the
+   *   previous period's delay.
    * @memberof module:epidemic-dates
    */
   /**
@@ -2199,10 +2531,14 @@
    * @property {number} cutoff Cut-off `T`.
    * @property {number} dropped Cases dropped, as in
    *   {@link module:epidemic-dates.imputeLinelist imputeLinelist}.
-   * @property {number[]} delay Delay pmf used for the point nowcast: the
-   *   given `delay` or the EM estimate.
+   * @property {number[]} delay Delay pmf for the point nowcast: the given
+   *   static `delay`, the EM estimate, or with periods or a delay matrix the
+   *   pooled or onset-weighted mean delay.
+   * @property {number[][]} delayByPeriod Delay pmf of each period. Each
+   *   onset day is its own period when a delay matrix is given.
+   * @property {number[]} periodStart First onset day of each period.
    * @property {number[]} reported Fraction reported by the cut-off,
-   *   `F(T − s)`.
+   *   `Fₛ(T − s)`, under the delay of the day's period.
    * @property {number[]} point Point nowcast by onset day.
    * @property {number[]} pointWeekly Point nowcast by week.
    * @property {number[]} weekStart First onset day of each week.
@@ -2224,21 +2560,25 @@
    * imputed by `method`: `gen` (default), EM back-projection with
    * `P(s | t) ∝ λ(s) f(t − s)`; `backsampling`, `P(s | t) = g(t − s)` with
    * `g` the pooled empirical delay; `mean`, `s = t − round(Σ_d d g(d))`;
-   * `fwd`, `P(s | t) = f(t − s)`. `f` is `delay` if given, otherwise the
-   * static delay estimated by EM, allowing for right truncation. This gives
-   * `n̂(s) = n_c(s) + n_i(s)`, onsets of cases reported by `T`.
+   * `fwd`, `P(s | t) = f(t − s)`. `f` is `delay` if given, used as is: one
+   * pmf, or one per onset day so `fₛ` changes over time. Otherwise it is
+   * estimated by EM, allowing for right truncation: one static delay, or
+   * with `delayPeriod` one per period, shrunk towards the previous period's.
+   * When `fₛ` changes over time, `fwd` uses `P(s | t) ∝ fₛ(t − s)` over
+   * onset days `0..t`. This gives `n̂(s) = n_c(s) + n_i(s)`, onsets of cases
+   * reported by `T`.
    *
    * **2. Correct for right truncation.** The point nowcast is
-   * `Ĉ(s) = n̂(s) / F(min(T − s, D))`, with `F` the CDF of `f`. Days with
-   * `F(T − s) < minReported` get no estimate (NaN).
+   * `Ĉ(s) = n̂(s) / Fₛ(min(T − s, D))`, with `Fₛ` the CDF of `fₛ`. Days with
+   * `Fₛ(T − s) < minReported` get no estimate (NaN).
    *
    * **3. Sample.** Each sample, with a generator seeded by `seed`:
    *
    * - if `bootstrap`, resamples the complete cases with replacement,
    *   recomputes `g`, and refits EM to them and the missing cases,
    *   warm-started from the point fit for `max(10, floor(iterations / 5))`
-   *   iterations, giving `f_b` and `λ_b` (with a given `delay`, only `λ_b`
-   *   is refitted);
+   *   iterations, giving `f_b` and `λ_b` (one delay per period with
+   *   `delayPeriod`; with a given `delay`, only `λ_b` is refitted);
    * - draws the missing onsets: `backsampling` and `fwd` as a multinomial
    *   over delays with `g` or `f_b`, `gen` as a multinomial over onset days
    *   with `P(s | t) ∝ λ_b(s) f_b(t − s)`, and `mean` by a fixed shift of
@@ -2256,8 +2596,9 @@
    * **Captured:** the draw of missing onsets given the delay and onset
    * curve; the binomial reporting of recent onsets given the delay; with
    * `bootstrap`, sampling uncertainty in the delay (and in the onset curve
-   * used by `gen`). **Not captured:** a delay that changes over time,
-   * onsets missing other than at random given report day, dependence
+   * used by `gen`). **Not captured:** a delay that changes over time but is
+   * estimated as static, or that changes within a period; onsets missing
+   * other than at random given report day; dependence
    * between cases, uncertainty in a given `delay`, and noise in the onset
    * process itself. Days with no reported onsets get 0 in every sample.
    *
@@ -2267,8 +2608,10 @@
    * @returns {NowcastResult}
    * @throws {Error} If `onset` and `report` differ in length, there is no
    *   valid report day or complete case, `method` is unknown, `delay` is
-   *   not a valid pmf, or `nSamples`, `quantiles`, `minReported`,
-   *   `iterations`, `maxDelay` or `seed` are out of range.
+   *   not a valid pmf or matrix of pmfs, both `delay` and `delayPeriod` are
+   *   given, or `nSamples`, `quantiles`, `minReported`, `iterations`,
+   *   `maxDelay`, `seed`, `delayPeriod` or `delayShrinkage` are out of
+   *   range.
    * @example
    * const { nowcastLinelist } = require("./epidemic-dates.js");
    * const res = nowcastLinelist({
@@ -2294,7 +2637,9 @@
     quantiles = QUANTILES,
     minReported = 0.05,
     bootstrap = true,
-    origin = null
+    origin = null,
+    delayPeriod = null,
+    delayShrinkage = DELAY_SHRINKAGE
   }) {
     if (onset.length !== report.length)
       throw new Error("onset and report must have the same length");
@@ -2315,18 +2660,16 @@
     if (!levels.length || levels.some(q => !(q >= 0 && q <= 1)))
       throw new Error("quantiles must be a non-empty list in [0, 1]");
     const L = maxDelay;
+    checkShrinkage(delayShrinkage);
+    const given = delay !== null && delay !== undefined;
+    if (given && delayPeriod !== null && delayPeriod !== undefined)
+      throw new Error("give either delay or delayPeriod, not both");
+    const matrixGiven = isDelayMatrix(delay);
     /** @type {?Float64Array} */
-    let fixed = null;
-    if (delay !== null && delay !== undefined) {
-      const raw = Array.from(delay);
-      if (raw.some(x => !Number.isFinite(x) || x < 0))
-        throw new Error("delay must be finite and non-negative");
-      fixed = normalise(
-        Float64Array.from({ length: L + 1 }, (_, d) => raw[d] ?? 0)
-      );
-      if (!fixed.some(x => x > 0))
-        throw new Error(`delay must have positive mass on 0..${L}`);
-    }
+    const fixed =
+      given && !matrixGiven
+        ? asDelayPmf(/** @type {ArrayLike<number>} */ (delay), L)
+        : null;
     const t0 = origin === null ? null : Date.parse(origin);
     if (t0 !== null && !Number.isFinite(t0))
       throw new Error(`origin must be an ISO date, got ${origin}`);
@@ -2340,6 +2683,14 @@
     if (!Number.isInteger(T) || T < 0)
       throw new Error("cutoff must be a non-negative whole number");
     const S = T + 1;
+    /** @type {?Float64Array[]} */
+    const rows = matrixGiven
+      ? asDelayMatrix(/** @type {ArrayLike<ArrayLike<number>>} */ (delay), T, L)
+      : null;
+    const period = rows
+      ? Array.from({ length: S }, (_, s) => s)
+      : delayPeriods(T, delayPeriod);
+    const varying = period[S - 1] > 0;
     const comp = new Float64Array(S),
       miss = new Float64Array(S);
     /** @type {number[]} */
@@ -2395,29 +2746,44 @@
       return normalise(e);
     };
     const all = Array.from({ length: nC }, (_, k) => k);
-    const needEm = method === "gen" || fixed === null;
+    const held = given;
+    const needEm = method === "gen" || !held;
     /** @type {?EMFit} */
     let fit = null;
-    if (needEm) {
+    if (needEm || varying) {
       const Nc = matrix(all);
       let nMiss = 0;
       for (let t = 0; t < S; t++) nMiss += miss[t];
       const nd = new Float64Array(L + 1);
       for (const d of delayC) nd[d]++;
-      const start = fixed ?? normalise(Float64Array.from(nd, x => x + 0.5));
+      const start =
+        rows ?? fixed ?? normalise(Float64Array.from(nd, x => x + 0.5));
       const frac = nMiss / (nMiss + nC);
       const lam0 = Float64Array.from(
         comp,
         n => n / Math.max(1e-9, 1 - frac) + 0.1
       );
-      fit = emFit(Nc, miss, T, L, lam0, start, iterations, fixed !== null);
+      fit = emFit(
+        Nc,
+        miss,
+        T,
+        L,
+        lam0,
+        start,
+        iterations,
+        held,
+        period,
+        delayShrinkage
+      );
     }
     const f = fixed ?? /** @type {EMFit} */ (fit).delay;
+    const fPeriods = fixed ? [fixed] : /** @type {EMFit} */ (fit).delayByPeriod;
+    const periodStart = fixed ? [0] : /** @type {EMFit} */ (fit).periodStart;
     const g = empirical(all);
-    const Fc = cumsum(f);
+    const FcP = fPeriods.map(cumsum);
     const reported = Array.from(
       { length: S },
-      (_, s) => Fc[Math.min(T - s, L)]
+      (_, s) => FcP[period[s]][Math.min(T - s, L)]
     );
     const ok = reported.map(x => x >= minReported);
     /**
@@ -2431,6 +2797,13 @@
       imputed = Float64Array.from(comp, (v, s) => v + a[s]);
     } else if (method === "backsampling") {
       imputed = convImpute(comp, miss, g, S);
+    } else if (method === "fwd" && varying) {
+      const a = posteriorAllocate(
+        miss,
+        new Float64Array(S).fill(1),
+        period.map(k => fPeriods[k])
+      );
+      imputed = Float64Array.from(comp, (v, s) => v + a[s]);
     } else if (method === "fwd") {
       imputed = convImpute(comp, miss, f, S);
     } else {
@@ -2456,9 +2829,9 @@
       return out;
     };
     /**
-     * Draw onsets from the EM posterior `λ(s) f(t − s)`.
-     * @param {Float64Array} lam Onset curve.
-     * @param {Float64Array} fb Delay pmf.
+     * Draw onsets from the EM posterior `λ(s) f_{k(s)}(t − s)`.
+     * @param {ArrayLike<number>} lam Onset curve.
+     * @param {Float64Array[]} fb Delay pmf of each period.
      * @param {Rng} rng Generator.
      */
     const drawEm = (lam, fb, rng) => {
@@ -2467,7 +2840,10 @@
         if (!miss[t]) continue;
         const n = Math.min(L, t) + 1;
         const w = normalise(
-          Float64Array.from({ length: n }, (_, d) => lam[t - d] * fb[d])
+          Float64Array.from(
+            { length: n },
+            (_, d) => lam[t - d] * fb[period[t - d]][d]
+          )
         );
         if (!w.some(x => x > 0)) continue;
         const x = rmultinom(miss[t], w, rng);
@@ -2482,6 +2858,7 @@
     const samples = [];
     for (let b = 0; b < nSamples; b++) {
       let fb = f,
+        fbP = fPeriods,
         gb = g,
         lamb = fit ? fit.onsets : null;
       if (bootstrap) {
@@ -2497,29 +2874,36 @@
             T,
             L,
             pf.onsets,
-            pf.delay,
+            pf.delayByPeriod,
             bootIter,
-            fixed !== null
+            held,
+            period,
+            delayShrinkage
           );
           lamb = refit.onsets;
-          if (fixed === null) fb = refit.delay;
+          if (!held) {
+            fb = refit.delay;
+            fbP = refit.delayByPeriod;
+          }
         }
       }
       let drawn;
       if (method === "gen")
-        drawn = drawEm(/** @type {Float64Array} */ (lamb), fb, rng);
+        drawn = drawEm(/** @type {Float64Array} */ (lamb), fbP, rng);
       else if (method === "backsampling") drawn = drawBack(gb, rng);
+      else if (method === "fwd" && varying)
+        drawn = drawEm(new Float64Array(S).fill(1), fbP, rng);
       else if (method === "fwd") drawn = drawBack(fb, rng);
       else
         drawn = Float64Array.from(
           shiftImpute(new Float64Array(S), miss, shiftOf(gb), S)
         );
-      const Fb = cumsum(fb);
+      const FbP = fbP.map(cumsum);
       samples.push(
         Array.from({ length: S }, (_, s) => {
           if (!ok[s]) return NaN;
           const n = comp[s] + drawn[s];
-          const p = clamp(Fb[Math.min(T - s, L)], 1e-12, 1);
+          const p = clamp(FbP[period[s]][Math.min(T - s, L)], 1e-12, 1);
           return n + (n > 0 && p < 1 ? rnbinom(n, p, rng) : 0);
         })
       );
@@ -2592,6 +2976,8 @@
       cutoff: T,
       dropped,
       delay: Array.from(f),
+      delayByPeriod: fPeriods.map(r => Array.from(r)),
+      periodStart,
       reported,
       point,
       pointWeekly: toWeeks(point),
@@ -2638,6 +3024,8 @@
     run,
     imputeLinelist,
     nowcastLinelist,
+    delayPeriods,
+    DELAY_SHRINKAGE,
     NOWCAST_METHODS,
     QUANTILES,
     makeRng

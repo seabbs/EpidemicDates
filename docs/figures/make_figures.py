@@ -11,7 +11,7 @@ functions (`backsampling_allocate`, `mean_shift_allocate`).
 The generative method is EM back-projection with the true delay,
 run on the expected counts.
 The worked example uses `impute_linelist` and `nowcast_linelist` on the
-example line list.
+example line lists.
 
 Run from the repository root:
 
@@ -37,6 +37,7 @@ import epidemic_dates as ed
 
 HERE = Path(__file__).parent
 CSV = HERE.parent / "data" / "example-linelist.csv"
+CHANGING_CSV = HERE.parent / "data" / "example-linelist-changing-delays.csv"
 
 # Method colours, matching the interactive page.
 COL = {
@@ -490,9 +491,9 @@ def fig_truncation(theme):
     save(fig, "truncation", theme)
 
 
-def read_linelist():
-    """Read the example line list as day numbers."""
-    with CSV.open() as fh:
+def read_linelist(path=CSV):
+    """Read an example line list as day numbers."""
+    with path.open() as fh:
         rows = list(csv.DictReader(fh))
 
     def to_date(x):
@@ -671,11 +672,177 @@ def fig_nowcast(theme):
     save(fig, "nowcast", theme)
 
 
+def fig_nowcast_periods(theme):
+    """Compare static and per-period EM nowcasts as the delay falls (F)."""
+    th = style(theme)
+    rng = np.random.default_rng(1)
+    onset, report, missing = ed.simulate("F", ed.scenario_setup("F"), rng)
+    cutoff, n_weeks = 149, 10
+    keep = report <= cutoff
+    obs = np.where(missing[keep], np.nan, onset[keep])
+    eventual = np.bincount(onset, minlength=cutoff + 1)[: cutoff + 1]
+    complete = np.bincount(onset[keep & ~missing], minlength=cutoff + 1)[
+        : cutoff + 1
+    ]
+    first = cutoff + 1 - 7 * n_weeks
+
+    def weeks(daily):
+        return np.asarray(daily)[first:].reshape(n_weeks, 7).sum(1)
+
+    mid = first + 7 * np.arange(n_weeks) + 3
+    fig, axes = plt.subplots(1, 2, figsize=(8, 3.4), sharey=True)
+    for ax, period, title in zip(
+        axes,
+        [None, 14],
+        ["One static delay (default)", "A delay for each 14-day period"],
+        strict=True,
+    ):
+        nc = ed.nowcast_linelist(
+            obs, report[keep], cutoff=cutoff, delay_period=period, seed=1
+        )
+        q = np.quantile(
+            nc["weekly_samples"][:, -n_weeks:],
+            [0.025, 0.25, 0.5, 0.75, 0.975],
+            0,
+        )
+        ax.fill_between(
+            mid, q[0], q[4], color=COL["gen"], alpha=0.18, lw=0, label="95%"
+        )
+        ax.fill_between(
+            mid, q[1], q[3], color=COL["gen"], alpha=0.38, lw=0, label="50%"
+        )
+        ax.plot(mid, q[2], color=COL["gen"], marker="o", ms=3, label="Median")
+        ax.plot(
+            mid,
+            weeks(complete),
+            color=th["truth"],
+            lw=1.2,
+            ls=(0, (3, 2)),
+            label="Complete onsets",
+        )
+        ax.plot(
+            mid,
+            weeks(eventual),
+            color=th["truth"],
+            lw=2.4,
+            label="Eventual true onsets",
+        )
+        ax.set_title(title)
+        ax.set_xlabel("Onset day (weeks end on the cut-off, day 149)")
+        ax.set_ylim(0, None)
+    axes[0].set_ylabel("Onsets per week")
+    axes[0].legend(loc="upper left")
+    fig.tight_layout()
+    save(fig, "nowcast-periods", theme)
+
+
+def read_eventual(path, day0, n_days):
+    """Read eventual daily onsets from a truth file, by day since `day0`."""
+    eventual = np.zeros(n_days)
+    with path.open() as fh:
+        for r in csv.DictReader(fh):
+            d = (dt.date.fromisoformat(r["onset_date"]) - day0).days
+            if 0 <= d < n_days:
+                eventual[d] += int(r["cases"])
+    return eventual
+
+
+def fig_changing_delays(theme):
+    """Compare static and per-period EM on the changing-delays example."""
+    th = style(theme)
+    day0, onset, report = read_linelist(CHANGING_CSV)
+    cutoff = int(report.max())
+    eventual = read_eventual(
+        CSV.parent / "example-changing-delays-eventual-onsets.csv",
+        day0,
+        cutoff + 1,
+    )
+    n_weeks = (cutoff + 1) // 7
+    first = cutoff + 1 - 7 * n_weeks
+
+    def weeks(daily):
+        return np.asarray(daily)[first:].reshape(n_weeks, 7).sum(1)
+
+    mid = [day0 + dt.timedelta(days=first + 7 * w + 3) for w in range(n_weeks)]
+    fig, axes = plt.subplots(1, 2, figsize=(8, 3.4), sharey=True)
+    for ax, period, title in zip(
+        axes,
+        [None, 14],
+        ["One static delay (default)", "A delay for each 14-day period"],
+        strict=True,
+    ):
+        res = ed.impute_linelist(
+            onset, report, cutoff=cutoff, delay_period=period
+        )
+        nc = ed.nowcast_linelist(
+            onset,
+            report,
+            cutoff=cutoff,
+            delay_period=period,
+            min_reported=0.01,
+            n_samples=500,
+            seed=1,
+        )
+        q = np.quantile(
+            nc["weekly_samples"], [0.025, 0.25, 0.5, 0.75, 0.975], 0
+        )
+        ax.fill_between(
+            mid, q[0], q[4], color=COL["gen"], alpha=0.18, lw=0, label="95%"
+        )
+        ax.fill_between(
+            mid, q[1], q[3], color=COL["gen"], alpha=0.38, lw=0, label="50%"
+        )
+        ax.plot(
+            mid,
+            q[2],
+            color=COL["gen"],
+            marker="o",
+            ms=3,
+            label="Nowcast median",
+        )
+        ax.plot(
+            mid,
+            weeks(res["imputed"]["em"]),
+            color=COL["gen"],
+            lw=1.2,
+            ls=(0, (1, 1.5)),
+            label="After imputation, not corrected",
+        )
+        ax.plot(
+            mid,
+            weeks(res["complete"]),
+            color=th["truth"],
+            lw=1.2,
+            ls=(0, (3, 2)),
+            label="Complete onsets",
+        )
+        ax.plot(
+            mid,
+            weeks(eventual),
+            color=th["truth"],
+            lw=2.4,
+            label="Eventual true onsets",
+        )
+        ax.set_title(title)
+        ax.xaxis.set_major_locator(
+            mdates.WeekdayLocator(byweekday=1, interval=4)
+        )
+        ax.xaxis.set_major_formatter(mdates.DateFormatter("%-d %b"))
+        ax.set_xlabel("Onset week")
+        ax.set_ylim(0, None)
+    axes[0].set_ylabel("Onsets per week")
+    axes[0].legend(loc="upper left")
+    fig.tight_layout()
+    save(fig, "changing-delays", theme)
+
+
 def main():
     """Write every figure in both themes and print key numbers."""
     for theme in THEMES:
         fig_linelist(theme)
         fig_nowcast(theme)
+        fig_nowcast_periods(theme)
+        fig_changing_delays(theme)
         fig_delays(theme)
         fig_placement(theme)
         cols = fig_changepoint(theme)

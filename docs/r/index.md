@@ -48,12 +48,12 @@ res$dropped
 ```
 
 ```text
-[1] "2026-05-08"
-[1] 115
+[1] "2026-05-03"
+[1] 97
 [1] 0
 ```
 
-Day 0 is 8 May 2026 and the cut-off is the last report day, day 115.
+Day 0 is 3 May 2026 and the cut-off is the last report day, day 97.
 No cases were dropped.
 
 Sum the daily output to weeks with `weekly()` and print it by method.
@@ -68,24 +68,21 @@ weeks
 ```
 
 ```text
-    week_from complete backsampling mean   em
-1  2026-05-08        4          4.2    4  4.2
-2  2026-05-15        0          0.5    0  0.0
-3  2026-05-22        2          3.2    5  2.5
-4  2026-05-29        5          6.8    6  7.8
-5  2026-06-05        6          7.2    6  7.0
-6  2026-06-12        9         10.6   11 10.1
-7  2026-06-19       16         19.8   19 20.0
-8  2026-06-26       23         27.3   29 27.3
-9  2026-07-03       29         35.5   34 35.9
-10 2026-07-10       39         43.4   43 43.7
-11 2026-07-17       34         41.9   43 41.0
-12 2026-07-24       54         63.2   62 65.7
-13 2026-07-31       44         54.0   55 54.2
-14 2026-08-07       40         50.5   53 50.1
-15 2026-08-14       30         38.6   38 37.5
-16 2026-08-21       22         25.4   25 24.8
-17 2026-08-28        4          5.0    4  5.1
+    week_from complete backsampling mean    em
+1  2026-05-03        5          6.8    7   7.0
+2  2026-05-10       12         14.9   15  15.4
+3  2026-05-17       12         16.8   14  15.9
+4  2026-05-24       20         27.9   31  26.5
+5  2026-05-31       32         44.7   38  43.5
+6  2026-06-07       62         81.9   84  81.3
+7  2026-06-14       88        122.9  119 121.4
+8  2026-06-21      151        200.2  197 203.2
+9  2026-06-28      182        251.1  250 246.3
+10 2026-07-05      256        353.7  351 346.2
+11 2026-07-12      469        595.8  609 614.2
+12 2026-07-19      549        697.1  708 723.5
+13 2026-07-26      334        455.2  488 440.4
+14 2026-08-02      119        174.0  132 159.2
 ```
 
 These are the same numbers as in Python.
@@ -94,6 +91,7 @@ The [worked example](../real-linelist.md) explains each step.
 ## Add a forward delay and correct for truncation
 
 Pass a delay pmf as `delay` to add the forward draw, `fwd`.
+EM then holds that delay fixed instead of estimating one.
 `delay_pmf()` gives a double interval censored daily Gamma pmf.
 Element `d + 1` is the probability of a delay of `d` days.
 
@@ -107,16 +105,17 @@ round(unlist(res$imputed_before_day0), 2)
 
 ```text
 [1] 0.060 0.111 0.098 0.086 0.076 0.067 0.059 0.052
-[1] "backsampling" "mean"         "em"           "fwd"
-backsampling         mean          fwd
-        0.06         0.00         0.14
+[1] "backsampling" "mean"         "em"           "fwd"         
+backsampling         mean          fwd 
+        1.09         1.00         1.84 
 ```
 
 `imputed_before_day0` counts the expected missing-onset cases each method places before day 0.
 They are not in `imputed`.
 
 Recent onsets are still being reported at the cut-off.
-`correct_truncation()` divides each day by the expected fraction reported, here using the delay estimated by EM.
+`correct_truncation()` divides each day by the expected fraction reported, here using `em_delay`, the delay EM used.
+As `delay` was given, that is `pmf`.
 Days with less than 5% reported become `NA`.
 
 ```r
@@ -126,29 +125,89 @@ round(tail(weekly(res$imputed$em), 4), 1)
 ```
 
 ```text
-[1] 53.3 46.2 40.3   NA
-[1] 50.1 37.5 24.8  5.1
+[1] 647.6 816.1 612.0 395.1
+[1] 615.2 723.6 439.6 158.7
 ```
 
-The correction assumes the delay is known and static.
+The correction assumes the delay is known.
 It does not carry uncertainty in the delay.
+
+!!! note "Changed behaviour"
+    Before this version, `em` estimated its own delay even when `delay` was given.
+    It now holds the given delay fixed, as in the other languages.
+    Leave out `delay` for the EM estimate.
+
+## Delays that change over time
+
+EM can use the delay in three ways:
+
+- one static delay, estimated (the default);
+- one delay per period of onset days, estimated, with `delay_period`, each shrunk towards the one before it with strength `delay_shrinkage`;
+- a known delay, passed as `delay`: one pmf, or a matrix with one row per onset day for a delay that changes over time, used as given.
+
+`correct_truncation()` takes a matrix with one delay per onset day, so each day can use its own period's delay.
+The nowcast with quantiles is in Python and JavaScript only.
+
+This uses the second example line list, whose mean delay falls from 12 to 5 days, and the true delay of each onset day, known because the data are simulated.
+It prints the estimated mean delay of each 14-day period, then the point nowcast of the last four weeks with each of the three delays.
+This continues the quick start above.
+
+```r
+rows2 <- read.csv("docs/data/example-linelist-changing-delays.csv")
+onset2 <- as.Date(rows2$onset_date)
+report2 <- as.Date(rows2$report_date)
+true_rows <- read.csv("docs/data/example-changing-delays-true-delay.csv")
+true_delay <- as.matrix(true_rows[, paste0("p", 0:60)])
+static <- impute_linelist(onset2, report2)
+period <- impute_linelist(onset2, report2, delay_period = 14)
+plug <- impute_linelist(onset2, report2, delay = true_delay)
+round(as.vector(period$em_delay_by_period %*% 0:60), 1)
+in_period <- findInterval(seq(0, period$cutoff), period$delay_period_start)
+nowcast <- function(fit, delay) {
+  x <- correct_truncation(fit$imputed$em, delay, fit$cutoff, min_cover = 0.01)
+  round(tail(weekly(x), 4), 1)
+}
+rbind(
+  static = nowcast(static, static$em_delay),
+  periods = nowcast(period, period$em_delay_by_period[in_period, ]),
+  `plug-in` = nowcast(plug, true_delay)
+)
+```
+
+```text
+[1]  8.5 10.2 12.3 11.9  9.6  8.9  7.1  5.9  5.4
+         [,1]  [,2]  [,3]  [,4]
+static  487.5 458.0 421.2 444.1
+periods 466.1 428.6 361.0 297.8
+plug-in 460.7 420.6 356.5 320.4
+```
+
+The true mean delay falls from 12 days in the first periods to 5 in the last.
+The eventual true onsets in the last four weeks are 456, 414, 374 and 317.
+The static delay is too long for recent onsets, so its nowcast is up to 40% too high.
+Per-period delays bring the error down to 4% on average, and the true delay to 2%.
+
+[Delays that change over time](../real-linelist.md#delays-that-change-over-time) in the worked example goes through this in all four languages, and the [Methods](../methods.md#delays-that-change-over-time) page has the maths.
 
 ## Main functions
 
-`impute_linelist(onset, report, cutoff = NULL, delay = NULL, max_delay = 60, n_iter = 150)` takes:
+`impute_linelist(onset, report, cutoff = NULL, delay = NULL, max_delay = 60, n_iter = 150, delay_period = NULL, delay_shrinkage = 10)` takes:
 
 - `onset`: onset day per case, `NA` where missing, as whole numbers or a `Date` vector;
 - `report`: report day per case, never missing;
 - `cutoff`: the last report day to use, by default the latest;
-- `delay`: an optional forward delay pmf, which adds `fwd`;
+- `delay`: an optional known delay, one pmf or a matrix with one pmf per onset day, which adds `fwd` and which `em` holds fixed;
 - `max_delay`: the longest delay kept;
-- `n_iter`: the number of EM iterations.
+- `n_iter`: the number of EM iterations;
+- `delay_period`: the length in days of periods that each get their own EM delay;
+- `delay_shrinkage`: how strongly each period's delay is pulled towards the previous period's.
 
 It returns a list.
 `imputed` holds daily onset counts for `backsampling`, `mean` and `em`, and `fwd` if `delay` is given.
 Element `i` is onset day `i - 1`.
 `complete` holds the cases with a known onset and `missing_by_report` the missing-onset cases by report day.
-`empirical_delay` is the pooled delay pmf and `em_delay` the delay estimated by EM.
+`empirical_delay` is the pooled delay pmf and `em_delay` the delay EM used.
+`em_delay_by_period` has one row per period and `delay_period_start` gives the first day of each period.
 `dropped` counts cases that could not be used.
 `origin` is the date of day 0 for `Date` input.
 
@@ -157,7 +216,7 @@ The methods are:
 - `backsampling`: $P(s \mid t) = g(t - s)$, where $g$ is the pooled empirical delay pmf of complete cases;
 - `mean`: $s = t - \operatorname{round}\big(\sum_d d \, g(d)\big)$, with halves rounded up;
 - `fwd`: $P(s \mid t) = f(t - s)$ for the given delay $f$;
-- `em`: EM back-projection, $P(s \mid t) \propto \lambda(s) f(t - s)$, with the onset curve $\lambda$ and a static delay $f$ estimated jointly, allowing for right truncation.
+- `em`: EM back-projection, $P(s \mid t) \propto \lambda(s) f_s(t - s)$, with the onset curve $\lambda$ estimated jointly with a static delay, or one delay per period, allowing for right truncation; a given delay is held fixed.
 
 All outputs are expected allocations, so they need not be whole numbers.
 All methods assume onsets are missing at random given the report day.
@@ -165,7 +224,7 @@ All methods assume onsets are missing at random given the report day.
 The other functions are:
 
 - `delay_pmf(mean, sd, dmax = 60)`: the double interval censored daily Gamma pmf, $P(d) = G(d + 1) - 2 G(d) + G(d - 1)$ with $G(x) = x F(x; k, \theta) - k \theta F(x; k + 1, \theta)$, truncated at `dmax` and renormalised;
-- `correct_truncation(counts, delay, cutoff)`: divides each onset day $s$ by $F(T - s)$, with days under 5% reported set to `NA`;
+- `correct_truncation(counts, delay, cutoff)`: divides each onset day $s$ by $F_s(T - s)$, with days under 5% reported set to `NA`; `delay` is one pmf or one per day;
 - `weekly(daily, start = 0)`: sums daily counts to weeks.
 
 ## Cross-language tests
@@ -173,6 +232,7 @@ The other functions are:
 The R tests compare with the reference outputs in [`tests/fixtures/cross-language.json`](https://github.com/seabbs/EpidemicDates/blob/main/tests/fixtures/cross-language.json), written by the Python package.
 `delay_pmf()` matches to within $10^{-10}$.
 `backsampling` and `mean` match exactly, and `em` matches to within 2% on weeks with at least 50 cases.
+The same holds with `delay_period`, and with a supplied delay matrix, where `fwd` also matches exactly.
 
 ## See also
 

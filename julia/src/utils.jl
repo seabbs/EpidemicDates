@@ -15,6 +15,9 @@ F(T - s) = \sum_{d \le T - s} f(d),
 ```
 
 where ``f`` is the forward delay pmf `delay` on delays `0, 1, ...`.
+`delay` can instead be a matrix with one pmf per day of `counts` in its
+rows, for a delay that changes over time; day ``s`` then uses row
+``s + 1``.
 Days with ``F(T - s)`` below `min_cover`, including days after ``T``,
 are set to 0.
 The correction assumes the imputed curve has the right shape and is only
@@ -53,13 +56,31 @@ julia> correct_truncation([10.0, 10.0, 10.0], [0.5, 0.5], 2)
 function correct_truncation(counts::AbstractVector{<:Real},
         delay::AbstractVector{<:Real}, cutoff::Integer;
         min_cover::Real = 0.05)
+    pmf = _check_delay(delay)
+    return _correct_truncation(counts, cutoff, min_cover) do i
+        return pmf
+    end
+end
+
+function correct_truncation(counts::AbstractVector{<:Real},
+        delay::AbstractMatrix{<:Real}, cutoff::Integer;
+        min_cover::Real = 0.05)
+    size(delay, 1) == length(counts) || throw(ArgumentError(
+        "a delay matrix needs one row per day of counts " *
+        "($(length(counts)) rows), got $(size(delay, 1))"))
+    return _correct_truncation(counts, cutoff, min_cover) do i
+        return view(delay, i, :)
+    end
+end
+
+# `delay_of(i)` gives the delay pmf of element `i` of `counts`.
+function _correct_truncation(delay_of, counts, cutoff, min_cover)
     cutoff >= 0 ||
         throw(ArgumentError("cutoff must be non-negative, got $cutoff"))
     0 < min_cover <= 1 ||
         throw(ArgumentError("min_cover must be in (0, 1], got $min_cover"))
-    pmf = _check_delay(delay)
-    cdf = cumsum(pmf)
     return map(enumerate(counts)) do (i, n)
+        cdf = cumsum(_check_delay(delay_of(i)))
         days_left = cutoff - (i - 1)
         cover = days_left < 0 ? 0.0 : cdf[min(days_left, length(cdf) - 1) + 1]
         return cover >= min_cover ? n / cover : 0.0

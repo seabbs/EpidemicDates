@@ -19,7 +19,9 @@ Element \code{i} is onset day \code{i - 1}, as in the output of
 \item{delay}{Delay pmf, element \code{d + 1} the probability of a delay of
 \code{d} days, for example from \code{\link[=delay_pmf]{delay_pmf()}} or the \code{em_delay} output of
 \code{\link[=impute_linelist]{impute_linelist()}}.
-It is normalised to sum to 1.}
+It is normalised to sum to 1.
+Alternatively a matrix with one pmf per day of \code{counts} in its rows,
+for a delay that changes over time.}
 
 \item{cutoff}{Data cut-off day \eqn{T}, a whole number.
 Defaults to the last day of \code{counts}.}
@@ -43,7 +45,9 @@ Days with \eqn{F(T - s)} below \code{min_cover} are set to \code{NA}, as the
 corrected count is too uncertain to use.
 }
 \details{
-The correction assumes the delay is known and static.
+The correction assumes the delay is known.
+It can be static, or change over time with one pmf per onset day,
+in which case \eqn{F} is the CDF of onset day \eqn{s}'s delay.
 It does not allow for uncertainty in the delay.
 }
 \section{Warning}{
@@ -63,6 +67,16 @@ res <- impute_linelist(
   report = c(3, 5, 6, 8, 9, 10)
 )
 round(correct_truncation(res$imputed$em, res$em_delay, res$cutoff), 2)
+
+# with a delay for each onset day, from per-period estimates
+res <- impute_linelist(
+  onset = c(0, 1, NA, 3, NA, 4),
+  report = c(3, 5, 6, 8, 9, 10),
+  delay_period = 4
+)
+period <- findInterval(seq(0, res$cutoff), res$delay_period_start)
+by_day <- res$em_delay_by_period[period, ]
+round(correct_truncation(res$imputed$em, by_day, res$cutoff), 2)
 }
 \seealso{
 Other linelist:

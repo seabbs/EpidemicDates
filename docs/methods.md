@@ -62,10 +62,24 @@ It breaks when the epidemic grows or declines.
 **Generative method** (`gen`, `em`) assumes:
 
 - onsets are missing at random given the report day;
-- the delay is known, or is static over time and estimated jointly with the onset curve, allowing for right truncation;
+- the delay is known, or is estimated jointly with the onset curve, allowing for right truncation, either as one static delay or as one delay per period of onset days;
 - counts are large enough, as there is no smoothing.
 
-It breaks when delays change over time but are estimated as static, when missingness depends on the delay, and gives noisy output with small counts.
+It breaks when delays change over time but are estimated as static, when they change within a period, when missingness depends on the delay, and gives noisy output with small counts.
+
+## Which delay each method uses
+
+- **Back-sampling** and the **mean shift** use the delays observed in the data: the pooled empirical delays of complete cases. They never take a supplied delay.
+- The **forward draw** uses the supplied delay as given (a plug-in). Without one it is not run on a line list, except in the nowcast, where it uses the EM estimate.
+- **EM back-projection** has three modes:
+    1. a supplied delay, held fixed as a plug-in, either one pmf or one pmf per onset day;
+    2. no delay and no `delay_period` (the default): one static delay, estimated;
+    3. `delay_period` (`delayPeriod` in JavaScript): one delay per period, estimated.
+- The **truncation correction** in the nowcast uses the same delay as EM: the supplied one, or the estimate.
+
+A supplied delay is never re-estimated, and it cannot be combined with `delay_period`.
+This is the same in all four languages.
+Before this version, `impute_linelist` in R and Julia still estimated its own EM delay when given `delay`.
 
 ## Back-sampling: pooled empirical delays
 
@@ -151,7 +165,7 @@ If onsets are missing at random given the report day, so that $\pi$ depends only
 
 **Estimating the delay.**
 On a real line list the delay is unknown.
-Without a given delay, `impute_linelist` in Python and `imputeLinelist` in JavaScript also estimate a single static delay $f$:
+Without a given delay, `impute_linelist` (`imputeLinelist` in JavaScript) also estimates a single static delay $f$:
 
 $$
 f(d) \propto \frac{n_c(d) + n_a(d)}{\sum_{s \le T - d} \lambda(s)},
@@ -161,6 +175,113 @@ where $n_c(d)$ and $n_a(d)$ count complete and allocated cases with delay $d$.
 The denominator allows for right truncation, since a delay of $d$ can only be seen for onsets up to $T - d$.
 The code runs a fixed number of iterations rather than testing convergence.
 
+### Delays that change over time
+
+Delays often change over an outbreak, for example falling as a response scales up.
+One static delay is then too long late on and too short early on.
+Back-projection places recent missing onsets too early, and the nowcast over-corrects the latest weeks.
+
+**Periods.**
+With `delay_period` $P$, onset days are split into $K = \lceil (T + 1) / P \rceil$ periods counted back from the cut-off.
+Onset day $s$ is in period
+
+$$
+k(s) = K - 1 - \left\lfloor \frac{T - s}{P} \right\rfloor .
+$$
+
+The latest period is always $P$ days long.
+The first period holds the days left over and can be shorter.
+Each period $k$ has its own delay $f_k$, so $f_s = f_{k(s)}$ in the notation above.
+
+**E-step.** A missing case reported on day $t$ is shared over onset days by
+
+$$
+P(s \mid t) \propto \lambda(s) \, f_{k(s)}(t - s).
+$$
+
+**M-step.** The onset curve divides by the fraction reported under each day's own delay,
+
+$$
+\lambda(s) = \frac{n_c(s) + n_a(s)}{F_{k(s)}\big(\min(T - s, D)\big)}.
+$$
+
+The pooled delay $f$ is updated as for the static delay.
+Then, in order $k = 0, 1, \dots, K - 1$,
+
+$$
+f_k(d) \propto \frac{N_k(d) + \kappa \, h_k(d)}{E_k(d) + \kappa},
+\qquad
+h_0 = f,
+\quad
+h_k = f_{k-1},
+$$
+
+where
+
+$$
+N_k(d) = \sum_{s \in k} \big(n_c(s, d) + n_a(s, d)\big),
+\qquad
+E_k(d) = \sum_{s \in k,\; s \le T - d} \lambda(s).
+$$
+
+$N_k(d)$ counts complete and allocated cases with onset in period $k$ and delay $d$.
+$E_k(d)$ is the expected number of period-$k$ onsets that could have been seen with delay $d$ by the cut-off, so it allows for right truncation within the period.
+Without $\kappa$ this is the static update restricted to one period.
+Each $f_k$ is floored at $10^{-12}$ and renormalised.
+The E-step and M-step alternate as before, with three M-step passes per iteration.
+
+**Shrinkage.**
+$\kappa$ is `delay_shrinkage` (`delayShrinkage` in JavaScript), 10 expected cases by default.
+The weight on a period's own data at delay $d$ is $E_k(d) / \big(E_k(d) + \kappa\big)$, which grows with the number of cases the period could show at that delay.
+The update is the posterior mode of $f_k(d)$ under a $\operatorname{Gamma}\big(\kappa h_k(d) + 1, \kappa\big)$ prior, whose mode is $h_k(d)$.
+So the periods follow a random walk: each is pulled towards the one before it.
+
+This matters most in two places.
+A period with no cases has $E_k = N_k = 0$ and takes the previous period's delay.
+The latest period can only show delays up to $P - 1$ days, so for longer delays $E_k(d) = 0$ and it takes the previous period's values.
+The same holds, to a lesser degree, for every period near the cut-off.
+
+We shrink towards the previous period rather than the pooled delay because it is closer in time.
+In scenario `F` (growth at 0.03 per day, mean delay falling from 12 to 4 days), cut at day 149, over 20 simulated line lists, the mean absolute error of the weekly point nowcast over the last four weeks was:
+
+| Delay | Mean absolute error |
+|---|---|
+| Static (default) | 12.2% |
+| 14-day periods, shrunk to the pooled delay | 8.3% |
+| 14-day periods, shrunk to the previous period | 4.8% |
+| 28-day periods, shrunk to the previous period | 5.7% |
+
+With the true delay of each onset day supplied, the error was 2.6%.
+The remaining gap comes from the latest period's long delays, which are borrowed from a period whose delay was longer.
+At a cut-off of day 100 the errors were 11.0% static and 7.4% with 14-day periods.
+The error in the imputed onsets, before the truncation correction, fell from 3.0% to 2.7% of all cases at day 149.
+At day 100 it was 5.6% either way, as most of that error is noise.
+$\kappa$ between 1 and 10 gave similar results; $\kappa = 100$ was worse.
+
+<figure class="doc-figure" markdown="span">
+  ![Two panels of weekly onsets from day 80 to day 149 in a simulation where the mean delay falls from 12 to 4 days. Left, one static delay: the nowcast median rises above the eventual true onsets in the last three weeks, reaching about 1270 against a truth of 980 in the final week. Right, a delay for each 14-day period: the median stays closer to the truth, about 1130 in the final week. In both panels the dashed complete-onset line falls away near the cut-off.](figures/nowcast-periods.svg#only-light) ![Two panels of weekly onsets from day 80 to day 149 in a simulation where the mean delay falls from 12 to 4 days. Left, one static delay: the nowcast median rises above the eventual true onsets in the last three weeks, reaching about 1270 against a truth of 980 in the final week. Right, a delay for each 14-day period: the median stays closer to the truth, about 1130 in the final week. In both panels the dashed complete-onset line falls away near the cut-off.](figures/nowcast-periods-dark.svg#only-dark)
+  <figcaption markdown="1">
+    Weekly EM nowcasts of one scenario `F` line list, cut at day 149, with 50% and 95% bands.
+    Left: one static delay.
+    Right: one delay for each 14-day period.
+    The static delay is too long for recent onsets, so it divides by too small a fraction reported and overshoots.
+    Per-period delays halve the overshoot in the final week.
+    Some remains, because the latest period borrows its longer delays from the period before, and the bands still miss the truth there.
+  </figcaption>
+</figure>
+
+**Choosing the period.**
+Shorter periods follow the delay more closely but have fewer cases each, so they lean more on the shrinkage.
+The latest period cannot show delays longer than $P - 1$ days, so make $P$ longer than most delays.
+With `delay_period` at least $T + 1$ there is one period and the result is the same as the default.
+
+**A supplied delay that changes over time.**
+If the delay of each onset day is known, pass `delay` as a matrix with one row per onset day $0, \dots, T$.
+EM then holds $f_s$ fixed and only estimates $\lambda$.
+The forward draw uses $P(s \mid t) \propto f_s(t - s)$ over onset days $0, \dots, t$.
+The nowcast divides by $F_s(T - s)$.
+A delay known per period can be passed this way by repeating each period's pmf for its days.
+
 **On the interactive page** the generative method is given the true delay and noise-free expected counts.
 That makes it a best case.
 
@@ -169,7 +290,7 @@ That makes it a best case.
 EM back-projection here is a demonstration.
 A full generative model, such as [epinowcast](https://package.epinowcast.org/articles/model.html#accounting-for-reported-cases-with-a-missing-reference-date), would:
 
-- estimate a delay that changes over time, jointly with the onset curve;
+- estimate a delay that changes smoothly over time, jointly with the onset curve, rather than one per fixed period;
 - smooth the onset curve, for example with a renewal process, so small counts do not give noisy output;
 - model ascertainment and missingness as part of the observation process;
 - report uncertainty rather than one expected allocation.
@@ -272,19 +393,20 @@ Its onset curve $\lambda(s) = \big(n_c(s) + n_a(s)\big) / F_s\big(\min(T - s, D)
 ## Nowcast with uncertainty
 
 `nowcast_linelist` in Python and `nowcastLinelist` in JavaScript turn a line list into a nowcast with quantiles.
+Write $f_s$ for the delay of onset day $s$: the same for every day with one static delay, $f_{k(s)}$ with `delay_period`, or row $s$ of a supplied delay matrix.
 They impute, correct for right truncation and then sample.
 
 **Point nowcast.**
 Impute the missing onsets with the chosen method, giving $\hat n(s) = n_c(s) + n_i(s)$.
 The default is EM back-projection.
-The delay $f$ is the given one, or the static delay estimated by EM allowing for right truncation.
+The delay is the given one, or the delay estimated by EM allowing for right truncation, static or one per period.
 Then
 
 $$
-\hat C(s) = \frac{\hat n(s)}{F\big(\min(T - s, D)\big)}.
+\hat C(s) = \frac{\hat n(s)}{F_s\big(\min(T - s, D)\big)}.
 $$
 
-Days with $F(T - s)$ below a minimum (5% by default) get no estimate.
+Days with $F_s(T - s)$ below a minimum (5% by default) get no estimate.
 A week with any such day has no estimate either.
 Weeks end on the cut-off.
 
@@ -293,8 +415,9 @@ Each sample $b$ does three things.
 
 1. **Delay.** Resample the complete cases with replacement.
    Recompute the pooled empirical delay $g_b$.
-   Refit EM to the resampled complete cases and all missing cases, starting from the point fit, to get $f_b$ and $\lambda_b$.
-   With a given delay, $f_b = f$ and only $\lambda_b$ is refitted.
+   Refit EM to the resampled complete cases and all missing cases, starting from the point fit, to get $f_{b,s}$ and $\lambda_b$.
+   With `delay_period` this refits one delay per period.
+   With a given delay, $f_{b,s} = f_s$ and only $\lambda_b$ is refitted.
    This step is optional.
 2. **Missing onsets.** For the $m(t)$ missing cases reported on day $t$, draw onsets from
 
@@ -302,20 +425,21 @@ Each sample $b$ does three things.
     (m_{t,s})_s \sim \operatorname{Multinomial}\big(m(t), P_b(s \mid t)\big),
     $$
 
-    with $P_b(s \mid t) = g_b(t - s)$ for back-sampling, $f_b(t - s)$ for the forward draw and $\propto \lambda_b(s) f_b(t - s)$ for EM.
+    with $P_b(s \mid t) = g_b(t - s)$ for back-sampling, $f_b(t - s)$ for the forward draw and $\propto \lambda_b(s) f_{b,s}(t - s)$ for EM.
+    When the delay changes over time the forward draw uses $\propto f_{b,s}(t - s)$ over onset days $0, \dots, t$.
     The mean shift moves every case back by the rounded mean of $g_b$, with no draw.
     Then $n_b(s) = n_c(s) + \sum_t m_{t,s}$.
 3. **Not yet reported.** Draw the cases with onset $s$ still to be reported,
 
     $$
-    U_b(s) \sim \operatorname{NegBin}\big(n_b(s), F_b(T - s)\big),
+    U_b(s) \sim \operatorname{NegBin}\big(n_b(s), F_{b,s}(T - s)\big),
     \qquad
     C_b(s) = n_b(s) + U_b(s).
     $$
 
-    $U_b(s)$ counts failures before $n_b(s)$ successes with success probability $F_b(T - s)$.
-    Its mean is $n_b(s) \big(1 - F_b(T - s)\big) / F_b(T - s)$, so $E[C_b(s)] = n_b(s) / F_b(T - s)$, the same correction as the point nowcast.
-    It is the posterior for the eventual total when each case is reported by $T$ with probability $F_b(T - s)$ and the prior on the total is proportional to $1 / C(s)$.
+    $U_b(s)$ counts failures before $n_b(s)$ successes with success probability $F_{b,s}(T - s)$, the CDF of onset day $s$'s delay.
+    Its mean is $n_b(s) \big(1 - F_{b,s}(T - s)\big) / F_{b,s}(T - s)$, so $E[C_b(s)] = n_b(s) / F_{b,s}(T - s)$, the same correction as the point nowcast.
+    It is the posterior for the eventual total when each case is reported by $T$ with probability $F_{b,s}(T - s)$ and the prior on the total is proportional to $1 / C(s)$.
 
 Weekly samples sum the daily samples.
 Quantiles at 0.025, 0.1, 0.25, 0.5, 0.75, 0.9 and 0.975 come from the samples by linear interpolation.
@@ -323,9 +447,21 @@ They are returned with one row per target date and quantile.
 
 **Captured:** the random placement of missing onsets; the binomial reporting of recent onsets; and, with resampling, sampling uncertainty in the delay and in the EM onset curve.
 
-**Not captured:** a delay that changes over time; missingness that depends on the delay or on anything other than the report day; dependence between cases; uncertainty in a given delay; and noise in the onset process itself, since the target is the onsets that will eventually be reported.
+**Not captured:** a delay that changes over time but is estimated as static, or that changes within a period; missingness that depends on the delay or on anything other than the report day; dependence between cases; uncertainty in a given delay; and noise in the onset process itself, since the target is the onsets that will eventually be reported.
 A day with no reported onsets gets 0 in every sample.
 With small counts the median is below the mean, so medians can sit low.
+
+<figure class="doc-figure" markdown="span">
+  ![Weekly onsets in the example line list from May to early August 2026. A dashed line counts cases with a known onset. A dotted line adds the imputed missing-onset cases and falls away in the last two weeks. The nowcast median lies on the eventual true onsets up to the week of 26 July. In the final week it is 393 against a truth of 494, and its 95% band stops below the truth.](figures/nowcast.svg#only-light) ![Weekly onsets in the example line list from May to early August 2026. A dashed line counts cases with a known onset. A dotted line adds the imputed missing-onset cases and falls away in the last two weeks. The nowcast median lies on the eventual true onsets up to the week of 26 July. In the final week it is 393 against a truth of 494, and its 95% band stops below the truth.](figures/nowcast-dark.svg#only-dark)
+  <figcaption markdown="1">
+    Weekly nowcast of the [example line list](real-linelist.md) with EM back-projection and one static delay.
+    The solid black line is the eventual true onsets, known because the data are simulated.
+    The dashed line counts cases with a known onset.
+    The dotted line adds the imputed missing-onset cases, with no correction for right truncation.
+    The coloured line is the nowcast median, with 50% and 95% bands.
+    In the final week few cases are reported yet, and this nowcast is too low.
+  </figcaption>
+</figure>
 
 ## Delay distribution
 

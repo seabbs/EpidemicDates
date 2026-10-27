@@ -32,6 +32,12 @@ Real delays have heavier tails.
 On the page it is given the true delay and noise-free expected counts, so it is a best case.
 The Python cross-check estimates the delay jointly with the onset curve and stays close to unbiased.
 
+**Which delay each method uses.**
+Back-sampling and the mean shift use the delays observed in the data.
+The forward draw uses the supplied delay.
+EM back-projection holds a supplied delay fixed, and otherwise estimates one static delay or, with `delay_period`, one delay per period.
+The [Methods](methods.md#which-delay-each-method-uses) page sets this out.
+
 **Outputs.**
 Results are expected values unless stochastic replicates are used.
 Counts are summed to onset weeks.
@@ -48,8 +54,22 @@ The [worked example](real-linelist.md) shows how.
     If they do, every method here is biased.
 
 !!! note "Delays changing over time"
-    The generative method estimates one delay for the whole data vintage.
-    If delays shorten as the response scales up, supply a delay or use a model with a time-varying delay.
+    By default the generative method estimates one delay for the whole data vintage.
+    If delays shorten as the response scales up, set `delay_period` (`delayPeriod` in JavaScript) to estimate one delay per period of onset days.
+    Or supply a known delay for each onset day as a matrix.
+    What is still not handled:
+
+    - change within a period, as each period has one delay;
+    - the longest delays in the latest periods, which are borrowed from the period before, so a falling delay is still overestimated there;
+    - periods with few cases, which lean on their neighbour through the shrinkage;
+    - missingness that depends on the delay, which biases the delay of each period as it does the static one.
+
+    A model with a smoothly time-varying delay, such as epinowcast, handles the first better.
+
+!!! note "A supplied delay"
+    A delay passed as `delay` is used as given by EM, the forward draw and the truncation correction.
+    It is never re-estimated.
+    Before this version, R and Julia's `impute_linelist` estimated their own EM delay even when given one.
 
 !!! note "Censoring and truncation"
     If you fit your own parametric delay to pass as `delay`, fit it with double interval censoring and right truncation.
@@ -74,9 +94,10 @@ These apply when you use `nowcast_linelist` in Python or `nowcastLinelist` in Ja
 The maths is under [Nowcast with uncertainty](methods.md#nowcast-with-uncertainty).
 
 !!! note "The delay for the correction"
-    The truncation correction divides by $F(T - s)$ from one static delay.
-    The delay is estimated by EM with right truncation, or given.
-    If delays change over the data vintage, recent days are over- or under-corrected.
+    The truncation correction divides by $F_s(T - s)$, the CDF of onset day $s$'s delay.
+    The delay is given, or estimated by EM with right truncation: one static delay by default, or one per period with `delay_period`.
+    If delays change over the data vintage and one static delay is used, recent days are over- or under-corrected.
+    With periods, change within the latest period, and its longest delays, are still taken from earlier data.
 
 !!! note "Reporting"
     Each case with onset on day $s$ is reported by the cut-off with the same probability $F(T - s)$, independently of other cases.
@@ -91,5 +112,5 @@ The maths is under [Nowcast with uncertainty](methods.md#nowcast-with-uncertaint
 
 !!! note "What the bands leave out"
     The bands include the draw of missing onsets, the cases not yet reported and, by resampling cases with both dates, uncertainty in the delay.
-    They leave out changes in the delay over time, missingness that is not at random given the report day, uncertainty in a given delay, and noise in the onset process itself.
+    They leave out changes in the delay over time (within a period, with `delay_period`), missingness that is not at random given the report day, uncertainty in a given delay, and noise in the onset process itself.
     Treat them as a lower bound on the uncertainty.

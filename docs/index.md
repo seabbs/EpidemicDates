@@ -92,7 +92,7 @@ Run them from the repository root.
 
     np.set_printoptions(linewidth=100)
 
-    day0 = dt.date(2026, 5, 8)  # earliest date in the file
+    day0 = dt.date(2026, 5, 3)  # earliest date in the file
     def day(x):
         return (dt.date.fromisoformat(x) - day0).days if x else np.nan
 
@@ -107,9 +107,9 @@ Run them from the repository root.
     ```
 
     ```text
-    backsampling [ 4.2  0.5  3.2  6.8  7.2 10.6 19.8 27.3 35.5 43.4 41.9 63.2 54.  50.5 38.6 25.4  5. ]
-    mean [ 4.  0.  5.  6.  6. 11. 19. 29. 34. 43. 43. 62. 55. 53. 38. 25.  4.]
-    em [ 4.2  0.   2.5  7.8  7.  10.1 20.  27.3 35.9 43.7 41.  65.7 54.2 50.1 37.5 24.8  5.1]
+    backsampling [  6.8  14.9  16.8  27.9  44.7  81.9 122.9 200.2 251.1 353.7 595.8 697.1 455.2 174. ]
+    mean [  7.  15.  14.  31.  38.  84. 119. 197. 250. 351. 609. 708. 488. 132.]
+    em [  7.   15.4  15.9  26.5  43.5  81.3 121.4 203.2 246.3 346.2 614.2 723.5 440.4 159.2]
     ```
 
 === "JavaScript"
@@ -118,7 +118,7 @@ Run them from the repository root.
     const fs = require("node:fs");
     const { imputeLinelist } = require("./epidemic-dates.js");
 
-    const t0 = Date.parse("2026-05-08"); // earliest date in the file
+    const t0 = Date.parse("2026-05-03"); // earliest date in the file
     const day = (x) => (x ? (Date.parse(x) - t0) / 86400000 : null);
     const rows = fs
       .readFileSync("docs/data/example-linelist.csv", "utf8")
@@ -140,9 +140,9 @@ Run them from the repository root.
     ```
 
     ```text
-    backsampling 4.2 0.5 3.2 6.8 7.2 10.6 19.8 27.3 35.5 43.4 41.9 63.2 54.0 50.5 38.6 25.4 5.0
-    mean 4.0 0.0 5.0 6.0 6.0 11.0 19.0 29.0 34.0 43.0 43.0 62.0 55.0 53.0 38.0 25.0 4.0
-    gen 4.2 0.0 2.5 7.8 7.0 10.1 20.0 27.3 35.9 43.7 41.0 65.7 54.2 50.1 37.5 24.8 5.1
+    backsampling 6.8 14.9 16.8 27.9 44.7 81.9 122.9 200.2 251.1 353.7 595.8 697.1 455.2 174.0
+    mean 7.0 15.0 14.0 31.0 38.0 84.0 119.0 197.0 250.0 351.0 609.0 708.0 488.0 132.0
+    gen 7.0 15.4 15.9 26.5 43.5 81.3 121.4 203.2 246.3 346.2 614.2 723.5 440.4 159.2
     ```
 
 === "R"
@@ -160,9 +160,9 @@ Run them from the repository root.
     ```
 
     ```text
-    backsampling 4.2 0.5 3.2 6.8 7.2 10.6 19.8 27.3 35.5 43.4 41.9 63.2 54 50.5 38.6 25.4 5
-    mean 4 0 5 6 6 11 19 29 34 43 43 62 55 53 38 25 4
-    em 4.2 0 2.5 7.8 7 10.1 20 27.3 35.9 43.7 41 65.7 54.2 50.1 37.5 24.8 5.1
+    backsampling 6.8 14.9 16.8 27.9 44.7 81.9 122.9 200.2 251.1 353.7 595.8 697.1 455.2 174 
+    mean 7 15 14 31 38 84 119 197 250 351 609 708 488 132 
+    em 7 15.4 15.9 26.5 43.5 81.3 121.4 203.2 246.3 346.2 614.2 723.5 440.4 159.2 
     ```
 
 === "Julia"
@@ -180,9 +180,9 @@ Run them from the repository root.
     ```
 
     ```text
-    backsampling 4.2 0.5 3.2 6.8 7.2 10.6 19.8 27.3 35.5 43.4 41.9 63.2 54.0 50.5 38.6 25.4 5.0
-    mean 4.0 0.0 5.0 6.0 6.0 11.0 19.0 29.0 34.0 43.0 43.0 62.0 55.0 53.0 38.0 25.0 4.0
-    em 4.2 0.0 2.5 7.8 7.0 10.1 20.0 27.3 35.9 43.7 41.0 65.7 54.2 50.1 37.5 24.8 5.1
+    backsampling 6.8 14.9 16.8 27.9 44.7 81.9 122.9 200.2 251.1 353.7 595.8 697.1 455.2 174.0
+    mean 7.0 15.0 14.0 31.0 38.0 84.0 119.0 197.0 250.0 351.0 609.0 708.0 488.0 132.0
+    em 7.0 15.4 15.9 26.5 43.5 81.3 121.4 203.2 246.3 346.2 614.2 723.5 440.4 159.2
     ```
 
 The [worked example](real-linelist.md) goes through each step and explains the output.

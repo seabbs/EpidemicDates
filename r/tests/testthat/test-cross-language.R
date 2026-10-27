@@ -60,3 +60,44 @@ test_that("impute_linelist matches the shared fixtures", {
   expect_gte(sum(big), 1)
   expect_true(all(abs(em[big] - ref[big]) / ref[big] <= 0.02))
 })
+
+expect_weekly_close <- function(x, ref) {
+  em <- weekly(x)
+  ref <- weekly(ref)
+  big <- ref >= 50
+  expect_gte(sum(big), 1)
+  expect_true(all(abs(em[big] - ref[big]) / ref[big] <= 0.02))
+}
+
+test_that("per-period EM matches the shared fixtures", {
+  fx <- read_fixture()
+  ll <- fx$linelist_periods
+  res <- impute_linelist(
+    ll$onset, ll$report,
+    cutoff = ll$cutoff, max_delay = ll$max_delay,
+    delay_period = ll$delay_period, delay_shrinkage = ll$delay_shrinkage
+  )
+  expect_identical(res$delay_period_start, as.integer(ll$delay_period_start))
+  expect_equal(
+    res$imputed$backsampling, ll$imputed$backsampling,
+    tolerance = 1e-12
+  )
+  expect_equal(res$imputed$mean, ll$imputed$mean, tolerance = 1e-12)
+  expect_weekly_close(res$imputed$em, ll$imputed$em)
+})
+
+test_that("a supplied delay matrix matches the shared fixtures", {
+  fx <- read_fixture()
+  ll <- fx$linelist_delay_matrix
+  res <- impute_linelist(
+    ll$onset, ll$report,
+    cutoff = ll$cutoff, max_delay = ll$max_delay, delay = ll$delay
+  )
+  expect_equal(
+    res$imputed$backsampling, ll$imputed$backsampling,
+    tolerance = 1e-12
+  )
+  expect_equal(res$imputed$mean, ll$imputed$mean, tolerance = 1e-12)
+  expect_equal(res$imputed$fwd, ll$imputed$forward, tolerance = 1e-12)
+  expect_weekly_close(res$imputed$em, ll$imputed$em)
+})

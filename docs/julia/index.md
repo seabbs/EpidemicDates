@@ -58,9 +58,9 @@ end
 ```
 
 ```text
-backsampling [4.2, 0.5, 3.2, 6.8, 7.2, 10.6, 19.8, 27.3, 35.5, 43.4, 41.9, 63.2, 54.0, 50.5, 38.6, 25.4, 5.0]
-mean         [4.0, 0.0, 5.0, 6.0, 6.0, 11.0, 19.0, 29.0, 34.0, 43.0, 43.0, 62.0, 55.0, 53.0, 38.0, 25.0, 4.0]
-em           [4.2, 0.0, 2.5, 7.8, 7.0, 10.1, 20.0, 27.3, 35.9, 43.7, 41.0, 65.7, 54.2, 50.1, 37.5, 24.8, 5.1]
+backsampling [6.8, 14.9, 16.8, 27.9, 44.7, 81.9, 122.9, 200.2, 251.1, 353.7, 595.8, 697.1, 455.2, 174.0]
+mean         [7.0, 15.0, 14.0, 31.0, 38.0, 84.0, 119.0, 197.0, 250.0, 351.0, 609.0, 708.0, 488.0, 132.0]
+em           [7.0, 15.4, 15.9, 26.5, 43.5, 81.3, 121.4, 203.2, 246.3, 346.2, 614.2, 723.5, 440.4, 159.2]
 ```
 
 These match the [Python quick start](../python/index.md#quick-start-on-your-own-data).
@@ -72,7 +72,7 @@ The result records that date and the cut-off in days:
 
 ```julia-repl
 julia> (res.day0, res.cutoff, res.dropped)
-(Date("2026-05-08"), 115, 0)
+(Date("2026-05-03"), 97, 0)
 ```
 
 The [worked example](../real-linelist.md) explains each step.
@@ -82,14 +82,17 @@ The [worked example](../real-linelist.md) explains each step.
 - `onset`: onset day or `Date` per case, `missing` where unknown;
 - `report`: report day or `Date` per case, never missing;
 - `cutoff`: the last report day to use, by default the latest;
-- `delay`: an optional forward delay pmf, which adds the `fwd` method;
+- `delay`: an optional known delay, one pmf or a matrix with one pmf per onset day, which adds the `fwd` method and which `em` holds fixed;
 - `max_delay`: the longest delay kept, 60 days by default;
-- `n_iter`: the number of EM iterations.
+- `n_iter`: the number of EM iterations;
+- `delay_period`: the length in days of periods that each get their own EM delay, `nothing` by default;
+- `delay_shrinkage`: how strongly each period's delay is pulled towards the previous period's, 10 expected cases by default.
 
 It returns a NamedTuple.
 `imputed` holds daily onset counts for `backsampling`, `mean` and `em`, and `fwd` when `delay` is given.
 `complete` holds the cases with a known onset, `missing_by_report` the missing-onset cases by report day, and `empirical_delay` the pooled delay pmf.
-`em_delay` is the delay estimated by EM.
+`em_delay` is the delay EM used.
+`em_delay_by_period` has one row per period and `delay_period_start` gives the first day of each period.
 `imputed_before_day0` is the expected number of missing-onset cases placed before day 0, which are not in `imputed`.
 `dropped` counts cases that could not be used.
 
@@ -124,7 +127,7 @@ julia> round.(res.imputed.backsampling; digits = 2)
 
 - `delay_pmf(mean, sd; dmax = 60)` gives a double interval censored daily Gamma delay pmf on `0:dmax`.
 - `impute_linelist(onset, report; ...)` imputes missing onsets with each method.
-- `correct_truncation(counts, delay, cutoff)` divides each onset day by the expected fraction of its cases reported by the cut-off.
+- `correct_truncation(counts, delay, cutoff)` divides each onset day by the expected fraction of its cases reported by the cut-off; `delay` is one pmf or a matrix with one per day.
 - `weekly(daily)` sums daily counts into weeks, starting at day 0.
 
 Supply a delay to back-sample from it as well, then correct for right truncation:
@@ -141,30 +144,80 @@ julia> nowcast = correct_truncation(res.imputed.fwd, pmf, res.cutoff);
 
 julia> round.(weekly(res.imputed.fwd)[(end - 3):end]; digits = 1)
 4-element Vector{Float64}:
- 50.2
- 38.3
- 25.3
-  5.0
+ 594.9
+ 687.4
+ 442.4
+ 165.8
 
 julia> round.(weekly(nowcast)[(end - 3):end]; digits = 1)
 4-element Vector{Float64}:
- 53.9
- 46.3
- 40.9
- 26.9
+ 626.1
+ 775.6
+ 614.8
+ 428.4
 ```
 
 The correction uses the delay you give it.
 In real data that delay has to be estimated, with double interval censoring and right truncation.
-The last week is partial, so leave it out before estimating growth.
-`em` always estimates its own delay, even when `delay` is given.
+The last weeks rest most on the correction, so treat them with care.
+`em` holds a given `delay` fixed.
+Before this version it estimated its own delay even when `delay` was given.
 
 The building blocks behind `impute_linelist` are documented in the [API reference](reference.md#internal-building-blocks).
+
+## Delays that change over time
+
+EM can use the delay in three ways:
+
+- one static delay, estimated (the default);
+- one delay per period of onset days, estimated, with `delay_period`, each shrunk towards the one before it with strength `delay_shrinkage`;
+- a known delay, passed as `delay`: one pmf, or a matrix with one row per onset day for a delay that changes over time, used as given.
+
+`correct_truncation` takes a matrix with one delay per onset day, so each day can use its own period's delay.
+The nowcast with quantiles is in Python and JavaScript only.
+
+This uses the second example line list, whose mean delay falls from 12 to 5 days, and the true delay of each onset day, known because the data are simulated.
+It prints the estimated mean delay of each 14-day period, then the point nowcast of the last four weeks with each of the three delays.
+This continues the quick start above.
+
+```julia
+rows2 = split.(readlines("docs/data/example-linelist-changing-delays.csv")[2:end], ",")
+onset2 = [isempty(r[2]) ? missing : Date(r[2]) for r in rows2]
+report2 = [Date(r[3]) for r in rows2]
+true_rows = readlines("docs/data/example-changing-delays-true-delay.csv")[2:end]
+true_delay = permutedims(reduce(hcat,
+    [parse.(Float64, split(r, ",")[3:end]) for r in true_rows]))
+static = impute_linelist(onset2, report2)
+period = impute_linelist(onset2, report2; delay_period = 14)
+plug = impute_linelist(onset2, report2; delay = true_delay)
+println(round.(period.em_delay_by_period * (0:60); digits = 1))
+in_period = [searchsortedlast(period.delay_period_start, s) for s in 0:period.cutoff]
+for (name, fit, delay) in [("static", static, static.em_delay),
+    ("periods", period, period.em_delay_by_period[in_period, :]),
+    ("plug-in", plug, true_delay)]
+    x = correct_truncation(fit.imputed.em, delay, fit.cutoff; min_cover = 0.01)
+    println(rpad(name, 8), round.(weekly(x)[(end - 3):end]; digits = 1))
+end
+```
+
+```text
+[8.5, 10.2, 12.3, 11.9, 9.6, 8.9, 7.1, 5.9, 5.4]
+static  [487.5, 458.0, 421.2, 444.1]
+periods [466.1, 428.6, 361.0, 297.8]
+plug-in [460.7, 420.6, 356.5, 320.4]
+```
+
+The true mean delay falls from 12 days in the first periods to 5 in the last.
+The eventual true onsets in the last four weeks are 456, 414, 374 and 317.
+The static delay is too long for recent onsets, so its nowcast is up to 40% too high.
+Per-period delays bring the error down to 4% on average, and the true delay to 2%.
+
+[Delays that change over time](../real-linelist.md#delays-that-change-over-time) in the worked example goes through this in all four languages, and the [Methods](../methods.md#delays-that-change-over-time) page has the maths.
 
 ## Differences from Python
 
 - Method keys and output names match the Python package.
-- `delay`, `fwd` and `max_delay` are not in the Python `impute_linelist`.
+- `fwd` is called `forward` in Python, and `max_delay` is not in the Python `impute_linelist`.
 - `Date` vectors are accepted directly.
 - Daily vectors are indexed from 1, so day 0 is element 1.
 

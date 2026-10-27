@@ -17,6 +17,28 @@ function _dates_to_days(onset::AbstractVector, report::AbstractVector,
     return map(as_day, onset), map(as_day, report), cut, day0
 end
 
+# Check a supplied delay and return it as a matrix of pmfs on
+# 0:max_delay, one row for a static delay or one per onset day 0:T.
+function _fixed_delay(delay, T::Integer, max_delay::Integer)
+    if delay isa AbstractMatrix
+        size(delay, 1) == T + 1 || throw(ArgumentError(
+            "a delay matrix needs one row per onset day 0:cutoff " *
+            "($(T + 1) rows), got $(size(delay, 1))"))
+        rows = [_check_delay(view(delay, i, :)) for i in axes(delay, 1)]
+    else
+        rows = [_check_delay(delay)]
+    end
+    out = zeros(length(rows), max_delay + 1)
+    for (k, row) in enumerate(rows)
+        n = min(length(row), max_delay + 1)
+        out[k, 1:n] .= row[1:n]
+        sum(out[k, :]) > 0 || throw(ArgumentError(
+            "delay must have positive mass on 0:$max_delay"))
+        out[k, :] ./= sum(out[k, :])
+    end
+    return out
+end
+
 function _check_delay(delay)
     delay === nothing && return nothing
     v = collect(Float64, delay)
@@ -29,7 +51,8 @@ end
 
 """
     impute_linelist(onset, report; cutoff = nothing, delay = nothing,
-                    max_delay = 60, n_iter = 150)
+                    max_delay = 60, n_iter = 150, delay_period = nothing,
+                    delay_shrinkage = 10.0)
 
 Impute missing onsets in a line list with each method.
 
@@ -53,12 +76,17 @@ Sum them to weeks with [`weekly`](@ref) before comparing methods.
   It is the expected allocation of the random draw, not a draw.
 - `mean` shifts each missing case back by the mean of `empirical_delay`,
   rounded with halves up (as JavaScript's `Math.round`).
-- `em` is EM back-projection.
-  It estimates a static delay jointly with the onset curve, allowing
-  for right truncation at the cut-off.
-  It always estimates the delay, even when `delay` is given.
+- `em` is EM back-projection (see `EpidemicDates.em_fit`).
+  By default it estimates a static delay jointly with the onset curve,
+  allowing for right truncation at the cut-off.
+  With `delay_period` it estimates one delay per period of onset days,
+  each shrunk towards the previous period's delay.
+  With `delay` it holds that delay fixed (a plug-in) and only estimates
+  the onset curve.
 - `fwd`, only when `delay` is given, back-samples from that delay
   instead of the empirical one.
+  With a delay matrix it uses `P(s | t) ∝ f_s(t - s)` over onset days
+  `0:t`.
 
 All methods assume onsets are missing at random given the report day.
 If missingness depends on the delay, all are biased.
@@ -70,11 +98,19 @@ If missingness depends on the delay, all are biased.
   Must be a non-negative whole number.
   Cases reported before day 0 or after `T` are dropped.
 - `delay`: optional forward delay pmf on delays `0, 1, ...`, for
-  example from [`delay_pmf`](@ref).
-  It is normalised before use.
+  example from [`delay_pmf`](@ref), or a matrix with one such pmf per
+  onset day `0:T` in its rows, for a delay that changes over time.
+  It is normalised before use and used as given.
+  Cannot be combined with `delay_period`.
 - `max_delay`: longest delay kept.
   Complete cases with a longer delay are dropped.
 - `n_iter`: number of EM iterations. Must be at least 1.
+- `delay_period`: length in days of the periods of onset days that get
+  their own EM delay, counted back from the cut-off.
+  `nothing` (the default) estimates one static delay.
+- `delay_shrinkage`: strength, in expected cases, of the shrinkage of
+  each period's delay towards the previous period's delay.
+  Must be positive.
 
 # Returns
 A NamedTuple with:
@@ -83,7 +119,13 @@ A NamedTuple with:
 - `empirical_delay`: pooled delay pmf on `0:max_delay` of complete cases;
 - `imputed`: a NamedTuple of daily onset counts (complete plus imputed)
   for `backsampling`, `mean`, `em` and, with `delay`, `fwd`;
-- `em_delay`: the delay pmf on `0:max_delay` estimated by EM;
+- `em_delay`: the delay pmf on `0:max_delay` used by EM: the static
+  estimate, the pooled estimate with `delay_period`, or the given
+  `delay` (its onset-weighted mean for a matrix);
+- `em_delay_by_period`: a matrix with the delay pmf of each period in
+  its rows, one row without `delay_period` and one row per onset day
+  for a delay matrix;
+- `delay_period_start`: the first onset day of each period;
 - `imputed_before_day0`: expected missing-onset cases that
   `backsampling`, `mean` and `fwd` place before day 0, which are not in
   `imputed`;
@@ -99,7 +141,9 @@ over `max_delay` are dropped, as are cases reported outside `0:T`.
 in length, a report day is missing or infinite, an onset is infinite, a
 day is not a whole number, `cutoff` is negative or not whole,
 `max_delay` is negative, `n_iter` is below 1, `delay` is not a valid
-pmf, or no complete case is left after dropping.
+pmf or matrix of pmfs, both `delay` and `delay_period` are given,
+`delay_period` or `delay_shrinkage` is out of range, or no complete case
+is left after dropping.
 
 # Examples
 ```jldoctest
@@ -135,7 +179,8 @@ julia> round(sum(res.imputed.em); digits = 6)
 """
 function impute_linelist(onset::AbstractVector, report::AbstractVector;
         cutoff = nothing, delay = nothing, max_delay::Integer = DMAX,
-        n_iter::Integer = 150)
+        n_iter::Integer = 150, delay_period = nothing,
+        delay_shrinkage::Real = 10.0)
     length(onset) == length(report) || throw(ArgumentError(
         "onset and report must have the same length, got " *
         "$(length(onset)) and $(length(report))"))
@@ -172,7 +217,16 @@ function impute_linelist(onset::AbstractVector, report::AbstractVector;
         throw(ArgumentError("max_delay must be non-negative, got $max_delay"))
     n_iter >= 1 ||
         throw(ArgumentError("n_iter must be at least 1, got $n_iter"))
-    fwd_pmf = _check_delay(delay)
+    delay !== nothing && delay_period !== nothing &&
+        throw(ArgumentError(
+            "give either delay or delay_period, not both"))
+    isfinite(delay_shrinkage) && delay_shrinkage > 0 ||
+        throw(ArgumentError("delay_shrinkage must be a positive finite " *
+                            "number, got $delay_shrinkage"))
+    fixed = delay === nothing ? nothing : _fixed_delay(delay, T, max_delay)
+    is_matrix = delay isa AbstractMatrix
+    fwd_pmf = is_matrix ? nothing : _check_delay(delay)
+    period = is_matrix ? collect(0:T) : delay_periods(T, delay_period)
 
     n_days = T + 1
     complete = zeros(n_days)
@@ -207,20 +261,25 @@ function impute_linelist(onset::AbstractVector, report::AbstractVector;
     backsampling = backsampling_allocate(missing_by_report, empirical)
     shift = round_half_up(sum((0:max_delay) .* empirical))
     mean_alloc = mean_shift_allocate(missing_by_report, shift)
-    fit = em_fit(onset_c, delay_c, report_m, T; max_delay, n_iter)
+    fit = em_fit(onset_c, delay_c, report_m, T; max_delay, n_iter, fixed,
+        period, delay_shrinkage)
     n_missing = sum(missing_by_report)
     lost(a) = max(n_missing - sum(a), 0.0)
     imputed = (backsampling = complete .+ backsampling,
         mean = complete .+ mean_alloc, em = complete .+ fit.allocation)
     before_day0 = (backsampling = lost(backsampling),
         mean = n_missing - sum(mean_alloc))
-    if fwd_pmf !== nothing
-        fwd = backsampling_allocate(missing_by_report, fwd_pmf)
+    if delay !== nothing
+        fwd = is_matrix ?
+              posterior_allocate(missing_by_report, ones(n_days), fixed) :
+              backsampling_allocate(missing_by_report, fwd_pmf)
         imputed = merge(imputed, (fwd = complete .+ fwd,))
         before_day0 = merge(before_day0, (fwd = lost(fwd),))
     end
     return (complete = complete, missing_by_report = missing_by_report,
         empirical_delay = empirical, imputed = imputed,
-        em_delay = fit.delay, imputed_before_day0 = before_day0,
+        em_delay = fit.delay, em_delay_by_period = fit.delay_by_period,
+        delay_period_start = fit.period_start,
+        imputed_before_day0 = before_day0,
         dropped = dropped, cutoff = T, day0 = day0)
 end

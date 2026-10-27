@@ -218,12 +218,16 @@ from .cli import main
 from .delays import DMAX, F_DEFAULT, gamma_pmf
 from .linelist import LinelistResult, impute_linelist
 from .methods import (
+    DELAY_SHRINKAGE,
     METHODS,
     EMFit,
+    as_delay,
     backsampling_allocate,
+    delay_periods,
     em_backproject,
     em_fit,
     mean_shift_allocate,
+    posterior_allocate,
     round_half_up,
 )
 from .nowcast import (
@@ -257,6 +261,7 @@ except PackageNotFoundError:  # pragma: no cover - only when not installed
     __version__ = "0+unknown"
 
 __all__ = [
+    "DELAY_SHRINKAGE",
     "DESC",
     "DMAX",
     "F_DEFAULT",
@@ -271,7 +276,9 @@ __all__ = [
     "ScenarioSetup",
     "__version__",
     "analytic",
+    "as_delay",
     "backsampling_allocate",
+    "delay_periods",
     "em_backproject",
     "em_fit",
     "gamma_pmf",
@@ -280,6 +287,7 @@ __all__ = [
     "mean_shift_allocate",
     "miss_prob",
     "nowcast_linelist",
+    "posterior_allocate",
     "r_path",
     "round_half_up",
     "run_scenario",

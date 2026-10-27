@@ -4,10 +4,11 @@ The tools reconstruct a missing earlier event date, such as symptom onset, infec
 They also allow for right truncation.
 The examples here use symptom onsets and report dates.
 
-There are two independent implementations.
+There are four implementations.
 The JavaScript module drives the [interactive page](https://seabbs.github.io/EpidemicDates/interactive/).
 The Python package is a stochastic simulation that cross-checks it.
-Both can impute a real line list.
+The R and Julia packages hold the line-list tools.
+All four can impute a real line list.
 
 ## Install and load
 
@@ -71,17 +72,75 @@ Both can impute a real line list.
     </script>
     ```
 
+=== "R"
+
+    The package is `epidemicdates`.
+    It needs R 4.1 or later and only base R and `stats`.
+    Install it from the `r` folder of the repository with [remotes](https://remotes.r-lib.org):
+
+    ```r
+    remotes::install_github("seabbs/EpidemicDates", subdir = "r")
+    ```
+
+    Load it and impute a small line list, with `NA` for missing onsets:
+
+    ```r
+    library(epidemicdates)
+
+    res <- impute_linelist(c(0, 2, NA, 5, NA), c(3, 6, 7, 9, 12))
+    round(res$imputed$em, 2)
+    ```
+
+    ```text
+     [1] 2.47 0.00 1.00 0.00 0.00 1.50 0.00 0.00 0.00 0.03 0.00 0.00 0.00
+    ```
+
+=== "Julia"
+
+    The package is `EpidemicDates.jl`.
+    It is not registered and needs Julia 1.10 or later.
+    Install it from the `julia` folder of the repository:
+
+    ```julia
+    using Pkg
+    Pkg.add(url = "https://github.com/seabbs/EpidemicDates", subdir = "julia")
+    ```
+
+    Load it and impute a small line list, with `missing` for missing onsets:
+
+    ```julia-repl
+    julia> using EpidemicDates
+
+    julia> res = impute_linelist([0, 2, missing, 5, missing], [3, 6, 7, 9, 12]);
+
+    julia> round.(res.imputed.em; digits = 2)
+    13-element Vector{Float64}:
+     2.47
+     0.0
+     1.0
+     0.0
+     0.0
+     1.5
+     0.0
+     0.0
+     0.0
+     0.03
+     0.0
+     0.0
+     0.0
+    ```
+
 ## Quick start on your own data
 
-Short versions of the worked example, in both languages, are on the [home page](index.md#quick-start-on-your-own-data).
+Short versions of the worked example, in all four languages, are on the [home page](index.md#quick-start-on-your-own-data).
 The [worked example](real-linelist.md) goes through each step with the [example line list](data/example-linelist.csv).
 
 ## Next steps
 
 - Read how the [methods](methods.md) work and what they [assume](assumptions.md).
 - Follow the [worked example](real-linelist.md) on a real line list.
-- Use the [Python guide](python/index.md) or the [JavaScript guide](javascript/index.md).
-- Look up a function in the [Python API](python/reference.md) or the [JavaScript API](javascript/reference.md).
+- Use the [Python](python/index.md), [JavaScript](javascript/index.md), [R](r/index.md) or [Julia](julia/index.md) guide.
+- Look up a function in the [Python](python/reference.md), [JavaScript](javascript/reference.md), [R](r/reference.md) or [Julia](julia/reference.md) API reference.
 
 ## Development
 

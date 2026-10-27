@@ -20,17 +20,32 @@
 #' - `fwd` uses the given forward delay \eqn{f}, so
 #'   \eqn{P(s \mid t) = f(t - s)}.
 #'   It is only returned when `delay` is given.
+#'   For a delay matrix, \eqn{P(s \mid t) \propto f_s(t - s)} over onset
+#'   days \eqn{0, \dots, t}.
 #' - `em` is EM back-projection.
 #'   The E-step allocates missing cases by
-#'   \eqn{P(s \mid t) \propto \lambda(s) f(t - s)}.
+#'   \eqn{P(s \mid t) \propto \lambda(s) f_{k(s)}(t - s)}, where
+#'   \eqn{k(s)} is the period of onset day \eqn{s}.
 #'   The M-step alternates three times between
-#'   \deqn{\lambda(s) = \frac{n(s)}{F\big(\min(T - s, D)\big)}, \qquad
+#'   \deqn{\lambda(s) = \frac{n(s)}{F_{k(s)}\big(\min(T - s, D)\big)},
+#'     \qquad
 #'     f(d) \propto \frac{n(d)}{\sum_{s \le T - d} \lambda(s)},}
 #'   where \eqn{n} counts complete and allocated cases by onset day or by
-#'   delay and \eqn{F} is the delay CDF.
-#'   The delay \eqn{f} is static and estimated jointly with \eqn{\lambda}
-#'   from all cases, allowing for right truncation.
-#'   It is estimated even when `delay` is given.
+#'   delay and \eqn{F_k} is the CDF of \eqn{f_k}.
+#'   By default there is one period and the delay \eqn{f_0 = f} is static,
+#'   estimated jointly with \eqn{\lambda} from all cases, allowing for
+#'   right truncation.
+#'   With `delay_period`, onset days are split into periods of that many
+#'   days counted back from the cut-off, and in order
+#'   \deqn{f_k(d) \propto \frac{N_k(d) + \kappa h_k(d)}{E_k(d) + \kappa},}
+#'   where \eqn{N_k(d)} counts cases with onset in period \eqn{k} and
+#'   delay \eqn{d}, \eqn{E_k(d)} sums \eqn{\lambda(s)} over days of
+#'   period \eqn{k} up to \eqn{T - d}, \eqn{\kappa} is
+#'   `delay_shrinkage`, \eqn{h_0 = f} and \eqn{h_k = f_{k-1}}.
+#'   Each period is shrunk towards the one before, with a weight on its
+#'   own data that grows with its expected number of cases.
+#'   If `delay` is given, `em` holds it fixed (a plug-in) and only
+#'   estimates \eqn{\lambda}.
 #'   No convergence check is made.
 #'
 #' All methods assume onsets are missing at random given the report day.
@@ -62,11 +77,23 @@
 #'   Element `d + 1` is the probability of a delay of `d` days, for example
 #'   from [delay_pmf()].
 #'   It is normalised to sum to 1.
+#'   Alternatively a matrix with one such pmf per onset day
+#'   `0..cutoff` in its rows, for a delay that changes over time.
+#'   A given delay is used as is (a plug-in) by `fwd` and held fixed by
+#'   `em`.
 #'   If given, `imputed` also holds `fwd`.
+#'   Cannot be combined with `delay_period`.
 #' @param max_delay Longest delay \eqn{D} kept, a non-negative whole number.
 #'   Defaults to 60.
 #' @param n_iter Number of EM iterations, at least 1.
 #'   Defaults to 150.
+#' @param delay_period Length in days of the periods of onset days that
+#'   get their own EM delay, counted back from the cut-off.
+#'   Defaults to `NULL`, one static delay.
+#' @param delay_shrinkage Strength, in expected cases, of the shrinkage of
+#'   each period's delay towards the previous period's delay.
+#'   Must be positive.
+#'   Defaults to 10.
 #'
 #' @return A list.
 #'   Daily vectors have length `cutoff + 1` and element `i` is onset day
@@ -78,7 +105,13 @@
 #'   - `empirical_delay`: pooled delay pmf of complete cases.
 #'   - `imputed`: a list of daily onset counts (complete plus imputed) for
 #'     `backsampling`, `mean` and `em`, and `fwd` if `delay` is given.
-#'   - `em_delay`: the static delay pmf estimated by EM.
+#'   - `em_delay`: the delay pmf used by EM: the static estimate, the
+#'     pooled estimate with `delay_period`, or the given `delay` (its
+#'     onset-weighted mean for a matrix).
+#'   - `em_delay_by_period`: a matrix with the delay pmf of each period in
+#'     its rows. One row without `delay_period`, and one row per onset day
+#'     for a delay matrix.
+#'   - `delay_period_start`: the first onset day of each period.
 #'   - `dropped`: number of cases dropped.
 #'   - `imputed_before_day0`: a list with the expected number of
 #'     missing-onset cases that `backsampling`, `mean` and (if `delay` is
@@ -103,17 +136,27 @@
 #' res <- impute_linelist(onset_date, report_date, delay = delay_pmf(4, 3))
 #' res$origin
 #' round(res$imputed$fwd, 2)
+#'
+#' # a delay estimated for each 4-day period of onsets
+#' res <- impute_linelist(onset, report, cutoff = 12, delay_period = 4)
+#' res$delay_period_start
+#' round(res$em_delay_by_period[, 1:6], 2)
 impute_linelist <- function(onset, report, cutoff = NULL, delay = NULL,
-                            max_delay = 60, n_iter = 150) {
+                            max_delay = 60, n_iter = 150,
+                            delay_period = NULL, delay_shrinkage = 10) {
   days <- .linelist_days(onset, report, cutoff)
   onset <- days$onset
   report <- days$report
   cutoff <- days$cutoff
   max_delay <- .check_scalar_whole(max_delay, "max_delay", min = 0)
   n_iter <- .check_scalar_whole(n_iter, "n_iter", min = 1)
-  if (!is.null(delay)) {
+  if (!is.null(delay) && !is.null(delay_period)) {
+    stop("give either delay or delay_period, not both", call. = FALSE)
+  }
+  if (!is.null(delay) && !is.matrix(delay)) {
     delay <- .check_pmf(delay, "delay")
   }
+  .check_positive(delay_shrinkage, "delay_shrinkage")
   if (length(onset) != length(report)) {
     stop(
       "onset and report must have the same length, got ",
@@ -145,6 +188,12 @@ impute_linelist <- function(onset, report, cutoff = NULL, delay = NULL,
     cutoff <- max(report)
   }
   cutoff <- .check_scalar_whole(cutoff, "cutoff", min = 0)
+  period <- .delay_periods(cutoff, delay_period)
+  fixed <- NULL
+  if (!is.null(delay)) {
+    fixed <- .as_delay_matrix(delay, cutoff, max_delay)
+    if (is.matrix(delay)) period <- seq(0L, cutoff)
+  }
 
   keep <- report >= 0 & report <= cutoff
   onset <- onset[keep]
@@ -173,7 +222,10 @@ impute_linelist <- function(onset, report, cutoff = NULL, delay = NULL,
   backsampling <- .backsampling_allocate(missing_by_report, empirical)
   shift <- .round_half_up(sum(seq(0, max_delay) * empirical))
   mean_shift <- .mean_shift_allocate(missing_by_report, shift)
-  fit <- .em_fit(onset_c, delay_c, report_m, cutoff, max_delay, n_iter)
+  fit <- .em_fit(
+    onset_c, delay_c, report_m, cutoff, max_delay, n_iter,
+    fixed = fixed, period = period, shrinkage = delay_shrinkage
+  )
   imputed <- list(
     backsampling = complete + backsampling,
     mean = complete + mean_shift,
@@ -184,7 +236,11 @@ impute_linelist <- function(onset, report, cutoff = NULL, delay = NULL,
     mean = n_missing - sum(mean_shift)
   )
   if (!is.null(delay)) {
-    fwd <- .backsampling_allocate(missing_by_report, delay)
+    fwd <- if (is.matrix(delay)) {
+      .posterior_allocate(missing_by_report, rep(1, n_days), fixed)
+    } else {
+      .backsampling_allocate(missing_by_report, delay)
+    }
     imputed$fwd <- complete + fwd
     before_day0$fwd <- max(n_missing - sum(fwd), 0)
   }
@@ -194,6 +250,8 @@ impute_linelist <- function(onset, report, cutoff = NULL, delay = NULL,
     empirical_delay = empirical,
     imputed = imputed,
     em_delay = fit$delay,
+    em_delay_by_period = fit$delay_by_period,
+    delay_period_start = fit$period_start,
     dropped = sum(!keep) + sum(!ok),
     imputed_before_day0 = before_day0,
     cutoff = cutoff,
