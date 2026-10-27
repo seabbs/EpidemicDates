@@ -66,8 +66,9 @@ From the repository root:
 ```r
 devtools::test("r")
 devtools::check("r", document = TRUE, args = "--no-manual")
-lintr::lint_package("r")
 ```
+
+Format with [Air](https://posit-dev.github.io/air/) and lint with [Jarl](https://jarl.etiennebacher.com/), for example via `task r-format` and `task r-lint`.
 
 The cross-language test reads `tests/fixtures/cross-language.json` from the repository root.
 It is skipped if the file or `jsonlite` is missing.
