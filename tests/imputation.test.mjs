@@ -105,3 +105,48 @@ test("every preset runs without non-finite values", () => {
     }
   }
 });
+
+// a line list with known onsets: expected counts per (onset, delay) cell,
+// rounded, with every 5th and 5th+1 case missing its onset
+function linelist(set, cutoff) {
+  const p = { ...M.DEFAULTS, ...set };
+  const sc = M.scenario(p);
+  const onset = [], report = [], truth = [];
+  let i = 0;
+  for (let s = sc.B; s < sc.S; s++) {
+    for (let d = 0; d <= M.D; d++) {
+      const t = s + d;
+      if (t - sc.B > cutoff) break;
+      const n = Math.round(sc.C[s] * sc.f[s][d]);
+      for (let k = 0; k < n; k++, i++) {
+        report.push(t - sc.B);
+        onset.push(i % 5 < 2 ? null : s - sc.B);
+        truth.push(s - sc.B);
+      }
+    }
+  }
+  return { onset, report, truth, f: sc.f[sc.B] };
+}
+const byWeek = (daily, W) => Array.from({ length: W }, (_, w) =>
+  daily.slice(7 * w, 7 * w + 7).reduce((a, b) => a + b, 0));
+
+test("imputeLinelist: generative method recovers onsets with an estimated delay", () => {
+  const set = { knots: M.knotsFrom([[0, 0.05], [60, 0.05], [100, -0.02]]), O0: 3 };
+  const ll = linelist(set, 150);
+  const res = M.imputeLinelist({ onset: ll.onset, report: ll.report, cutoff: 150 });
+  const truth = new Array(res.days).fill(0);
+  for (const s of ll.truth) truth[s]++;
+  const W = 18, tw = byWeek(truth, W), gw = byWeek(res.imputed.gen, W);
+  for (let w = 2; w < W; w++) {
+    if (tw[w] >= 100) assert.ok(Math.abs(gw[w] / tw[w] - 1) < 0.05, `week ${w}`);
+  }
+  const total = a => a.reduce((x, y) => x + y, 0);
+  assert.ok(Math.abs(total(res.imputed.gen) - ll.report.length) < 1e-6 * ll.report.length);
+});
+
+test("imputeLinelist: input checks and dropped cases", () => {
+  assert.throws(() => M.imputeLinelist({ onset: [1], report: [1, 2] }));
+  const res = M.imputeLinelist({ onset: [0, null, 5], report: [2, 3, 4] });
+  assert.equal(res.dropped, 1); // onset after report
+  assert.equal(res.missingByReport[3], 1);
+});

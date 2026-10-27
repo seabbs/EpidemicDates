@@ -24,3 +24,20 @@ def test_run_scenario_returns_each_method():
     rows = sim.run_scenario("A", reps=2, cutoffs=[179])
     assert {r["method"] for r in rows} == set(sim.METHODS)
     assert all(np.isfinite(r["relbias_mean"]) for r in rows)
+
+
+def test_impute_linelist_em_recovers_onsets():
+    rng = np.random.default_rng(1)
+    name = "C"
+    sp = sim.scenario_setup(name)
+    onset, report, missing = sim.simulate(name, sp, rng)
+    T = 140
+    keep = report <= T
+    onset, report, missing = onset[keep], report[keep], missing[keep]
+    obs = np.where(missing, np.nan, onset.astype(float))
+    res = sim.impute_linelist(obs, report, cutoff=T)
+    truth = np.bincount(onset, minlength=T + 1)
+    week = slice(56, 63)  # a busy week before the turn
+    rel = res["imputed"]["em"][week].sum() / truth[week].sum() - 1
+    assert abs(rel) < 0.1
+    assert abs(res["imputed"]["em"].sum() - keep.sum()) < 1e-6 * keep.sum()

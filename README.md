@@ -84,6 +84,65 @@ rows = sim.run_scenario("W", reps=100)    # summary rows per cut-off and method
 sim.write_results(rows, "output")
 ```
 
+## Using it on a real line list
+
+Both languages have a function that takes a line list and returns daily onset counts under each method.
+You need one row per case with:
+
+- a **report day** for every case;
+- an **onset day** where known, and empty where it is missing.
+
+Days must be whole numbers, for example days since the first report.
+Set the cut-off to the last report day in your data vintage.
+Cases with an onset after their report, or a delay longer than the maximum, are dropped and counted in `dropped`.
+
+In Python (pandas shown for reading the data):
+
+```python
+import pandas as pd
+import imputation_sim as sim
+
+ll = pd.read_csv("linelist.csv", parse_dates=["onset_date", "report_date"])
+day0 = ll["report_date"].min()
+onset = (ll["onset_date"] - day0).dt.days        # NaN where onset is missing
+report = (ll["report_date"] - day0).dt.days
+
+res = sim.impute_linelist(onset, report, cutoff=report.max())
+res["imputed"]["hub"]    # back-sampling from pooled empirical delays
+res["imputed"]["em"]     # EM back-projection with an estimated delay
+res["empirical_delay"]   # pooled delay pmf from cases with both dates
+```
+
+In JavaScript:
+
+```js
+const { imputeLinelist } = require("./imputation.js");
+
+const res = imputeLinelist({
+  onset: [0, 2, null, 5, null],   // null where onset is missing
+  report: [3, 6, 7, 9, 12],
+  cutoff: 12,
+  delay: null                     // or a forward delay pmf to hold fixed
+});
+res.imputed.hub;   // daily onset counts, hub method
+res.imputed.gen;   // daily onset counts, EM back-projection
+res.generativeDelay;
+```
+
+Day `i` of each output is onset day `i`.
+Sum to weeks before comparing methods or estimating growth.
+Outputs are expected allocations, not random draws, so they are not whole numbers.
+
+Things to check before relying on the output:
+
+- **Missingness.** All methods assume onsets are missing at random given the report day. Check whether cases without onsets differ, for example by delay, place or outcome. If they do, every method here is biased.
+- **Delays changing over time.** The generative method estimates one delay for the whole vintage. If delays shorten as the response scales up, supply a delay or use a model with a time-varying delay.
+- **Censoring and truncation.** If you fit your own parametric delay to pass as `delay`, fit it with double interval censoring and right truncation, for example with [primarycensored](https://primarycensored.epinowcast.org) or [epidist](https://epidist.epinowcast.org).
+- **Noise.** EM back-projection has no smoothing. With small counts its daily output is noisy. Aggregate to weeks, or use a full model.
+- **Recent days.** Onsets in the last weeks before the cut-off are incomplete under every method, because cases with those onsets are still being reported.
+
+For production use, a model that treats missing onsets as part of the observation process is the better option, for example [epinowcast](https://package.epinowcast.org/articles/model.html#accounting-for-reported-cases-with-a-missing-reference-date).
+
 ## Development
 
 Requires uv, Node 20 or later and optionally [Task](https://taskfile.dev).

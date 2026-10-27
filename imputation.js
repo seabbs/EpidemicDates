@@ -560,10 +560,90 @@
     return out;
   }
 
+  // ---------- real line lists ----------
+  // Impute missing onsets in a real line list.
+  // onset: onset day per case, null (or undefined) where missing.
+  // report: report day per case. Days are integers, e.g. days since the
+  //   first report. Cases reported after `cutoff` are dropped.
+  // delay: optional forward delay pmf (array indexed by delay in days).
+  //   If given, `fwd` uses it and `gen` holds it fixed. If not, `gen`
+  //   estimates a single delay jointly with the onset curve, allowing for
+  //   right truncation at the cut-off.
+  // Returns daily onset counts (index = day) for complete cases and for
+  // each method, plus the delays used. Counts are expected allocations.
+  function imputeLinelist({ onset, report, cutoff = null, delay = null,
+    maxDelay = D, iterations = 300 }) {
+    if (onset.length !== report.length) throw new Error("onset and report must have the same length");
+    const T = cutoff ?? Math.max(...report);
+    const S = T + 1;
+    const comp = new Float64Array(S), miss = new Float64Array(S);
+    const emp = new Float64Array(maxDelay + 1);
+    const Nc = Array.from({ length: S }, () => new Float64Array(maxDelay + 1));
+    let dropped = 0;
+    for (let i = 0; i < report.length; i++) {
+      const t = report[i], o = onset[i];
+      if (!Number.isInteger(t) || t < 0 || t > T) { dropped++; continue; }
+      if (o === null || o === undefined) { miss[t]++; continue; }
+      const d = t - o;
+      if (!Number.isInteger(o) || o < 0 || d < 0 || d > maxDelay) { dropped++; continue; }
+      comp[o]++; emp[d]++; Nc[o][d]++;
+    }
+    const g = normalise(emp);
+    const hub = convImpute(comp, miss, g, S);
+    const mean = shiftImpute(comp, miss, Math.round(pmfMean(g)), S);
+    const fwd = delay ? convImpute(comp, miss, normalise(Float64Array.from(delay)), S) : null;
+    // EM back-projection, optionally estimating a static delay
+    let f = delay ? normalise(Float64Array.from({ length: maxDelay + 1 }, (_, d) => delay[d] ?? 0)) : Float64Array.from(g);
+    let lam = Float64Array.from(hub, v => v + 1e-6);
+    let alloc = new Float64Array(S);
+    for (let it = 0; it < iterations; it++) {
+      const Fc = cumsum(f);
+      const A = Array.from({ length: S }, () => new Float64Array(maxDelay + 1));
+      alloc = new Float64Array(S);
+      for (let t = 0; t < S; t++) {
+        if (!miss[t]) continue;
+        let den = 0;
+        for (let d = 0; d <= maxDelay && d <= t; d++) den += lam[t - d] * f[d];
+        if (den <= 0) continue;
+        for (let d = 0; d <= maxDelay && d <= t; d++) {
+          const a = miss[t] * lam[t - d] * f[d] / den;
+          A[t - d][d] += a; alloc[t - d] += a;
+        }
+      }
+      for (let s = 0; s < S; s++) {
+        let n = comp[s] + alloc[s];
+        lam[s] = (n + 1e-9) / Math.max(Fc[Math.min(T - s, maxDelay)], 1e-4);
+      }
+      if (!delay) {
+        // right-truncated delay update: cases with delay d can only be seen
+        // for onsets up to T - d
+        const cl = cumsum(lam);
+        const nf = new Float64Array(maxDelay + 1);
+        for (let d = 0; d <= maxDelay; d++) {
+          if (T - d < 0) continue;
+          let nd = 0;
+          for (let s = 0; s + d <= T; s++) nd += Nc[s][d] + A[s][d];
+          nf[d] = Math.max(nd / Math.max(cl[T - d], 1e-12), 1e-12);
+        }
+        f = normalise(nf);
+      }
+    }
+    const gen = Float64Array.from(comp, (v, s) => v + alloc[s]);
+    return {
+      days: S, cutoff: T, dropped,
+      complete: Array.from(comp), missingByReport: Array.from(miss),
+      empiricalDelay: Array.from(g), generativeDelay: Array.from(f),
+      imputed: {
+        hub: Array.from(hub), mean: Array.from(mean),
+        fwd: fwd ? Array.from(fwd) : null, gen: Array.from(gen)
+      }
+    };
+  }
+
   return {
     D, KNOTS, R_MIN, R_MAX, GI, DEFAULTS, PRESETS, METHODS,
     knotsFrom, curveAt, delayPmf, pmfMean, rToR, wrongSideOf1, clamp, normalise,
     scenario, expectedData, runMethods, convImpute, shiftImpute, emImpute,
-    weekly, growth, stochastic, metrics, completeWeeks, run
+    weekly, growth, stochastic, metrics, completeWeeks, run, imputeLinelist
   };
 });

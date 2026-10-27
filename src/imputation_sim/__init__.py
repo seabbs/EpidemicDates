@@ -9,9 +9,12 @@ from .simulation import (
     SCEN,
     analytic,
     gamma_pmf,
+    impute_linelist,
     main,
     run_scenario,
     run_study,
+    scenario_setup,
+    simulate,
     write_results,
 )
 
@@ -21,8 +24,11 @@ __all__ = [
     "SCEN",
     "analytic",
     "gamma_pmf",
+    "impute_linelist",
     "main",
     "run_scenario",
     "run_study",
+    "scenario_setup",
+    "simulate",
     "write_results",
 ]

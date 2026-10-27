@@ -180,6 +180,52 @@ def em_backproject(sc, rm, T, n_iter=150):
     return A.sum(1)
 
 
+def impute_linelist(onset, report, cutoff=None, n_iter=150):
+    """Impute missing onsets in a real line list.
+
+    onset: onset day per case, with NaN (or None) where missing.
+    report: report day per case. Days are integers, e.g. days since the
+        first report. Cases reported after cutoff are dropped.
+
+    Returns a dict of daily onset counts (index = day) for complete cases
+    and for each method, plus the empirical and estimated delays:
+    hub (draw from pooled empirical delays, as an expected allocation),
+    mean (shift by the rounded mean empirical delay) and em (EM
+    back-projection estimating a static delay jointly with the onset
+    curve, allowing for right truncation).
+    """
+    onset = np.asarray(onset, dtype=float)
+    report = np.asarray(report, dtype=int)
+    T = int(report.max()) if cutoff is None else int(cutoff)
+    keep = (report >= 0) & (report <= T)
+    onset, report = onset[keep], report[keep]
+    missing = np.isnan(onset)
+    s_c = onset[~missing].astype(int)
+    d_c = report[~missing] - s_c
+    ok = (s_c >= 0) & (d_c >= 0) & (d_c <= DMAX)
+    s_c, d_c = s_c[ok], d_c[ok]
+    rm = report[missing]
+    S = T + 1
+    comp = np.bincount(s_c, minlength=S)[:S].astype(float)
+    miss = np.bincount(rm, minlength=S)[:S].astype(float)
+    g = np.bincount(d_c, minlength=DMAX + 1).astype(float)
+    g /= g.sum()
+    hub = comp.copy()
+    for d in range(DMAX + 1):
+        hub[: S - d] += miss[d:] * g[d]
+    m = round(float(np.dot(np.arange(DMAX + 1), g)))
+    mean = comp.copy()
+    mean[: S - m] += miss[m:]
+    em = comp + em_backproject((s_c, d_c), rm, T, n_iter=n_iter)
+    return {
+        "complete": comp,
+        "missing_by_report": miss,
+        "empirical_delay": g,
+        "imputed": {"hub": hub, "mean": mean, "em": em},
+        "dropped": int((~keep).sum() + (~ok).sum()),
+    }
+
+
 def weekly(days, weights=None, nweeks=40):
     idx = (np.asarray(days) + OFF) // 7
     w = np.bincount(idx, weights=weights, minlength=nweeks + OFF // 7)
