@@ -6,14 +6,24 @@ test_that("impute_linelist returns the documented structure", {
   expect_named(
     res,
     c(
-      "complete", "missing_by_report", "empirical_delay", "imputed",
-      "em_delay", "em_delay_by_period", "delay_period_start", "dropped",
-      "imputed_before_day0", "cutoff", "origin"
+      "complete",
+      "missing_by_report",
+      "empirical_delay",
+      "imputed",
+      "em_delay",
+      "em_delay_by_period",
+      "delay_period_start",
+      "dropped",
+      "imputed_before_day0",
+      "cutoff",
+      "origin"
     )
   )
   expect_named(res$imputed, c("backsampling", "mean", "em"))
   expect_named(res$imputed_before_day0, c("backsampling", "mean"))
-  for (m in res$imputed) expect_length(m, 13)
+  for (m in res$imputed) {
+    expect_length(m, 13)
+  }
   expect_length(res$empirical_delay, 61)
   expect_length(res$em_delay, 61)
   expect_identical(res$dropped, 0L)
@@ -82,7 +92,8 @@ test_that("out of range cases are dropped", {
   res <- impute_linelist(
     onset = c(0, 5, -1, 0, NA, 1),
     report = c(1, 3, 2, 70, 20, 2),
-    cutoff = 10, max_delay = 5
+    cutoff = 10,
+    max_delay = 5
   )
   # onset after report, negative onset, report after cutoff (twice)
   expect_identical(res$dropped, 4L)

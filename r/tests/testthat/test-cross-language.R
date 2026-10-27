@@ -11,7 +11,8 @@ find_fixture <- function() {
   dir <- normalizePath(testthat::test_path("."), mustWork = FALSE)
   for (i in 1:6) {
     candidates <- c(
-      candidates, file.path(dir, "tests", "fixtures", "cross-language.json")
+      candidates,
+      file.path(dir, "tests", "fixtures", "cross-language.json")
     )
     dir <- dirname(dir)
   }
@@ -43,13 +44,16 @@ test_that("impute_linelist matches the shared fixtures", {
   fx <- read_fixture()
   ll <- fx$linelist
   res <- impute_linelist(
-    ll$onset, ll$report,
-    cutoff = ll$cutoff, max_delay = ll$max_delay
+    ll$onset,
+    ll$report,
+    cutoff = ll$cutoff,
+    max_delay = ll$max_delay
   )
   expect_equal(res$empirical_delay, ll$empirical_delay, tolerance = 1e-12)
   # back-sampling and mean must match exactly
   expect_equal(
-    res$imputed$backsampling, ll$imputed$backsampling,
+    res$imputed$backsampling,
+    ll$imputed$backsampling,
     tolerance = 1e-12
   )
   expect_equal(res$imputed$mean, ll$imputed$mean, tolerance = 1e-12)
@@ -73,13 +77,17 @@ test_that("per-period EM matches the shared fixtures", {
   fx <- read_fixture()
   ll <- fx$linelist_periods
   res <- impute_linelist(
-    ll$onset, ll$report,
-    cutoff = ll$cutoff, max_delay = ll$max_delay,
-    delay_period = ll$delay_period, delay_shrinkage = ll$delay_shrinkage
+    ll$onset,
+    ll$report,
+    cutoff = ll$cutoff,
+    max_delay = ll$max_delay,
+    delay_period = ll$delay_period,
+    delay_shrinkage = ll$delay_shrinkage
   )
   expect_identical(res$delay_period_start, as.integer(ll$delay_period_start))
   expect_equal(
-    res$imputed$backsampling, ll$imputed$backsampling,
+    res$imputed$backsampling,
+    ll$imputed$backsampling,
     tolerance = 1e-12
   )
   expect_equal(res$imputed$mean, ll$imputed$mean, tolerance = 1e-12)
@@ -90,11 +98,15 @@ test_that("a supplied delay matrix matches the shared fixtures", {
   fx <- read_fixture()
   ll <- fx$linelist_delay_matrix
   res <- impute_linelist(
-    ll$onset, ll$report,
-    cutoff = ll$cutoff, max_delay = ll$max_delay, delay = ll$delay
+    ll$onset,
+    ll$report,
+    cutoff = ll$cutoff,
+    max_delay = ll$max_delay,
+    delay = ll$delay
   )
   expect_equal(
-    res$imputed$backsampling, ll$imputed$backsampling,
+    res$imputed$backsampling,
+    ll$imputed$backsampling,
     tolerance = 1e-12
   )
   expect_equal(res$imputed$mean, ll$imputed$mean, tolerance = 1e-12)

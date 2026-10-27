@@ -60,8 +60,12 @@
 #' period <- findInterval(seq(0, res$cutoff), res$delay_period_start)
 #' by_day <- res$em_delay_by_period[period, ]
 #' round(correct_truncation(res$imputed$em, by_day, res$cutoff), 2)
-correct_truncation <- function(counts, delay, cutoff = length(counts) - 1,
-                               min_cover = 0.05) {
+correct_truncation <- function(
+  counts,
+  delay,
+  cutoff = length(counts) - 1,
+  min_cover = 0.05
+) {
   if (!is.numeric(counts)) {
     stop("counts must be numeric", call. = FALSE)
   }
@@ -69,7 +73,9 @@ correct_truncation <- function(counts, delay, cutoff = length(counts) - 1,
     if (nrow(delay) != length(counts)) {
       stop(
         "a delay matrix needs one row per day of counts (",
-        length(counts), " rows), got ", nrow(delay),
+        length(counts),
+        " rows), got ",
+        nrow(delay),
         call. = FALSE
       )
     }
@@ -78,8 +84,11 @@ correct_truncation <- function(counts, delay, cutoff = length(counts) - 1,
     cdf <- matrix(cumsum(.check_pmf(delay, "delay")), nrow = 1L)
   }
   cutoff <- .check_scalar_whole(cutoff, "cutoff")
-  valid_cover <- is.numeric(min_cover) && length(min_cover) == 1L &&
-    is.finite(min_cover) && min_cover >= 0 && min_cover <= 1
+  valid_cover <- is.numeric(min_cover) &&
+    length(min_cover) == 1L &&
+    is.finite(min_cover) &&
+    min_cover >= 0 &&
+    min_cover <= 1
   if (!valid_cover) {
     stop("min_cover must be a single number in [0, 1]", call. = FALSE)
   }

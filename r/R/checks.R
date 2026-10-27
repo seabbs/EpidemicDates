@@ -6,7 +6,9 @@
 
 .check_scalar_whole <- function(x, what, min = -Inf) {
   if (!is.numeric(x) || length(x) != 1L || !.is_whole(x)) {
-    stop(what, " must be a single whole number, got ",
+    stop(
+      what,
+      " must be a single whole number, got ",
       format(x)[1L],
       call. = FALSE
     )
@@ -19,7 +21,9 @@
 
 .check_positive <- function(x, what) {
   if (!is.numeric(x) || length(x) != 1L || !is.finite(x) || x <= 0) {
-    stop(what, " must be a positive finite number, got ",
+    stop(
+      what,
+      " must be a positive finite number, got ",
       format(x)[1L],
       call. = FALSE
     )
@@ -31,7 +35,7 @@
   if (!is.numeric(x) || length(x) == 0L) {
     stop(what, " must be a non-empty numeric vector", call. = FALSE)
   }
-  if (any(!is.finite(x)) || any(x < 0)) {
+  if (!all(is.finite(x)) || any(x < 0)) {
     stop(what, " must hold finite non-negative values", call. = FALSE)
   }
   if (sum(x) <= 0) {

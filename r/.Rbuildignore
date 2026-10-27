@@ -1,4 +1,4 @@
-^\.lintr$
 ^.*\.Rproj$
 ^\.Rproj\.user$
 ^\.gitignore$
+^air\.toml$

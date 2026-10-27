@@ -18,8 +18,12 @@ simulate_falling <- function(seed, cutoff = 120) {
   reported <- tabulate(onset + 1L, cutoff + 1L)
   onset[runif(length(onset)) < 0.4] <- NA
   list(
-    onset = onset, report = report, cutoff = cutoff, delay = delay,
-    reported = reported, eventual = eventual
+    onset = onset,
+    report = report,
+    cutoff = cutoff,
+    delay = delay,
+    reported = reported,
+    eventual = eventual
   )
 }
 
@@ -39,7 +43,8 @@ by_day <- function(res) {
 test_that(".delay_periods counts periods back from the cut-off", {
   expect_identical(.delay_periods(9), integer(10))
   expect_identical(
-    .delay_periods(9, 4), c(0L, 0L, 1L, 1L, 1L, 1L, 2L, 2L, 2L, 2L)
+    .delay_periods(9, 4),
+    c(0L, 0L, 1L, 1L, 1L, 1L, 2L, 2L, 2L, 2L)
   )
   expect_identical(.delay_periods(9, 10), integer(10))
   expect_error(.delay_periods(9, 0), "delay_period")
@@ -54,18 +59,23 @@ test_that("per-period EM beats static EM when delays fall", {
     for (variant in names(imp)) {
       period <- if (variant == "period") 14 else NULL
       res <- impute_linelist(
-        ll$onset, ll$report,
-        cutoff = ll$cutoff, delay_period = period
+        ll$onset,
+        ll$report,
+        cutoff = ll$cutoff,
+        delay_period = period
       )
       imputed <- weeks_to_cutoff(res$imputed$em)
       err <- abs(imputed - weeks_to_cutoff(ll$reported))
       imp[[variant]] <- imp[[variant]] + sum(err) / sum(ll$reported)
       nowcast <- correct_truncation(
-        res$imputed$em, by_day(res), res$cutoff,
+        res$imputed$em,
+        by_day(res),
+        res$cutoff,
         min_cover = 1e-3
       )
       rel <- utils::tail(
-        weeks_to_cutoff(nowcast) / weeks_to_cutoff(ll$eventual) - 1, 4
+        weeks_to_cutoff(nowcast) / weeks_to_cutoff(ll$eventual) - 1,
+        4
       )
       now[[variant]] <- now[[variant]] + mean(abs(rel))
     }
@@ -77,8 +87,10 @@ test_that("per-period EM beats static EM when delays fall", {
 test_that("per-period delays follow the trend", {
   ll <- simulate_falling(1)
   res <- impute_linelist(
-    ll$onset, ll$report,
-    cutoff = ll$cutoff, delay_period = 28
+    ll$onset,
+    ll$report,
+    cutoff = ll$cutoff,
+    delay_period = 28
   )
   means <- as.vector(res$em_delay_by_period %*% seq(0, 60))
   expect_identical(dim(res$em_delay_by_period), c(5L, 61L))
@@ -101,8 +113,10 @@ test_that("a period with no cases takes the previous period's delay", {
   onset <- rep(c(0:13, 28:41), each = 5)
   delays <- c(rep(c(0, 1, 2, 3, 5), 14), rep(c(2, 4, 6, 7, 9), 14))
   res <- impute_linelist(
-    onset, onset + delays,
-    cutoff = 55, delay_period = 14
+    onset,
+    onset + delays,
+    cutoff = 55,
+    delay_period = 14
   )
   f <- res$em_delay_by_period
   expect_identical(res$delay_period_start, c(0L, 14L, 28L, 42L))
@@ -113,8 +127,10 @@ test_that("a period with no cases takes the previous period's delay", {
 
 test_that("a short line list works with periods", {
   res <- impute_linelist(
-    c(0, 2, NA, 5, NA), c(3, 6, 7, 9, 12),
-    cutoff = 12, delay_period = 4
+    c(0, 2, NA, 5, NA),
+    c(3, 6, 7, 9, 12),
+    cutoff = 12,
+    delay_period = 4
   )
   expect_identical(dim(res$em_delay_by_period), c(4L, 61L))
   expect_equal(rowSums(res$em_delay_by_period), rep(1, 4))
@@ -124,7 +140,8 @@ test_that("a short line list works with periods", {
 test_that("a given delay is held fixed by em", {
   pmf <- delay_pmf(4, 3)
   res <- impute_linelist(
-    c(0, 2, NA, 5, NA), c(3, 6, 7, 9, 12),
+    c(0, 2, NA, 5, NA),
+    c(3, 6, 7, 9, 12),
     delay = pmf
   )
   expect_equal(res$em_delay, pmf)
@@ -141,34 +158,44 @@ test_that("a given delay is held fixed by em", {
 test_that("a delay matrix is a plug-in and beats a static plug-in", {
   ll <- simulate_falling(3)
   res <- impute_linelist(
-    ll$onset, ll$report,
-    cutoff = ll$cutoff, delay = ll$delay
+    ll$onset,
+    ll$report,
+    cutoff = ll$cutoff,
+    delay = ll$delay
   )
   expect_identical(dim(res$em_delay_by_period), c(121L, 61L))
   expect_equal(res$em_delay_by_period[8, ], ll$delay[8, ] / sum(ll$delay[8, ]))
   # fwd renormalises over onset days 0..t, so every case is placed
   expect_equal(
-    sum(res$imputed$fwd - res$complete), sum(res$missing_by_report)
+    sum(res$imputed$fwd - res$complete),
+    sum(res$missing_by_report)
   )
   err <- function(delay) {
     fit <- impute_linelist(
-      ll$onset, ll$report,
-      cutoff = ll$cutoff, delay = delay
+      ll$onset,
+      ll$report,
+      cutoff = ll$cutoff,
+      delay = delay
     )
     nowcast <- correct_truncation(
-      fit$imputed$em, delay, ll$cutoff,
+      fit$imputed$em,
+      delay,
+      ll$cutoff,
       min_cover = 1e-3
     )
     rel <- utils::tail(
-      weeks_to_cutoff(nowcast) / weeks_to_cutoff(ll$eventual) - 1, 4
+      weeks_to_cutoff(nowcast) / weeks_to_cutoff(ll$eventual) - 1,
+      4
     )
     mean(abs(rel))
   }
   expect_lt(err(ll$delay), 0.5 * err(delay_pmf(8, 6.4)))
   expect_error(
     impute_linelist(
-      ll$onset, ll$report,
-      cutoff = ll$cutoff, delay = ll$delay[-1, ]
+      ll$onset,
+      ll$report,
+      cutoff = ll$cutoff,
+      delay = ll$delay[-1, ]
     ),
     "one row per onset day"
   )

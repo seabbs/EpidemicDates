@@ -14,7 +14,8 @@ test_that("delay_pmf follows the double censored formula", {
   scale <- sd^2 / mean
   big_g <- function(x) {
     x <- pmax(x, 0)
-    x * pgamma(x, shape, scale = scale) -
+    x *
+      pgamma(x, shape, scale = scale) -
       shape * scale * pgamma(x, shape + 1, scale = scale)
   }
   d <- 0:30

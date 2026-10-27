@@ -33,8 +33,10 @@
   if (is.null(delay_period)) {
     return(integer(cutoff + 1L))
   }
-  ok <- is.numeric(delay_period) && length(delay_period) == 1L &&
-    .is_whole(delay_period) && delay_period >= 1
+  ok <- is.numeric(delay_period) &&
+    length(delay_period) == 1L &&
+    .is_whole(delay_period) &&
+    delay_period >= 1
   if (!ok) {
     stop(
       "delay_period must be a whole number of days of at least 1, got ",
@@ -56,7 +58,9 @@
   for (t in which(missing_by_report > 0) - 1L) {
     d <- seq(0, min(n_delay - 1L, t))
     w <- onsets[t - d + 1L] * delay_by_day[cbind(t - d + 1L, d + 1L)]
-    if (sum(w) <= 0) next
+    if (sum(w) <= 0) {
+      next
+    }
     out[t - d + 1L] <- out[t - d + 1L] + missing_by_report[t + 1L] * w / sum(w)
   }
   out
@@ -70,7 +74,9 @@
   if (is.matrix(delay) && nrow(delay) != cutoff + 1L) {
     stop(
       "a delay matrix needs one row per onset day 0..cutoff (",
-      cutoff + 1L, " rows), got ", nrow(delay),
+      cutoff + 1L,
+      " rows), got ",
+      nrow(delay),
       call. = FALSE
     )
   }
@@ -96,9 +102,17 @@
 # onset day. With several periods and no fixed delay, each period's delay
 # is shrunk towards the previous period's, the first towards the pooled
 # delay, with strength `shrinkage`.
-.em_fit <- function(onset_c, delay_c, report_m, cutoff, max_delay,
-                    n_iter = 150, fixed = NULL, period = NULL,
-                    shrinkage = 10) {
+.em_fit <- function(
+  onset_c,
+  delay_c,
+  report_m,
+  cutoff,
+  max_delay,
+  n_iter = 150,
+  fixed = NULL,
+  period = NULL,
+  shrinkage = 10
+) {
   n_days <- cutoff + 1L
   n_delay <- max_delay + 1L
   if (is.null(period)) {
@@ -110,7 +124,9 @@
   ends <- c(starts[-1L] - 1L, n_days)
   n_complete <- matrix(
     tabulate(onset_c * n_delay + delay_c + 1L, n_days * n_delay),
-    nrow = n_days, ncol = n_delay, byrow = TRUE
+    nrow = n_days,
+    ncol = n_delay,
+    byrow = TRUE
   )
   missing <- tabulate(report_m + 1L, n_days)
   report_grid <- outer(seq(0, cutoff), seq(0, max_delay), "+")
@@ -142,12 +158,18 @@
     by_delay <- colSums(total)
     for (step in seq_len(if (fix) 1L else 3L)) {
       cdf <- by_period
-      for (k in seq_len(nrow(by_period))) cdf[k, ] <- cumsum(by_period[k, ])
+      for (k in seq_len(nrow(by_period))) {
+        cdf[k, ] <- cumsum(by_period[k, ])
+      }
       onsets <- by_onset / pmax(cdf[cbind(row_of_day, days_left + 1L)], 1e-12)
-      if (fix) next
+      if (fix) {
+        next
+      }
       cum_onsets <- cumsum(onsets)
       exposure <- ifelse(
-        exposure_idx >= 1L, cum_onsets[pmax(exposure_idx, 1L)], 0
+        exposure_idx >= 1L,
+        cum_onsets[pmax(exposure_idx, 1L)],
+        0
       )
       pooled <- by_delay / pmax(exposure, 1e-300)
       pooled <- pmax(pooled, 1e-12)
@@ -157,8 +179,13 @@
         next
       }
       by_period <- .shrink_periods(
-        rowsum(total, row_of_day), pooled, cum_onsets, starts, ends,
-        cutoff, shrinkage
+        rowsum(total, row_of_day),
+        pooled,
+        cum_onsets,
+        starts,
+        ends,
+        cutoff,
+        shrinkage
       )
     }
   }
@@ -167,13 +194,18 @@
       by_period[1L, ]
     } else {
       weights <- pmax(onsets, 0)
-      if (sum(weights) <= 0) weights <- rep(1, n_days)
+      if (sum(weights) <= 0) {
+        weights <- rep(1, n_days)
+      }
       colSums(weights * by_period[row_of_day, , drop = FALSE]) / sum(weights)
     }
   }
   list(
-    allocation = rowSums(allocated), onsets = onsets, delay = pooled,
-    delay_by_period = unname(by_period), period_start = starts - 1L
+    allocation = rowSums(allocated),
+    onsets = onsets,
+    delay = pooled,
+    delay_by_period = unname(by_period),
+    period_start = starts - 1L
   )
 }
 
@@ -182,8 +214,15 @@
 # f_k(d) is proportional to (N_k(d) + shrinkage * h_k(d)) /
 # (E_k(d) + shrinkage), where E_k(d) sums the onset curve over days of
 # period k up to cutoff - d. `starts` and `ends` are 1-based day indices.
-.shrink_periods <- function(counts, pooled, cum_onsets, starts, ends,
-                            cutoff, shrinkage) {
+.shrink_periods <- function(
+  counts,
+  pooled,
+  cum_onsets,
+  starts,
+  ends,
+  cutoff,
+  shrinkage
+) {
   out <- counts
   last_seen <- cutoff - seq(0, length(pooled) - 1L) + 1L
   target <- pooled
@@ -191,7 +230,9 @@
     before <- if (starts[k] > 1L) cum_onsets[starts[k] - 1L] else 0
     upto <- pmin(last_seen, ends[k])
     exposure <- ifelse(
-      upto >= starts[k], cum_onsets[pmax(upto, 1L)] - before, 0
+      upto >= starts[k],
+      cum_onsets[pmax(upto, 1L)] - before,
+      0
     )
     exposure <- pmax(exposure, 0)
     row <- (counts[k, ] + shrinkage * target) / (exposure + shrinkage)

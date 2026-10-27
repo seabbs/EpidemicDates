@@ -51,12 +51,14 @@ delay_pmf <- function(mean, sd, dmax = 60) {
   scale <- sd^2 / mean
   integrated_cdf <- function(x) {
     x <- pmax(x, 0)
-    x * stats::pgamma(x, shape, scale = scale) -
+    x *
+      stats::pgamma(x, shape, scale = scale) -
       shape * scale * stats::pgamma(x, shape + 1, scale = scale)
   }
   days <- seq(0, dmax)
   pmf <- pmax(
-    integrated_cdf(days + 1) - 2 * integrated_cdf(days) +
+    integrated_cdf(days + 1) -
+      2 * integrated_cdf(days) +
       integrated_cdf(days - 1),
     0
   )

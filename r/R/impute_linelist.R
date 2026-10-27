@@ -141,9 +141,16 @@
 #' res <- impute_linelist(onset, report, cutoff = 12, delay_period = 4)
 #' res$delay_period_start
 #' round(res$em_delay_by_period[, 1:6], 2)
-impute_linelist <- function(onset, report, cutoff = NULL, delay = NULL,
-                            max_delay = 60, n_iter = 150,
-                            delay_period = NULL, delay_shrinkage = 10) {
+impute_linelist <- function(
+  onset,
+  report,
+  cutoff = NULL,
+  delay = NULL,
+  max_delay = 60,
+  n_iter = 150,
+  delay_period = NULL,
+  delay_shrinkage = 10
+) {
   days <- .linelist_days(onset, report, cutoff)
   onset <- days$onset
   report <- days$report
@@ -160,7 +167,9 @@ impute_linelist <- function(onset, report, cutoff = NULL, delay = NULL,
   if (length(onset) != length(report)) {
     stop(
       "onset and report must have the same length, got ",
-      length(onset), " and ", length(report),
+      length(onset),
+      " and ",
+      length(report),
       call. = FALSE
     )
   }
@@ -170,7 +179,8 @@ impute_linelist <- function(onset, report, cutoff = NULL, delay = NULL,
   bad_report <- !is.finite(report)
   if (any(bad_report)) {
     stop(
-      "report day is missing or infinite for ", sum(bad_report),
+      "report day is missing or infinite for ",
+      sum(bad_report),
       " case(s); every case needs a report day",
       call. = FALSE
     )
@@ -223,8 +233,15 @@ impute_linelist <- function(onset, report, cutoff = NULL, delay = NULL,
   shift <- .round_half_up(sum(seq(0, max_delay) * empirical))
   mean_shift <- .mean_shift_allocate(missing_by_report, shift)
   fit <- .em_fit(
-    onset_c, delay_c, report_m, cutoff, max_delay, n_iter,
-    fixed = fixed, period = period, shrinkage = delay_shrinkage
+    onset_c,
+    delay_c,
+    report_m,
+    cutoff,
+    max_delay,
+    n_iter,
+    fixed = fixed,
+    period = period,
+    shrinkage = delay_shrinkage
   )
   imputed <- list(
     backsampling = complete + backsampling,
@@ -270,8 +287,10 @@ impute_linelist <- function(onset, report, cutoff = NULL, delay = NULL,
     .check_numeric_days(onset, "onset")
     .check_numeric_days(report, "report")
     return(list(
-      onset = as.numeric(onset), report = as.numeric(report),
-      cutoff = cutoff, origin = NULL
+      onset = as.numeric(onset),
+      report = as.numeric(report),
+      cutoff = cutoff,
+      origin = NULL
     ))
   }
   all_na_onset <- !is_date[1] && is.logical(onset) && all(is.na(onset))
