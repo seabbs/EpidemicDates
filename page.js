@@ -957,6 +957,8 @@ function wireAsOf() {
   document.getElementById("asofPlay").addEventListener("click", togglePlay);
 }
 
+// curves of the last preset chosen, for the editors' Reset buttons
+let activePresetBase = fromPreset(PRESETS[0].set);
 // ---------- controls ----------
 function buildControls() {
   const host = document.getElementById("controls");
@@ -971,6 +973,7 @@ function buildControls() {
       ZOOM = null;
       document.getElementById("zoomReset").disabled = true;
       P = fromPreset(p.set);
+      activePresetBase = fromPreset(p.set);
       syncControls();
       schedule();
     });
@@ -981,7 +984,14 @@ function buildControls() {
     fs.innerHTML = `<legend>${g.group}</legend>`;
     if (g.editor) {
       const ed = document.createElement("div");
-      ed.innerHTML = `<p class="hint">${g.editor.hint}</p><div id="${g.editor.id}"></div>`;
+      ed.innerHTML =
+        `<p class="hint">${g.editor.hint}</p><div id="${g.editor.id}"></div>` +
+        `<div class="bulk" data-ed="${g.editor.id}">` +
+        `<select aria-label="Change the whole curve"><option value="add">Add to all</option>` +
+        `<option value="mul">Multiply all by</option><option value="set">Set all to</option></select>` +
+        `<input type="number" step="any" aria-label="Value">` +
+        `<button type="button" data-act="apply">Apply</button>` +
+        `<button type="button" data-act="reset">Reset</button></div>`;
       fs.appendChild(ed);
     }
     for (const c of g.items) {
@@ -1025,12 +1035,37 @@ function buildControls() {
     }
   syncControls();
 }
+// label the settings button with the current scenario
+function labelSettings() {
+  const btn = document.getElementById("settingsToggle");
+  if (!btn) return;
+  const open = document
+    .querySelector(".layout")
+    .classList.contains("settings-open");
+  const name =
+    activePreset >= 0 ? PRESETS[activePreset].name : "custom settings";
+  btn.textContent = open
+    ? "✕ Hide the settings"
+    : `⚙ Change the scenario (now: ${name})`;
+  btn.setAttribute("aria-expanded", String(open));
+}
+function wireSettings() {
+  const btn = document.getElementById("settingsToggle");
+  if (!btn) return;
+  btn.addEventListener("click", () => {
+    document.querySelector(".layout").classList.toggle("settings-open");
+    labelSettings();
+    schedule();
+  });
+  labelSettings();
+}
 function markPreset() {
   [...document.querySelectorAll("#presets button")].forEach((b, i) =>
     b.classList.toggle("active", i === activePreset)
   );
   document.getElementById("presetNote").textContent =
     activePreset >= 0 ? PRESETS[activePreset].note : "Custom settings.";
+  labelSettings();
 }
 function syncControls() {
   for (const g of CONTROLS)
@@ -1161,7 +1196,45 @@ function drawEditor() {
     el.innerHTML = g;
   }
 }
+// change a whole curve at once: add, multiply or set every knot, or reset
+// it to the preset's curve
+function bulkEdit(cfg, op, x) {
+  const vals = curveVals(cfg.key).slice();
+  for (let j = 0; j < vals.length; j++) {
+    const v = op === "add" ? vals[j] + x : op === "mul" ? vals[j] * x : x;
+    const snapped =
+      Math.round(clamp(v, cfg.min, cfg.max) / cfg.step) * cfg.step;
+    vals[j] = +snapped.toFixed(4);
+  }
+  P[cfg.key] = vals;
+  activePreset = -1;
+  markPreset();
+  drawEditor();
+  schedule();
+}
+function resetCurve(cfg) {
+  const base = activePresetBase ? activePresetBase[cfg.key] : DEFAULTS[cfg.key];
+  P[cfg.key] = base ? base.slice() : null;
+  drawEditor();
+  schedule();
+}
+function wireBulk() {
+  for (const row of document.querySelectorAll(".bulk")) {
+    const cfg = EDITORS.find(e => e.el === row.dataset.ed);
+    if (!cfg) continue;
+    const sel = row.querySelector("select"),
+      num = row.querySelector("input");
+    row.querySelector('[data-act="apply"]').addEventListener("click", () => {
+      const x = parseFloat(num.value);
+      if (Number.isFinite(x)) bulkEdit(cfg, sel.value, x);
+    });
+    row
+      .querySelector('[data-act="reset"]')
+      .addEventListener("click", () => resetCurve(cfg));
+  }
+}
 function wireEditor() {
+  wireBulk();
   for (const cfg of EDITORS) {
     const el = document.getElementById(cfg.el);
     let down = false;
@@ -1705,6 +1778,7 @@ function wireSteps() {
   document.getElementById("stepRun").addEventListener("click", runSteps);
 }
 buildControls();
+wireSettings();
 wireEditor();
 wireSteps();
 wireAsOf();

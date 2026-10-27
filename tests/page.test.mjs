@@ -224,3 +224,24 @@ test("the last step uses the data as of the report day, cached", () => {
   );
   assert.match(run("stepText('gen', 2, { date: 'x', m: 7 })"), /pull weight/);
 });
+
+test("bulk edits change a whole curve and reset restores the preset", () => {
+  const ctx = loadPage();
+  const run = code => vm.runInContext(code, ctx);
+  const cfg = 'EDITORS.find(e => e.key === "muKnots")';
+  const before = JSON.parse(run(`JSON.stringify(curveVals("muKnots"))`));
+  run(`bulkEdit(${cfg}, "add", 2)`);
+  const after = JSON.parse(run(`JSON.stringify(curveVals("muKnots"))`));
+  after.forEach((v, j) =>
+    assert.ok(Math.abs(v - Math.min(before[j] + 2, 20)) < 0.26)
+  );
+  run(`bulkEdit(${cfg}, "set", 99)`);
+  assert.ok(
+    JSON.parse(run(`JSON.stringify(curveVals("muKnots"))`)).every(v => v === 20)
+  );
+  run(`resetCurve(${cfg})`);
+  assert.deepEqual(
+    JSON.parse(run(`JSON.stringify(curveVals("muKnots"))`)),
+    before
+  );
+});
