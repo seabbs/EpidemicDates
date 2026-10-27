@@ -1,4 +1,5 @@
-# R package: tests with coverage, lint and style, and R CMD check.
+# R package: tests with coverage and R CMD check.
+# Lint and format checks (Air, Jarl) run in lint.yml.
 # Runs when the R package or the shared cross-language fixtures change.
 # Run by hand with workflow_dispatch.
 name: R package
@@ -34,7 +35,7 @@ jobs:
         with:
           working-directory: r
           extra-packages: >-
-            any::rcmdcheck, any::lintr, any::styler, any::devtools,
+            any::rcmdcheck, any::devtools,
             any::jsonlite, any::covr, any::xml2
           needs: check
       - name: Tests, including the cross-language fixtures
@@ -51,10 +52,6 @@ jobs:
           flags: r
           use_oidc: true
           fail_ci_if_error: false
-      - name: Lint and style check
-        run: |
-          Rscript -e 'pkgload::load_all("r"); l <- lintr::lint_package("r"); print(l); if (length(l)) quit(status = 1)'
-          Rscript -e 's <- styler::style_pkg("r", dry = "fail")'
       - uses: r-lib/actions/check-r-package@v2
         with:
           working-directory: r
