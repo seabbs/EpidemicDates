@@ -1,16 +1,21 @@
 """Simulation study: bias of onset-date imputation for missing onsets.
 
-Methods for cases with missing onset (complete cases keep true onset):
-  hub     : onset = report - delay drawn from pooled empirical delays of
-            complete cases reported by cut-off T
-  mean    : onset = report - round(mean empirical delay)
-  forward : onset = report - delay drawn from the true forward delay pmf
-  em      : EM back-projection; p(s | t) prop. to O(s) f(t - s), with O and
-            a static f estimated jointly from all cases with right
-            truncation at T; imputed counts are the expected allocation
+Methods for cases with a missing onset (complete cases keep their true
+onset):
 
-Command line: uv run imputation-sim --reps 200 --out output
-From Python: see run_scenario() and run_study().
+- `hub`: onset = report - delay drawn from the pooled empirical delays of
+  complete cases reported by cut-off T.
+- `mean`: onset = report - round(mean empirical delay).
+- `forward`: onset = report - delay drawn from the true forward delay pmf.
+- `em`: EM back-projection (`em_backproject`). p(s | t) is proportional
+  to O(s) f(t - s), with onsets O and a static delay f estimated jointly
+  from all cases with right truncation at T. Imputed counts are the
+  expected allocation.
+
+Command line: `uv run imputation-sim --reps 200 --out output`.
+From Python: see `run_scenario` and `run_study`.
+
+Days are integers. Day 0 is the first possible onset in a scenario.
 """
 
 import argparse
@@ -21,16 +26,44 @@ import numpy as np
 from scipy import stats
 
 DMAX = 60
+"""Maximum onset-to-report delay in days. Delay pmfs cover 0..DMAX."""
 METHODS = ["hub", "mean", "forward", "em"]
-OFF = 70  # day offset so negative imputed onsets bin correctly
+"""Imputation methods compared, in the order used in summary rows."""
+OFF = 70
+"""Day offset so negative imputed onsets bin correctly into weeks."""
 
 
 def gamma_pmf(mean, sd, dmax=DMAX):
-    """Double interval censored daily Gamma pmf (primarycensored form).
+    r"""Double interval censored daily Gamma delay pmf.
 
-    Primary event uniform within its day, secondary censored to its day:
-    P(d) = G(d + 1) - 2 G(d) + G(d - 1), with G the integral of the Gamma
-    CDF. Truncated at dmax and renormalised.
+    Uses the primarycensored form. The primary event (onset) is uniform
+    within its day and the secondary event (report) is censored to its
+    day, so
+
+    $$P(d) = G(d + 1) - 2 G(d) + G(d - 1),$$
+
+    $$G(x) = \int_0^x F(u; k, \theta) \, du
+    = x F(x; k, \theta) - k \theta F(x; k + 1, \theta),$$
+
+    where $F(x; k, \theta)$ is the Gamma CDF with shape
+    $k = (\mu / \sigma)^2$ and scale $\theta = \sigma^2 / \mu$, and
+    $G(x) = 0$ for $x \le 0$.
+    The pmf is truncated at `dmax` and renormalised.
+
+    Parameters
+    ----------
+    mean : float
+        Mean of the continuous Gamma delay, in days.
+    sd : float
+        Standard deviation of the continuous Gamma delay, in days.
+    dmax : int, optional
+        Maximum delay. Defaults to `DMAX`.
+
+    Returns
+    -------
+    numpy.ndarray
+        Probabilities for delays 0..dmax, of length `dmax + 1`, summing
+        to 1.
     """
     shape = (mean / sd) ** 2
     scale = sd**2 / mean
@@ -47,9 +80,17 @@ def gamma_pmf(mean, sd, dmax=DMAX):
 
 
 F_DEFAULT = gamma_pmf(8, 8)
+"""Default forward delay pmf: `gamma_pmf(8, 8)`, mean 8 days, SD 8 days
+(an exponential before censoring), on 0..DMAX. Used by every scenario
+except `F`.
+"""
 
 
 def r_path(kind, L):
+    """Daily growth rate r(t) for scenario `kind` over days 0..L-1.
+
+    Raises `ValueError` for an unknown scenario.
+    """
     t = np.arange(L, dtype=float)
     if kind == "A":
         return np.full(L, 0.05)
@@ -74,7 +115,6 @@ def r_path(kind, L):
     raise ValueError(kind)
 
 
-# name: (L, target expected total, change-point week or None)
 SCEN = {
     "A": (120, 10000, None),
     "B": (150, 5000, 8),  # switch at day 60
@@ -89,6 +129,13 @@ SCEN = {
     "Csmall": (150, 300, 12),
     "W": (150, 5000, 7),  # first turn at day ~40
 }
+"""Scenario settings, keyed by name. Each value is
+`(L, target, cp)`: the number of onset days, the expected total number
+of cases and the change-point week (or `None`). The change-point week
+is used for the `*_cp` summary columns. The growth rate path is set in
+`r_path` and missingness in `miss_prob`. See `DESC`.
+"""
+
 DESC = {
     "A": "r=0.05 constant",
     "B": "r=0.05 then -0.03 at d60",
@@ -103,9 +150,33 @@ DESC = {
     "Csmall": "as C, ~300 cases",
     "W": "two waves: growth, control, resurgence, control",
 }
+"""One-line description of each scenario in `SCEN`. Unless stated, the
+delay is `F_DEFAULT` and each onset is missing with probability 0.4.
+"""
 
 
 def scenario_setup(name):
+    """Build the expected onset curve and delays for a scenario.
+
+    Parameters
+    ----------
+    name : str
+        A key of `SCEN`.
+
+    Returns
+    -------
+    dict
+        Scenario inputs with keys:
+
+        - `L`: number of onset days.
+        - `O`: expected daily onsets, shape (L,), summing to the target
+          total. Built as exp(cumulative sum of r(t)) and rescaled. In
+          scenario `I` it is doubled from onset day 70 before rescaling.
+        - `fmat`: forward delay pmf by onset day, shape (L, DMAX + 1).
+          In scenario `F` the mean (and SD) falls linearly from 12 to 4
+          days; otherwise every row is `F_DEFAULT`.
+        - `cp`: change-point week or `None`.
+    """
     L, target, cp = SCEN[name]
     r = r_path(name, L)
     shape = np.exp(np.concatenate([[0], np.cumsum(r[1:])]))
@@ -121,6 +192,12 @@ def scenario_setup(name):
 
 
 def miss_prob(name, delay, report):
+    """Probability that each case's onset is missing.
+
+    0.4 for all cases, except in `G` (0.2 rising to 0.7 as the delay
+    goes from 0 to 20 days) and `H` (0.2 rising to 0.6 as the report day
+    goes from 60 to 100).
+    """
     if name == "G":
         return 0.2 + 0.5 * np.clip(delay / 20, 0, 1)
     if name == "H":
@@ -129,6 +206,28 @@ def miss_prob(name, delay, report):
 
 
 def simulate(name, sp, rng):
+    """Simulate one line list for a scenario.
+
+    Daily onset counts are Poisson with mean `sp["O"]`. Each case gets a
+    delay from its onset day's forward pmf, a report day of onset plus
+    delay, and a missing-onset flag from `miss_prob`.
+
+    Parameters
+    ----------
+    name : str
+        A key of `SCEN`.
+    sp : dict
+        Output of `scenario_setup(name)`.
+    rng : numpy.random.Generator
+        Random number generator.
+
+    Returns
+    -------
+    onset, report, missing : numpy.ndarray
+        Integer onset and report days and a boolean missing-onset flag,
+        one entry per case. No cut-off is applied; reports run to
+        `L - 1 + DMAX`.
+    """
     n = rng.poisson(sp["O"])
     onset = np.repeat(np.arange(sp["L"]), n)
     if name == "F":
@@ -144,10 +243,55 @@ def simulate(name, sp, rng):
 
 
 def em_backproject(sc, rm, T, n_iter=150):
-    """EM back-projection with joint static delay estimation.
+    r"""Back-project missing-onset cases by EM with an estimated delay.
 
-    sc, dc: complete onset days and delays; rm: missing report days.
-    Returns expected daily onset allocation of missing cases (0..T).
+    Expected counts by onset day $s$ and delay $d$ are
+    $\lambda(s) f(d)$, observed only when $s + d \le T$ (right
+    truncation). Complete cases give counts $n_c(s, d)$. Missing cases
+    give counts $m(t)$ by report day only.
+
+    Starting values are the complete-case delay counts plus 0.5,
+    normalised, for $f$, and complete-case onset counts inflated by the
+    overall missing fraction, plus 0.1, for $\lambda$.
+    Each of `n_iter` iterations then does the following.
+
+    E-step: allocate the missing cases reported on day $t$ as
+
+    $$n_a(s, t - s) = m(t) \frac{\lambda(s) f(t - s)}
+    {\sum_{s'} \lambda(s') f(t - s')}.$$
+
+    M-step: with $n = n_c + n_a$, alternate three times between
+
+    $$\lambda(s) = \frac{\sum_d n(s, d)}{F\big(\min(T - s, D)\big)},
+    \qquad
+    f(d) \propto \frac{\sum_s n(s, d)}{\sum_{s \le T - d} \lambda(s)},$$
+
+    where $F$ is the delay CDF and $D$ = `DMAX`. $f$ is floored at
+    $10^{-12}$ and renormalised.
+
+    The delay is static over time. The method assumes onsets are missing
+    at random given the report day. No smoothing is applied to
+    $\lambda$.
+
+    Parameters
+    ----------
+    sc : tuple of numpy.ndarray
+        `(s_c, d_c)`: integer onset days and delays of complete cases.
+        Onset days must lie in 0..T and delays in 0..DMAX, with
+        onset plus delay <= T.
+    rm : numpy.ndarray
+        Integer report days (0..T) of cases with a missing onset.
+    T : int
+        Data cut-off day.
+    n_iter : int, optional
+        Number of EM iterations. No convergence check is made.
+
+    Returns
+    -------
+    numpy.ndarray
+        Expected number of missing-onset cases on each onset day 0..T,
+        length `T + 1`. Sums to `len(rm)`. The estimated onset curve and
+        delay are not returned.
     """
     s_c, d_c = sc
     S = T + 1
@@ -183,16 +327,50 @@ def em_backproject(sc, rm, T, n_iter=150):
 def impute_linelist(onset, report, cutoff=None, n_iter=150):
     """Impute missing onsets in a real line list.
 
-    onset: onset day per case, with NaN (or None) where missing.
-    report: report day per case. Days are integers, e.g. days since the
-        first report. Cases reported after cutoff are dropped.
+    Parameters
+    ----------
+    onset : array_like
+        Onset day per case, with NaN (or None) where missing.
+    report : array_like of int
+        Report day per case. Must have no missing values. Days are
+        integers, for example days since the first report.
+    cutoff : int, optional
+        Data cut-off day T. Defaults to the last report day. Cases
+        reported before day 0 or after T are dropped.
+    n_iter : int, optional
+        Number of EM iterations passed to `em_backproject`.
 
-    Returns a dict of daily onset counts (index = day) for complete cases
-    and for each method, plus the empirical and estimated delays:
-    hub (draw from pooled empirical delays, as an expected allocation),
-    mean (shift by the rounded mean empirical delay) and em (EM
-    back-projection estimating a static delay jointly with the onset
-    curve, allowing for right truncation).
+    Returns
+    -------
+    dict
+        Daily arrays have length T + 1 and index i is onset day i.
+
+        - `complete`: onset counts of cases with a known onset.
+        - `missing_by_report`: counts of missing-onset cases by report
+          day.
+        - `empirical_delay`: pooled delay pmf (0..DMAX) of complete
+          cases.
+        - `imputed`: dict of daily onset counts (complete plus imputed)
+          for `hub`, `mean` and `em`.
+        - `dropped`: number of cases dropped.
+
+    Notes
+    -----
+    - `hub` spreads each missing case over report day minus each delay,
+      weighted by `empirical_delay`. It is the expected allocation of the
+      random draw, not a draw.
+    - `mean` shifts each missing case back by the rounded mean of
+      `empirical_delay`.
+    - `em` uses `em_backproject`. It estimates a static delay jointly
+      with the onset curve, allowing for right truncation at the cut-off.
+    - All methods assume onsets are missing at random given the report
+      day. If missingness depends on the delay, all are biased.
+    - Complete cases with a negative onset, an onset after report or a
+      delay over `DMAX` are dropped. They are not imputed.
+    - For `hub` and `mean`, imputed onsets before day 0 are discarded,
+      so totals can be below the number of cases kept.
+    - Outputs are expected counts and need not be whole numbers.
+      Sum to weeks before comparing methods.
     """
     onset = np.asarray(onset, dtype=float)
     report = np.asarray(report, dtype=int)
@@ -227,12 +405,22 @@ def impute_linelist(onset, report, cutoff=None, n_iter=150):
 
 
 def weekly(days, weights=None, nweeks=40):
+    """Sum (weighted) days into weeks 0..nweeks-1; week 0 is days 0-6.
+
+    Days before 0 (down to -OFF) or after the last week are discarded.
+    """
     idx = (np.asarray(days) + OFF) // 7
     w = np.bincount(idx, weights=weights, minlength=nweeks + OFF // 7)
     return w[OFF // 7 : OFF // 7 + nweeks]
 
 
 def run_rep(name, sp, rng, cutoffs, fwd_draw_f):
+    """Simulate one line list and impute it at each cut-off.
+
+    Returns a dict keyed by cut-off. Each value holds weekly onset
+    counts for `truth` (cases reported by the cut-off) and each of
+    `METHODS`, plus `n`, the number of cases reported by the cut-off.
+    """
     onset, report, missing = simulate(name, sp, rng)
     out = {}
     for T in cutoffs:
@@ -270,6 +458,10 @@ def gr(y):
 
 
 def first_neg(g, start=4):
+    """First week from `start` with two consecutive negative growth rates.
+
+    One value per row of `g`; NaN if there is none.
+    """
     out = np.full(g.shape[0], np.nan)
     for i in range(g.shape[0]):
         for w in range(start, g.shape[1] - 2):
@@ -280,6 +472,27 @@ def first_neg(g, start=4):
 
 
 def summarise(name, sp, T, reps, retro):
+    """Summarise each method's bias over replicates at one cut-off.
+
+    Parameters
+    ----------
+    name : str
+        A key of `SCEN`.
+    sp : dict
+        Output of `scenario_setup(name)`.
+    T : int
+        Cut-off day.
+    reps : list of dict
+        Outputs of `run_rep`.
+    retro : bool
+        Whether T is the retrospective cut-off. If so, weeks 0..L//7-1
+        are scored. Otherwise the complete weeks up to T are scored.
+
+    Returns
+    -------
+    list of dict
+        One row per method. See `run_scenario` for the columns.
+    """
     L, cp = sp["L"], sp["cp"]
     nw = (L // 7) if retro else (T + 1) // 7
     truth = np.array([r[T]["truth"][:nw] for r in reps])
@@ -338,7 +551,27 @@ def summarise(name, sp, T, reps, retro):
 
 
 def analytic():
-    """Pooled complete-case delays vs forward and backward pmfs."""
+    """Analytic checks of pooled complete-case delays.
+
+    Compares the forward delay pmf with the backward pmf under constant
+    growth, and checks the result by simulation.
+
+    Returns
+    -------
+    list of str
+        Lines of text:
+
+        - for r = 0.05, 0.008 and -0.03, the forward and backward mean
+          delays, the retrospective level factor of `hub` imputed cases,
+          E[exp(-rD)] E[exp(rD)], and of `mean` imputed cases,
+          exp(rm) E[exp(-rD)], with D ~ `F_DEFAULT` and m its rounded
+          mean;
+        - the pooled complete-case mean delay in one simulation of
+          scenario `A` at cut-offs 90 and 179 (seed 1);
+        - the mean of the analytic pooled right-truncated pmf under
+          r = 0.05 from day 0 with T = 90, and its total variation
+          distance to the backward pmf.
+    """
     f = F_DEFAULT
     d = np.arange(DMAX + 1)
     lines = []
@@ -378,11 +611,62 @@ def analytic():
 def run_scenario(name, reps=200, seed=20261027, cutoffs=None):
     """Simulate one scenario and summarise each method's bias.
 
-    name: a key of SCEN (see DESC for descriptions).
-    reps: number of stochastic replicates.
-    cutoffs: data cut-off days; defaults to retrospective plus two
-        real-time cut-offs.
-    Returns a list of dicts, one per cut-off and method.
+    Parameters
+    ----------
+    name : str
+        A key of `SCEN` (see `DESC`).
+    reps : int, optional
+        Number of stochastic replicates.
+    seed : int, optional
+        Seed for `numpy.random.default_rng`.
+    cutoffs : list of int, optional
+        Data cut-off days. The retrospective cut-off is `L - 1 + DMAX`,
+        when every case has been reported. Defaults to the retrospective
+        cut-off plus real-time cut-offs 90 and 120 (70 and 90 for `A`).
+        A cut-off is scored as retrospective only if it equals that day.
+
+    Returns
+    -------
+    list of dict
+        One row per cut-off and method. Bias is against the true onsets
+        of cases reported by the cut-off. Weeks are scored only if the
+        mean true count is at least 10 (3 for `Csmall`).
+
+        Always present:
+
+        - `scenario`, `desc`, `cutoff`, `retro` (1 if retrospective),
+          `method`, `mean_cases` (mean cases reported by the cut-off).
+        - `relbias_mean`, `relbias_maxabs`: mean and maximum absolute
+          relative bias of the replicate-mean weekly count.
+        - `rel_rmse`: root mean square relative error of weekly counts
+          over replicates and weeks (denominator at least 1).
+        - `gr_bias_meanabs`, `gr_bias_maxabs`: mean and maximum absolute
+          bias in the weekly growth rate (per day). The growth rate is the
+          centred log-linear slope over three weeks of log(count + 0.5).
+
+        If the scenario has a change point within the scored weeks:
+
+        - `relbias_cp`, `gr_bias_cp`, `gr_bias_cp_maxabs`: relative bias,
+          growth rate bias and its maximum absolute value within three
+          weeks of the change point.
+
+        Retrospective rows only:
+
+        - `peak_shift_wk`: mean shift of the peak week (estimate minus
+          truth).
+        - `peak_diff_frac`: fraction of replicates with a different peak
+          week.
+        - `zero_cross_lag_wk`: mean lag of the first week (from week 4)
+          with two consecutive negative growth rates (scenarios with a
+          change point only).
+        - `peak_meancurve_shift`: peak shift of the replicate-mean curve.
+
+        Real-time rows only:
+
+        - `relbias_last2`, `relbias_last4`: relative bias over the last
+          two and four complete weeks.
+        - `gr_bias_last`: growth rate bias in the last week with a
+          centred estimate.
     """
     rng = np.random.default_rng(seed)
     sp = scenario_setup(name)
@@ -398,7 +682,25 @@ def run_scenario(name, reps=200, seed=20261027, cutoffs=None):
 
 
 def run_study(reps=200, seed=20261027, scenarios=None, verbose=True):
-    """Run every scenario (or those named) and return all summary rows."""
+    """Run every scenario, or those named, and return all summary rows.
+
+    Parameters
+    ----------
+    reps : int, optional
+        Number of replicates per scenario.
+    seed : int, optional
+        Base seed. The i-th scenario run uses `seed + i`, so results for
+        a scenario depend on its position in `scenarios`.
+    scenarios : list of str, optional
+        Keys of `SCEN`. Defaults to all scenarios.
+    verbose : bool, optional
+        Print a line as each scenario finishes.
+
+    Returns
+    -------
+    list of dict
+        Rows from `run_scenario` for each scenario.
+    """
     rows = []
     for i, name in enumerate(scenarios or SCEN):
         rows += run_scenario(name, reps=reps, seed=seed + i)
@@ -408,8 +710,21 @@ def run_study(reps=200, seed=20261027, scenarios=None, verbose=True):
 
 
 def write_results(rows, out):
-    """Write summary rows to out/results.csv and analytic checks to
-    out/analytic.txt."""
+    """Write summary rows and analytic checks to a directory.
+
+    Parameters
+    ----------
+    rows : list of dict
+        Summary rows, for example from `run_study`.
+    out : str
+        Output directory. Created if needed.
+
+    Notes
+    -----
+    Writes `out/results.csv`, with columns in order of first appearance
+    and floats to 4 decimal places, and `out/analytic.txt`, the output
+    of `analytic`. Existing files are overwritten.
+    """
     keys = []
     for r in rows:
         for k in r:
@@ -431,6 +746,18 @@ def write_results(rows, out):
 
 
 def main(argv=None):
+    """Command-line entry point (`imputation-sim`).
+
+    Runs `run_study`, writes results with `write_results` and prints the
+    analytic checks.
+
+    Parameters
+    ----------
+    argv : list of str, optional
+        Arguments. Defaults to `sys.argv[1:]`. Options are `--reps`
+        (default 200), `--seed` (default 20261027), `--out` (default
+        `output`) and `--scenarios` (default all).
+    """
     parser = argparse.ArgumentParser(
         description="Simulation study of onset-date imputation bias."
     )
