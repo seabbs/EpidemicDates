@@ -12,6 +12,8 @@ This is the approach discussed in [BDBV-Modeling-Hub issue #61](https://github.c
 
 **Live page:** <https://seabbs.github.io/epidemic-imputation-demonstration/>
 
+**API docs, with the maths:** [JavaScript](https://seabbs.github.io/epidemic-imputation-demonstration/js/) · [Python](https://seabbs.github.io/epidemic-imputation-demonstration/python/imputation_sim.html)
+
 The page simulates an epidemic with time-varying growth, reporting delays, missing onset dates and changing ascertainment.
 It compares four ways of imputing missing onsets against the true onsets of the same cases:
 
@@ -34,54 +36,29 @@ Presets use Ebola settings from [epiforecasts/BVDOutbreakSize](https://github.co
 | `src/imputation_sim/` | An independent stochastic simulation in Python, used to cross-check the page. |
 | `tests/` | Node tests for `imputation.js` and pytest tests for `imputation_sim`. |
 
-## Using the JavaScript module
+## Using the code
 
-`imputation.js` has no dependencies.
-In a browser it defines a global `Imputation`.
-In Node load it with `require`:
+Both parts are documented in full, with the maths for each method, in the API docs:
+[JavaScript](https://seabbs.github.io/epidemic-imputation-demonstration/js/) and [Python](https://seabbs.github.io/epidemic-imputation-demonstration/python/imputation_sim.html).
+
+**JavaScript.** `imputation.js` has no dependencies.
+In a browser it defines a global `Imputation`; in Node, load it with `require`.
 
 ```js
 const Imputation = require("./imputation.js");
-
-// growth rate r(t) per day, linear between points every 15 days
-const knots = Imputation.knotsFrom([[0, 0.05], [60, 0.05], [120, -0.01]]);
-
-const res = Imputation.run({
-  knots,
-  mu0: 8, mu1: 8, cv: 1,   // mean onset-to-report delay (days) at start and end, and its CV
-  pi0: 0.4, pi1: 0.4,      // fraction of onsets missing at start and end
-  retro: true              // false to cut the data at `cutoff`
-});
-
-res.truth;             // weekly true onsets of cases reported by the cut-off
-res.imputed.hub;       // weekly onsets after imputation, by method (hub, mean, fwd, gen)
-res.rt.hub;            // weekly Rt from the imputed counts
-res.metrics.hub;       // maxRel, meanAbs, maxR, wrongSide, peakShift, peakHeight, last
+const res = Imputation.run(Imputation.PRESETS[0].set);
+res.metrics.hub.maxRel;   // largest weekly relative error, hub method
 ```
 
-`Imputation.DEFAULTS` lists every parameter and `Imputation.PRESETS` holds the page's scenarios.
-Lower-level pieces are also exported: `scenario`, `expectedData`, `runMethods`, `stochastic`, `delayPmf`, `growth` and `rToR`.
-
-Delays are double interval censored daily Gamma pmfs (the primarycensored form with a uniform primary event).
-Rt uses a Gamma generation interval with mean 15 days and SD 9.
-
-## Using the Python simulation
-
-The simulation is a package, `imputation_sim`, managed with [uv](https://docs.astral.sh/uv/).
+**Python.** The simulation is the `imputation_sim` package, managed with [uv](https://docs.astral.sh/uv/).
 
 ```bash
-uv run imputation-sim --reps 200 --out output          # all scenarios
-uv run imputation-sim --reps 50 --scenarios C D W       # a subset
+uv run imputation-sim --reps 200 --out output
 ```
-
-From Python:
 
 ```python
 import imputation_sim as sim
-
-sim.DESC                                   # scenario descriptions
-rows = sim.run_scenario("W", reps=100)    # summary rows per cut-off and method
-sim.write_results(rows, "output")
+rows = sim.run_scenario("W", reps=100)
 ```
 
 ## Using it on a real line list
@@ -152,6 +129,7 @@ task test     # Node tests
 uv run pytest # Python tests
 task lint     # ruff
 task sim      # run the simulation (pass arguments after --)
+task docs     # build the API docs into _site/
 task serve    # serve the page on http://localhost:8000
 ```
 
