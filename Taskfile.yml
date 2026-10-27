@@ -106,6 +106,12 @@ tasks:
     deps: [julia-runic]
     cmds:
       - julia --startup-file=no --project=@runic -m Runic --check --diff julia docs/julia
+  diagrams:
+    desc: >-
+      Rebuild the TikZ method diagrams in docs/diagrams/ as light and dark
+      SVGs; needs pdflatex and pdftocairo
+    cmds:
+      - docs/diagrams/build.sh {{.CLI_ARGS}}
   serve:
     desc: Serve the page locally
     cmds:

@@ -1,0 +1,33 @@
+# Checks that the TikZ method diagrams compile.
+# The SVGs are committed, so this only guards the sources.
+# Runs when docs/diagrams/ changes. Run by hand with workflow_dispatch.
+name: Diagrams
+
+on:
+  push:
+    branches: [main]
+    paths: &paths
+      - "docs/diagrams/**"
+      - ".github/workflows/diagrams.yml"
+  pull_request:
+    paths: *paths
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  compile:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install TeX Live and poppler
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            texlive-latex-base texlive-latex-recommended \
+            texlive-latex-extra texlive-fonts-recommended \
+            texlive-pictures poppler-utils
+      - name: Compile the diagrams
+        run: docs/diagrams/build.sh
