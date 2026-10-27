@@ -6,6 +6,21 @@ on:
   pull_request:
 
 jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: astral-sh/setup-uv@v6
+      - name: ESLint (JavaScript)
+        run: npx --yes eslint@10 .
+      - name: Ruff (Python)
+        run: |
+          uv run ruff check src tests
+          uv run ruff format --check src tests
+
   test:
     runs-on: ubuntu-latest
     steps:
@@ -13,9 +28,23 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - run: node --test "tests/*.test.mjs"
       - uses: astral-sh/setup-uv@v6
-      - run: uv run ruff check src tests
-      - run: uv run ruff format --check src tests
-      - run: uv run pytest -q
-      - run: uv run imputation-sim --reps 2 --scenarios A W
+      - name: JavaScript tests (module and page)
+        run: node --test "tests/*.test.mjs"
+      - name: Python tests (including the JavaScript cross-check)
+        run: uv run pytest -q
+      - name: Command line smoke test
+        run: uv run onset-imputation --reps 2 --scenarios A W --out output
+
+  docs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: astral-sh/setup-uv@v6
+      - name: Build the API docs
+        run: |
+          npx --yes jsdoc@4 -c jsdoc.json -d _site/js
+          uv run --with pdoc pdoc onset_imputation -o _site/python --docformat numpy --math

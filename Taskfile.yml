@@ -9,17 +9,18 @@ tasks:
   sim:
     desc: Run the independent stochastic simulation
     cmds:
-      - uv run imputation-sim {{.CLI_ARGS}}
+      - uv run onset-imputation {{.CLI_ARGS}}
   lint:
-    desc: Lint and format-check the Python code
+    desc: Lint the JavaScript and Python code
     cmds:
+      - npx --yes eslint@10 .
       - uv run ruff check src tests
       - uv run ruff format --check src tests
   docs:
     desc: Build the JavaScript and Python API docs into _site/
     cmds:
       - npx --yes jsdoc@4 -c jsdoc.json -d _site/js
-      - uv run --with pdoc pdoc imputation_sim -o _site/python --docformat numpy --math
+      - uv run --with pdoc pdoc onset_imputation -o _site/python --docformat numpy --math
   serve:
     desc: Serve the page locally
     cmds:

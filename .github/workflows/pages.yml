@@ -22,13 +22,13 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
-      - run: mkdir -p _site && cp index.html imputation.js _site/
+      - run: mkdir -p _site && cp index.html onset-imputation.js page.js _site/
       - uses: actions/setup-node@v4
         with:
           node-version: 22
       - uses: astral-sh/setup-uv@v6
       - run: npx --yes jsdoc@4 -c jsdoc.json -d _site/js
-      - run: uv run --with pdoc pdoc imputation_sim -o _site/python --docformat numpy --math
+      - run: uv run --with pdoc pdoc onset_imputation -o _site/python --docformat numpy --math
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
