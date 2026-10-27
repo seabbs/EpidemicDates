@@ -22,12 +22,32 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Install TeX Live and poppler
+      # A minimal, cached TeX Live with only what style.tex needs.
+      - uses: TeX-Live/setup-texlive-action@v4
+        with:
+          packages: |
+            scheme-infraonly
+            latex-bin
+            amsfonts
+            amsmath
+            cm
+            ec
+            epstopdf-pkg
+            graphics
+            graphics-cfg
+            helvetic
+            iftex
+            pgf
+            preview
+            psnfss
+            standalone
+            xcolor
+            xkeyval
+      - name: Install poppler
         run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            texlive-latex-base texlive-latex-recommended \
-            texlive-latex-extra texlive-fonts-recommended \
-            texlive-pictures poppler-utils
+          command -v pdftocairo || {
+            sudo apt-get update
+            sudo apt-get install -y --no-install-recommends poppler-utils
+          }
       - name: Compile the diagrams
         run: docs/diagrams/build.sh
