@@ -1,4 +1,4 @@
-# ![](../assets/logo-python.svg#only-light){ .title-mark } ![](../assets/logo-python-dark.svg#only-dark){ .title-mark } EpidemicDates for Python
+# ![EpidemicDates for Python](../assets/logo-wordmark-python.svg#only-light){ .title-logo width="267" height="44" } ![](../assets/logo-wordmark-python-dark.svg#only-dark){ .title-logo width="267" height="44" }
 
 Install `epidemic_dates` with `pip` and import it as `ed`.
 { .page-subtitle }

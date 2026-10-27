@@ -1,4 +1,4 @@
-# ![](../assets/logo-js.svg#only-light){ .title-mark } ![](../assets/logo-js-dark.svg#only-dark){ .title-mark } EpidemicDates for JavaScript
+# ![EpidemicDates for JavaScript](../assets/logo-wordmark-js.svg#only-light){ .title-logo width="267" height="44" } ![](../assets/logo-wordmark-js-dark.svg#only-dark){ .title-logo width="267" height="44" }
 
 Load `epidemic-dates.js` with `require` in Node, or use the global `EpidemicDates` in a browser.
 { .page-subtitle }

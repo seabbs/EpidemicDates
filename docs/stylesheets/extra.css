@@ -128,8 +128,21 @@
   box-shadow: var(--md-shadow-z1);
 }
 .md-typeset .pkg-cards .pkg-head { display: flex; align-items: center; gap: 0.5rem; }
-.md-typeset .pkg-cards .pkg-logo { height: 1.6rem; width: auto; margin: 0; }
-.md-typeset .pkg-cards .pkg-name { font-weight: 700; font-size: 0.8rem; }
+.md-typeset .pkg-cards .pkg-wordmark {
+  height: 30px;
+  width: auto;
+  max-width: 100%;
+  margin: 0;
+}
+/* The wordmark shows the name; keep it as text for screen readers. */
+.md-typeset .pkg-cards .pkg-name {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
 .md-typeset .pkg-cards .pkg-desc { font-size: 0.7rem; color: var(--md-default-fg-color--light); }
 .md-typeset .pkg-cards .pkg-open { font-size: 0.7rem; color: var(--md-typeset-a-color); margin-top: 0.2rem; }
 [data-md-color-scheme="default"] .md-typeset .pkg-cards .pkg-dark,

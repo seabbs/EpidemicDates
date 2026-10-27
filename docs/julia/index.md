@@ -1,4 +1,4 @@
-# ![](../assets/logo-julia.svg#only-light){ .title-mark } ![](../assets/logo-julia-dark.svg#only-dark){ .title-mark } EpidemicDates for Julia
+# ![EpidemicDates for Julia](../assets/logo-wordmark-julia.svg#only-light){ .title-logo width="267" height="44" } ![](../assets/logo-wordmark-julia-dark.svg#only-dark){ .title-logo width="267" height="44" }
 
 Install `EpidemicDates.jl` with `Pkg` and load it with `using EpidemicDates`.
 { .page-subtitle }

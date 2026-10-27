@@ -1,4 +1,4 @@
-# ![](../assets/logo-r.svg#only-light){ .title-mark } ![](../assets/logo-r-dark.svg#only-dark){ .title-mark } EpidemicDates for R
+# ![EpidemicDates for R](../assets/logo-wordmark-r.svg#only-light){ .title-logo width="267" height="44" } ![](../assets/logo-wordmark-r-dark.svg#only-dark){ .title-logo width="267" height="44" }
 
 Install `epidemicdates` from GitHub and impute a line list in a few lines of R.
 { .page-subtitle }
