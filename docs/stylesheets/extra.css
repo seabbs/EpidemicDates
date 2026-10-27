@@ -103,3 +103,35 @@
   color: var(--md-accent-bg-color);
   background: var(--md-typeset-a-color);
 }
+
+/* "Packages" tab dropdown of the language guides */
+.md-tabs { overflow: visible; }
+.md-tabs__list { overflow: visible; }
+.md-tabs__item.has-packages-menu { position: relative; }
+.packages-menu {
+  display: none;
+  position: absolute;
+  top: 100%;
+  left: 0;
+  z-index: 10;
+  min-width: 9rem;
+  padding: 0.3rem 0;
+  background: var(--md-default-bg-color);
+  border: 1px solid var(--md-default-fg-color--lightest);
+  border-radius: 4px;
+  box-shadow: var(--md-shadow-z2);
+}
+.has-packages-menu:hover .packages-menu,
+.has-packages-menu:focus-within .packages-menu {
+  display: block;
+}
+.packages-menu a {
+  display: block;
+  padding: 0.3rem 0.8rem;
+  color: var(--md-default-fg-color);
+  font-size: 0.7rem;
+}
+.packages-menu a:hover {
+  color: var(--md-accent-fg-color);
+  background: var(--md-default-fg-color--lightest);
+}

@@ -24,18 +24,19 @@ nav:
   - Methods: methods.md
   - Assumptions: assumptions.md
   - Using it on a real line list: real-linelist.md
-  - Python:
-      - Guide: python/index.md
-      - API reference: python/reference.md
-  - JavaScript:
-      - Guide: javascript/index.md
-      - API reference: javascript/reference.md
-  - R:
-      - Guide: r/index.md
-      - API reference: r/reference.md
-  - Julia:
-      - Guide: julia/index.md
-      - API reference: julia/reference.md
+  - Packages:
+      - Python:
+          - Guide: python/index.md
+          - API reference: python/reference.md
+      - JavaScript:
+          - Guide: javascript/index.md
+          - API reference: javascript/reference.md
+      - R:
+          - Guide: r/index.md
+          - API reference: r/reference.md
+      - Julia:
+          - Guide: julia/index.md
+          - API reference: julia/reference.md
   - Citation and licence: citation.md
 
 theme:
@@ -44,7 +45,6 @@ theme:
   logo: assets/logo-mark.svg
   favicon: assets/favicon.svg
   icon:
-    alternate: material/code-braces
     repo: fontawesome/brands/github
     edit: material/pencil
   features:
@@ -76,21 +76,6 @@ theme:
         name: Switch to light mode
 
 extra:
-  # the header's language selector, reused to switch between the guides
-  # for each programming language
-  alternate:
-    - name: Python
-      link: https://seabbs.github.io/epidemic-imputation-demonstration/docs/python/
-      lang: py
-    - name: JavaScript
-      link: https://seabbs.github.io/epidemic-imputation-demonstration/docs/javascript/
-      lang: js
-    - name: R
-      link: https://seabbs.github.io/epidemic-imputation-demonstration/docs/r/
-      lang: r
-    - name: Julia
-      link: https://seabbs.github.io/epidemic-imputation-demonstration/docs/julia/
-      lang: jl
   social:
     - icon: fontawesome/brands/github
       link: https://github.com/seabbs/epidemic-imputation-demonstration
@@ -107,6 +92,7 @@ extra_css:
 
 extra_javascript:
   - javascripts/mathjax.js
+  - javascripts/packages-menu.js
   - https://unpkg.com/mathjax@3.2.2/es5/tex-mml-chtml.js
 
 markdown_extensions:
