@@ -1,7 +1,7 @@
 # Methods
 
 This page sets out the maths behind each method.
-The [interactive page](https://seabbs.github.io/epidemic-imputation-demonstration/) shows the same maths under "How the methods work".
+The [interactive page](https://seabbs.github.io/EpidemicDates/interactive/) shows the same maths under "How the methods work".
 What each result relies on is listed under [Assumptions](assumptions.md).
 
 ## Notation

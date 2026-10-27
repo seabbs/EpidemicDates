@@ -10,8 +10,8 @@
  * > This module has not been reviewed by a person.
  * > Treat the results as exploratory.
  *
- * - Repository: <https://github.com/seabbs/epidemic-imputation-demonstration>
- * - Live page: <https://seabbs.github.io/epidemic-imputation-demonstration/>
+ * - Repository: <https://github.com/seabbs/EpidemicDates>
+ * - Live page: <https://seabbs.github.io/EpidemicDates/interactive/>
  *
  * The module simulates an epidemic with reporting delays and missing onset
  * dates. It imputes the missing onsets four ways and compares them with the
@@ -98,8 +98,8 @@
  * > Sam Abbott has only checked the interactive page.
  * > This module has not been reviewed by a person.
  *
- * - Repository: <https://github.com/seabbs/epidemic-imputation-demonstration>
- * - Live page: <https://seabbs.github.io/epidemic-imputation-demonstration/>
+ * - Repository: <https://github.com/seabbs/EpidemicDates>
+ * - Live page: <https://seabbs.github.io/EpidemicDates/interactive/>
  *
  * @module epidemic-dates
  */

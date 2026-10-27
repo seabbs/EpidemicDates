@@ -34,10 +34,10 @@ classifiers = [
 ]
 
 [project.urls]
-Homepage = "https://seabbs.github.io/epidemic-imputation-demonstration/"
-Documentation = "https://seabbs.github.io/epidemic-imputation-demonstration/"
-Repository = "https://github.com/seabbs/epidemic-imputation-demonstration"
-Issues = "https://github.com/seabbs/epidemic-imputation-demonstration/issues"
+Homepage = "https://seabbs.github.io/EpidemicDates/"
+Documentation = "https://seabbs.github.io/EpidemicDates/"
+Repository = "https://github.com/seabbs/EpidemicDates"
+Issues = "https://github.com/seabbs/EpidemicDates/issues"
 
 [project.scripts]
 epidemic-dates = "epidemic_dates.cli:main"

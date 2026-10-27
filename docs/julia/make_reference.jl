@@ -12,7 +12,7 @@
 using EpidemicDates
 
 const MOD = EpidemicDates
-const REPO = "https://github.com/seabbs/epidemic-imputation-demonstration"
+const REPO = "https://github.com/seabbs/EpidemicDates"
 const OUT = joinpath(@__DIR__, "reference.md")
 
 const EXPORTED = [:delay_pmf, :impute_linelist, :correct_truncation, :weekly]

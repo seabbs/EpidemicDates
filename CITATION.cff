@@ -19,5 +19,5 @@ abstract: >-
   time-varying growth, delays, missingness and ascertainment.
 license: MIT
 year: 2026
-repository-code: "https://github.com/seabbs/epidemic-imputation-demonstration"
-url: "https://seabbs.github.io/epidemic-imputation-demonstration/"
+repository-code: "https://github.com/seabbs/EpidemicDates"
+url: "https://seabbs.github.io/EpidemicDates/"

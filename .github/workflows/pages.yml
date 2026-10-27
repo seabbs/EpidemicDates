@@ -22,10 +22,6 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
-      - name: Copy the interactive page
-        run: mkdir -p _site && cp -R index.html epidemic-dates.js page.js assets _site/
-      - name: Copy redirects from the old API docs
-        run: cp -R docs-redirects/. _site/
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -47,10 +43,14 @@ jobs:
         run: |
           julia --project=julia -e 'using Pkg; Pkg.instantiate()'
           julia --project=julia docs/julia/make_reference.jl
-      - name: Build the docs into _site/docs
+      - name: Build the docs into _site
         run: >-
           uv run --with mkdocs-material --with "mkdocstrings[python]"
           mkdocs build --strict
+      - name: Add the interactive page under /interactive/
+        run: |
+          mkdir -p _site/interactive
+          cp -R index.html epidemic-dates.js page.js assets _site/interactive/
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:

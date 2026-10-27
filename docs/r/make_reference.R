@@ -201,7 +201,7 @@ page <- c(
   "",
   "Every exported function of the R package `epidemicdates`.",
   "This page is generated from the roxygen documentation by",
-  "[`docs/r/make_reference.R`](https://github.com/seabbs/epidemic-imputation-demonstration/blob/main/docs/r/make_reference.R).",
+  "[`docs/r/make_reference.R`](https://github.com/seabbs/EpidemicDates/blob/main/docs/r/make_reference.R).",
   "In R, see `?impute_linelist` and so on.",
   "{ .page-subtitle }",
   "",

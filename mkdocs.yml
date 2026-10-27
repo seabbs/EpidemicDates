@@ -3,14 +3,14 @@ site_description: >-
   Comparing methods for imputing missing symptom-onset dates, with a
   JavaScript module and a Python package.
 site_author: Sam Abbott
-site_url: https://seabbs.github.io/epidemic-imputation-demonstration/docs/
-repo_url: https://github.com/seabbs/epidemic-imputation-demonstration
-repo_name: seabbs/epidemic-imputation-demonstration
+site_url: https://seabbs.github.io/EpidemicDates/
+repo_url: https://github.com/seabbs/EpidemicDates
+repo_name: seabbs/EpidemicDates
 edit_uri: edit/main/docs/
 copyright: Copyright &copy; 2026 Sam Abbott. MIT licence.
 
 docs_dir: docs
-site_dir: _site/docs
+site_dir: _site
 
 exclude_docs: |
   data/*.py
@@ -79,13 +79,13 @@ theme:
 extra:
   social:
     - icon: fontawesome/brands/github
-      link: https://github.com/seabbs/epidemic-imputation-demonstration
+      link: https://github.com/seabbs/EpidemicDates
       name: Source on GitHub
     - icon: material/chart-line
-      link: https://seabbs.github.io/epidemic-imputation-demonstration/
+      link: https://seabbs.github.io/EpidemicDates/interactive/
       name: Interactive page
     - icon: material/bug-outline
-      link: https://github.com/seabbs/epidemic-imputation-demonstration/issues
+      link: https://github.com/seabbs/EpidemicDates/issues
       name: Issue tracker
 
 extra_css:

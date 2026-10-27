@@ -4,10 +4,10 @@ Install `epidemic_dates` with `pip` and import it as `ed`.
 { .page-subtitle }
 
 The Python package `epidemic_dates` is an independent stochastic simulation.
-It cross-checks the expected-value maths in the [JavaScript module](../javascript/index.md) that drives the [interactive page](https://seabbs.github.io/epidemic-imputation-demonstration/).
+It cross-checks the expected-value maths in the [JavaScript module](../javascript/index.md) that drives the [interactive page](https://seabbs.github.io/EpidemicDates/interactive/).
 It can also impute a real line list.
 
-- Source: [`src/epidemic_dates/`](https://github.com/seabbs/epidemic-imputation-demonstration/tree/main/src/epidemic_dates)
+- Source: [`src/epidemic_dates/`](https://github.com/seabbs/EpidemicDates/tree/main/src/epidemic_dates)
 - Every function: [API reference](reference.md)
 - The maths: [Methods](../methods.md)
 - What it relies on: [Assumptions](../assumptions.md)
@@ -19,7 +19,7 @@ It can also impute a real line list.
 ## Install
 
 ```bash
-pip install git+https://github.com/seabbs/epidemic-imputation-demonstration
+pip install git+https://github.com/seabbs/EpidemicDates
 ```
 
 Or, from a clone of the repository, prefix commands with `uv run`.

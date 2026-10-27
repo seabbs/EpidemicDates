@@ -18,16 +18,16 @@ Sam Abbott has only checked the interactive page.
 This package and its tests have not been reviewed by a person.
 Treat the results as exploratory.
 
-- Repository: <https://github.com/seabbs/epidemic-imputation-demonstration>
+- Repository: <https://github.com/seabbs/EpidemicDates>
 - Interactive page:
-  <https://seabbs.github.io/epidemic-imputation-demonstration/>
+  <https://seabbs.github.io/EpidemicDates/interactive/>
 
 Usage
 -----
 Install from GitHub with `pip` or `uv`:
 
 ```bash
-pip install git+https://github.com/seabbs/epidemic-imputation-demonstration
+pip install git+https://github.com/seabbs/EpidemicDates
 ```
 
 **Run the simulation study** from the command line.
@@ -252,7 +252,7 @@ from .study import (
 )
 
 try:
-    __version__ = version("epidemic-imputation-demonstration")
+    __version__ = version("epidemic-dates")
 except PackageNotFoundError:  # pragma: no cover - only when not installed
     __version__ = "0+unknown"
 

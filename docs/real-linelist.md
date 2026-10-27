@@ -9,10 +9,10 @@ The code is shown in Python, JavaScript, R and Julia.
 Pick a language in any tab and the other tabs follow.
 The functions are:
 
-- `impute_linelist` in the Python package ([source](https://github.com/seabbs/epidemic-imputation-demonstration/tree/main/src/epidemic_dates), [guide](python/index.md));
-- `imputeLinelist` in the JavaScript module ([source](https://github.com/seabbs/epidemic-imputation-demonstration/blob/main/epidemic-dates.js), [guide](javascript/index.md));
-- `impute_linelist` in the R package `epidemicdates` ([source](https://github.com/seabbs/epidemic-imputation-demonstration/tree/main/r), [guide](r/index.md));
-- `impute_linelist` in the Julia package `EpidemicDates.jl` ([source](https://github.com/seabbs/epidemic-imputation-demonstration/tree/main/julia), [guide](julia/index.md)).
+- `impute_linelist` in the Python package ([source](https://github.com/seabbs/EpidemicDates/tree/main/src/epidemic_dates), [guide](python/index.md));
+- `imputeLinelist` in the JavaScript module ([source](https://github.com/seabbs/EpidemicDates/blob/main/epidemic-dates.js), [guide](javascript/index.md));
+- `impute_linelist` in the R package `epidemicdates` ([source](https://github.com/seabbs/EpidemicDates/tree/main/r), [guide](r/index.md));
+- `impute_linelist` in the Julia package `EpidemicDates.jl` ([source](https://github.com/seabbs/EpidemicDates/tree/main/julia), [guide](julia/index.md)).
 
 Each returns daily onset counts after imputation under each method.
 Step 6 nowcasts the recent weeks with uncertainty, using `nowcast_linelist` in Python and `nowcastLinelist` in JavaScript.
@@ -42,7 +42,7 @@ case0435,,2026-08-31
 76 cases (17%) have no onset date.
 The data are a sample from the Python package's scenario `C`, in which growth slows and turns to decline.
 The data are cut at the last report date, 2026-08-31, so recent onsets are still being reported.
-The script that made the file is [`docs/data/make_example.py`](https://github.com/seabbs/epidemic-imputation-demonstration/blob/main/docs/data/make_example.py).
+The script that made the file is [`docs/data/make_example.py`](https://github.com/seabbs/EpidemicDates/blob/main/docs/data/make_example.py).
 
 To use your own data, replace the file name and column names.
 Run the code below from the repository root, or change the paths.
@@ -429,7 +429,7 @@ Week 0 is days 0 to 6.
 `em` in Python, R and Julia and `gen` in JavaScript are the same method and give the same numbers here.
 Each column adds the 76 missing-onset cases back, so it sums to about 437.
 The back-sampling method and EM back-projection agree closely in most weeks here, because the delay is short and growth changes slowly.
-On the [interactive page](https://seabbs.github.io/epidemic-imputation-demonstration/) you can see when they part.
+On the [interactive page](https://seabbs.github.io/EpidemicDates/interactive/) you can see when they part.
 The mean shift moves every missing case by the same number of days, so it is lumpier.
 
 <figure class="doc-figure" markdown="span">

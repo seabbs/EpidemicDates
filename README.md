@@ -7,8 +7,8 @@
 
 **Comparing methods for imputing missing symptom onsets.**
 
-[![test](https://github.com/seabbs/epidemic-imputation-demonstration/actions/workflows/test.yml/badge.svg)](https://github.com/seabbs/epidemic-imputation-demonstration/actions/workflows/test.yml)
-[![docs](https://github.com/seabbs/epidemic-imputation-demonstration/actions/workflows/pages.yml/badge.svg)](https://seabbs.github.io/epidemic-imputation-demonstration/docs/)
+[![test](https://github.com/seabbs/EpidemicDates/actions/workflows/test.yml/badge.svg)](https://github.com/seabbs/EpidemicDates/actions/workflows/test.yml)
+[![docs](https://github.com/seabbs/EpidemicDates/actions/workflows/pages.yml/badge.svg)](https://seabbs.github.io/EpidemicDates/)
 [![licence: MIT](https://img.shields.io/badge/licence-MIT-blue.svg)](LICENSE)
 ![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)
 ![Node 20+](https://img.shields.io/badge/node-20%2B-blue.svg)
@@ -25,9 +25,9 @@ An interactive page exploring onset-date imputation for cases with a missing ons
 Each missing onset is set to the report date minus a delay drawn from the pooled empirical onset-to-report delays.
 This is the approach discussed in [BDBV-Modeling-Hub issue #61](https://github.com/InsightNet-US/BDBV-Modeling-Hub/issues/61).
 
-**Live page:** <https://seabbs.github.io/epidemic-imputation-demonstration/>
+**Live page:** <https://seabbs.github.io/EpidemicDates/interactive/>
 
-**Docs:** <https://seabbs.github.io/epidemic-imputation-demonstration/docs/> · [JavaScript](https://seabbs.github.io/epidemic-imputation-demonstration/docs/javascript/) · [Python](https://seabbs.github.io/epidemic-imputation-demonstration/docs/python/)
+**Docs:** <https://seabbs.github.io/EpidemicDates/> · [JavaScript](https://seabbs.github.io/EpidemicDates/javascript/) · [Python](https://seabbs.github.io/EpidemicDates/python/)
 
 The page simulates an epidemic with time-varying growth, reporting delays, missing onset dates and changing ascertainment.
 It compares four ways of imputing missing onsets against the true onsets of the same cases:
@@ -63,7 +63,7 @@ Presets use Ebola settings from [epiforecasts/BVDOutbreakSize](https://github.co
 ## Using the code
 
 Both parts are documented in full, with the maths for each method, in the API docs:
-[JavaScript](https://seabbs.github.io/epidemic-imputation-demonstration/docs/javascript/) and [Python](https://seabbs.github.io/epidemic-imputation-demonstration/docs/python/).
+[JavaScript](https://seabbs.github.io/EpidemicDates/javascript/) and [Python](https://seabbs.github.io/EpidemicDates/python/).
 
 **JavaScript.** `epidemic-dates.js` has no dependencies.
 In a browser it defines a global `EpidemicDates`; in Node, load it with `require`.
@@ -160,14 +160,14 @@ task serve    # serve the page on http://localhost:8000
 
 If you use this, please cite:
 
-> Abbott S (2026). *Comparing methods for imputing missing symptom onsets*. <https://github.com/seabbs/epidemic-imputation-demonstration>
+> Abbott S (2026). *Comparing methods for imputing missing symptom onsets*. <https://github.com/seabbs/EpidemicDates>
 
 ```bibtex
 @software{abbott2026imputation,
   author = {Abbott, Sam},
   title  = {Comparing methods for imputing missing symptom onsets},
   year   = {2026},
-  url    = {https://github.com/seabbs/epidemic-imputation-demonstration}
+  url    = {https://github.com/seabbs/EpidemicDates}
 }
 ```
 

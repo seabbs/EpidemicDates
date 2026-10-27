@@ -1,6 +1,6 @@
 # Assumptions
 
-These are the assumptions behind the simulations on the [interactive page](https://seabbs.github.io/epidemic-imputation-demonstration/) and in the Python package.
+These are the assumptions behind the simulations on the [interactive page](https://seabbs.github.io/EpidemicDates/interactive/) and in the Python package.
 The maths is on the [Methods](methods.md) page.
 
 ## In the simulations

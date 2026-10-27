@@ -4,10 +4,10 @@ Install `epidemicdates` from GitHub and impute a line list in a few lines of R.
 { .page-subtitle }
 
 The R package `epidemicdates` holds the core line-list tools.
-It gives the same results as the [Python package](../python/index.md) and the [JavaScript module](../javascript/index.md) that drives the [interactive page](https://seabbs.github.io/epidemic-imputation-demonstration/).
+It gives the same results as the [Python package](../python/index.md) and the [JavaScript module](../javascript/index.md) that drives the [interactive page](https://seabbs.github.io/EpidemicDates/interactive/).
 It does not include the simulation study.
 
-- Source: [`r/`](https://github.com/seabbs/epidemic-imputation-demonstration/tree/main/r)
+- Source: [`r/`](https://github.com/seabbs/EpidemicDates/tree/main/r)
 - Every function: [API reference](reference.md)
 - The maths: [Methods](../methods.md)
 - What it relies on: [Assumptions](../assumptions.md)
@@ -21,7 +21,7 @@ It does not include the simulation study.
 
 ```r
 remotes::install_github(
-  "seabbs/epidemic-imputation-demonstration",
+  "seabbs/EpidemicDates",
   subdir = "r"
 )
 ```
@@ -170,7 +170,7 @@ The other functions are:
 
 ## Cross-language tests
 
-The R tests compare with the reference outputs in [`tests/fixtures/cross-language.json`](https://github.com/seabbs/epidemic-imputation-demonstration/blob/main/tests/fixtures/cross-language.json), written by the Python package.
+The R tests compare with the reference outputs in [`tests/fixtures/cross-language.json`](https://github.com/seabbs/EpidemicDates/blob/main/tests/fixtures/cross-language.json), written by the Python package.
 `delay_pmf()` matches to within $10^{-10}$.
 `backsampling` and `mean` match exactly, and `em` matches to within 2% on weeks with at least 50 cases.
 

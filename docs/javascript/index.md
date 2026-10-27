@@ -3,12 +3,12 @@
 Load `epidemic-dates.js` with `require` in Node, or use the global `EpidemicDates` in a browser.
 { .page-subtitle }
 
-The JavaScript module `epidemic-dates.js` holds the maths behind the [interactive page](https://seabbs.github.io/epidemic-imputation-demonstration/).
+The JavaScript module `epidemic-dates.js` holds the maths behind the [interactive page](https://seabbs.github.io/EpidemicDates/interactive/).
 It simulates an epidemic in expectation, imputes the missing onsets four ways and compares each with the truth.
 It can also impute a real line list.
 It has no dependencies.
 
-- Source: [`epidemic-dates.js`](https://github.com/seabbs/epidemic-imputation-demonstration/blob/main/epidemic-dates.js)
+- Source: [`epidemic-dates.js`](https://github.com/seabbs/EpidemicDates/blob/main/epidemic-dates.js)
 - Every function and type: [API reference](reference.md)
 - The maths: [Methods](../methods.md)
 - What it relies on: [Assumptions](../assumptions.md)

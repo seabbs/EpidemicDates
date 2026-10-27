@@ -46,10 +46,10 @@
 #' All methods assume onsets are missing at random given the report day.
 #'
 #' @references
-#' Repository: <https://github.com/seabbs/epidemic-imputation-demonstration>
+#' Repository: <https://github.com/seabbs/EpidemicDates>
 #'
 #' Interactive page:
-#' <https://seabbs.github.io/epidemic-imputation-demonstration/>
+#' <https://seabbs.github.io/EpidemicDates/interactive/>
 #'
 #' @keywords internal
 "_PACKAGE"

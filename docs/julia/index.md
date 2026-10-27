@@ -8,7 +8,7 @@ It imputes missing onsets in a real line list by back-sampling, the mean shift a
 It also builds delay pmfs, corrects for right truncation and sums days into weeks.
 It does not include the simulation study.
 
-- Source: [`julia/`](https://github.com/seabbs/epidemic-imputation-demonstration/tree/main/julia)
+- Source: [`julia/`](https://github.com/seabbs/EpidemicDates/tree/main/julia)
 - Every function: [API reference](reference.md)
 - The maths: [Methods](../methods.md)
 - What it relies on: [Assumptions](../assumptions.md)
@@ -25,7 +25,7 @@ Install it from the `julia` folder of the repository:
 
 ```julia
 using Pkg
-Pkg.add(url = "https://github.com/seabbs/epidemic-imputation-demonstration", subdir = "julia")
+Pkg.add(url = "https://github.com/seabbs/EpidemicDates", subdir = "julia")
 ```
 
 It needs Julia 1.10 or later.

@@ -5,7 +5,7 @@ They also allow for right truncation.
 The examples here use symptom onsets and report dates.
 
 There are two independent implementations.
-The JavaScript module drives the [interactive page](https://seabbs.github.io/epidemic-imputation-demonstration/).
+The JavaScript module drives the [interactive page](https://seabbs.github.io/EpidemicDates/interactive/).
 The Python package is a stochastic simulation that cross-checks it.
 Both can impute a real line list.
 
@@ -18,14 +18,14 @@ Both can impute a real line list.
     Install it from GitHub with `pip` or [uv](https://docs.astral.sh/uv/):
 
     ```bash
-    pip install git+https://github.com/seabbs/epidemic-imputation-demonstration
+    pip install git+https://github.com/seabbs/EpidemicDates
     ```
 
     Or clone the repository and let uv manage the environment:
 
     ```bash
-    git clone https://github.com/seabbs/epidemic-imputation-demonstration
-    cd epidemic-imputation-demonstration
+    git clone https://github.com/seabbs/EpidemicDates
+    cd EpidemicDates
     uv run python -c "import epidemic_dates; print(epidemic_dates.METHODS)"
     ```
 
@@ -45,13 +45,13 @@ Both can impute a real line list.
 
 === "JavaScript"
 
-    The module is the single file [`epidemic-dates.js`](https://github.com/seabbs/epidemic-imputation-demonstration/blob/main/epidemic-dates.js).
+    The module is the single file [`epidemic-dates.js`](https://github.com/seabbs/EpidemicDates/blob/main/epidemic-dates.js).
     It has no dependencies.
     Copy it into your project, or clone the repository:
 
     ```bash
-    git clone https://github.com/seabbs/epidemic-imputation-demonstration
-    cd epidemic-imputation-demonstration
+    git clone https://github.com/seabbs/EpidemicDates
+    cd EpidemicDates
     ```
 
     In Node 20 or later, load it with `require`:

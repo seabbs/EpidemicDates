@@ -60,17 +60,17 @@ All methods assume onsets are missing at random given the report day.
 }
 
 \references{
-Repository: \url{https://github.com/seabbs/epidemic-imputation-demonstration}
+Repository: \url{https://github.com/seabbs/EpidemicDates}
 
 Interactive page:
-\url{https://seabbs.github.io/epidemic-imputation-demonstration/}
+\url{https://seabbs.github.io/EpidemicDates/interactive/}
 }
 \seealso{
 Useful links:
 \itemize{
-  \item \url{https://github.com/seabbs/epidemic-imputation-demonstration}
-  \item \url{https://seabbs.github.io/epidemic-imputation-demonstration/docs/r/}
-  \item Report bugs at \url{https://github.com/seabbs/epidemic-imputation-demonstration/issues}
+  \item \url{https://github.com/seabbs/EpidemicDates}
+  \item \url{https://seabbs.github.io/EpidemicDates/r/}
+  \item Report bugs at \url{https://github.com/seabbs/EpidemicDates/issues}
 }
 
 }

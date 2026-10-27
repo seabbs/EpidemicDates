@@ -11,13 +11,13 @@
     "nowcasting",
     "back-projection"
   ],
-  "homepage": "https://seabbs.github.io/epidemic-imputation-demonstration/",
+  "homepage": "https://seabbs.github.io/EpidemicDates/",
   "bugs": {
-    "url": "https://github.com/seabbs/epidemic-imputation-demonstration/issues"
+    "url": "https://github.com/seabbs/EpidemicDates/issues"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/seabbs/epidemic-imputation-demonstration.git"
+    "url": "git+https://github.com/seabbs/EpidemicDates.git"
   },
   "license": "MIT",
   "author": "Sam Abbott",
