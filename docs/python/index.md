@@ -1,7 +1,7 @@
-![EpidemicDates Python package logo](../assets/logo-python.svg#only-light){ width="96" }
-![EpidemicDates Python package logo](../assets/logo-python-dark.svg#only-dark){ width="96" }
+# ![](../assets/logo-python.svg#only-light){ .title-mark } ![](../assets/logo-python-dark.svg#only-dark){ .title-mark } EpidemicDates for Python
 
-# Python guide
+Install `epidemic_dates` with `pip` and import it as `ed`.
+{ .page-subtitle }
 
 The Python package `epidemic_dates` is an independent stochastic simulation.
 It cross-checks the expected-value maths in the [JavaScript module](../javascript/index.md) that drives the [interactive page](https://seabbs.github.io/epidemic-imputation-demonstration/).
@@ -34,7 +34,7 @@ import csv
 import datetime as dt
 
 import numpy as np
-import epidemic_dates as oi
+import epidemic_dates as ed
 
 np.set_printoptions(linewidth=100)
 
@@ -46,7 +46,7 @@ with open("docs/data/example-linelist.csv") as fh:
     rows = list(csv.DictReader(fh))
 onset = np.array([day(r["onset_date"]) for r in rows])
 report = np.array([day(r["report_date"]) for r in rows])
-res = oi.impute_linelist(onset, report, cutoff=int(report.max()))
+res = ed.impute_linelist(onset, report, cutoff=int(report.max()))
 week = np.arange(int(report.max()) + 1) // 7
 for m in ["hub", "mean", "em"]:
     print(m, np.bincount(week, weights=res["imputed"][m]).round(1))
@@ -57,6 +57,17 @@ hub [ 4.2  0.5  3.2  6.8  7.2 10.6 19.8 27.3 35.5 43.4 41.9 63.2 54.  50.5 38.6 
 mean [ 4.  0.  5.  6.  6. 11. 19. 29. 34. 43. 43. 62. 55. 53. 38. 25.  4.]
 em [ 4.2  0.   2.5  7.8  7.  10.1 20.  27.3 35.9 43.7 41.  65.7 54.2 50.1 37.5 24.8  5.1]
 ```
+
+<figure class="doc-figure" markdown="span">
+  ![Weekly cases in the example line list from May to early September 2026. Grey bars show cases by report week. Lines show onsets with a known date and onsets after imputation by the hub, mean shift and EM methods. The three imputed curves lie close together, peak in the week of 24 July and sit above the known-onset curve.](../figures/linelist.svg#only-light) ![Weekly cases in the example line list from May to early September 2026. Grey bars show cases by report week. Lines show onsets with a known date and onsets after imputation by the hub, mean shift and EM methods. The three imputed curves lie close together, peak in the week of 24 July and sit above the known-onset curve.](../figures/linelist-dark.svg#only-dark)
+  <figcaption markdown="1">
+    Weekly counts from the example line list.
+    Grey bars are cases by report week.
+    The dashed line counts cases with a known onset.
+    Coloured lines add the 76 missing-onset cases back by each method.
+    The data are cut on 31 August, so the last weeks are incomplete under every method.
+  </figcaption>
+</figure>
 
 The [worked example](../real-linelist.md) explains each step.
 
@@ -87,10 +98,10 @@ The options are `--reps`, `--seed`, `--out` and `--scenarios`.
 From Python, run one scenario:
 
 ```python
-import epidemic_dates as oi
+import epidemic_dates as ed
 
-oi.DESC["W"]                           # 'two waves: growth, control, ...'
-rows = oi.run_scenario("W", reps=100)  # one row per cut-off and method
+ed.DESC["W"]                           # 'two waves: growth, control, ...'
+rows = ed.run_scenario("W", reps=100)  # one row per cut-off and method
 for r in rows:
     print(r["cutoff"], r["method"], r["relbias_mean"], r["relbias_maxabs"])
 ```
@@ -103,14 +114,14 @@ See [`run_scenario`][epidemic_dates.run_scenario] in the API reference for every
 Run every scenario and write the results:
 
 ```python
-rows = oi.run_study(reps=200)
-oi.write_results(rows, "output")
-print("\n".join(oi.analytic()))   # checks of the steady-growth result
+rows = ed.run_study(reps=200)
+ed.write_results(rows, "output")
+print("\n".join(ed.analytic()))   # checks of the steady-growth result
 ```
 
 ## Scenarios
 
-`oi.SCEN` holds each scenario's settings and `oi.DESC` a one-line description.
+`ed.SCEN` holds each scenario's settings and `ed.DESC` a one-line description.
 Unless stated, the delay is `F_DEFAULT` (mean 8 days, SD 8 days) and each onset is missing with probability 0.4.
 
 | Name | Description |
@@ -133,8 +144,8 @@ To simulate one line list yourself:
 ```python
 import numpy as np
 
-sp = oi.scenario_setup("C")
-onset, report, missing = oi.simulate("C", sp, np.random.default_rng(1))
+sp = ed.scenario_setup("C")
+onset, report, missing = ed.simulate("C", sp, np.random.default_rng(1))
 ```
 
 ## Building blocks

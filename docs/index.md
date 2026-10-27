@@ -1,7 +1,7 @@
-![EpidemicDates logo](assets/logo.svg#only-light){ width="320" }
-![EpidemicDates logo](assets/logo-dark.svg#only-dark){ width="320" }
+# ![](assets/logo-mark.svg#only-light){ .title-mark } ![](assets/logo-mark-dark.svg#only-dark){ .title-mark } EpidemicDates
 
-# Comparing methods for imputing missing symptom onsets
+Comparing methods for imputing missing symptom onsets.
+{ .page-subtitle }
 
 Line lists often lack an earlier event date for some cases, such as the date of symptom onset, infection or sampling.
 A later date, such as the report date, is usually known.
@@ -45,6 +45,31 @@ Both languages can also impute a [real line list](real-linelist.md).
 The JavaScript keys come first and the Python keys second where they differ.
 See [Methods](methods.md) for the maths and [Assumptions](assumptions.md) for what each result relies on.
 
+## Bias at a turn in growth
+
+The hub method is close to unbiased in steady growth.
+It is biased where growth changes, and near the real-time cut-off.
+Retrospectively, the pooled delays of all cases are the forward delay, so the hub draw and the forward draw give the same answer.
+In real time the hub draw matches the truth during steady growth, then misplaces onsets after the turn.
+EM back-projection has no bias here.
+
+<figure class="doc-figure" markdown="span">
+  ![Four panels of weekly error by method in a scenario where growth turns sharply at day 80. Top row: relative error in weekly onsets. Bottom row: error in Rt. Left column: retrospective, all cases reported. Right column: real time, cut at day 101, with a truncation correction. The generative method is flat at zero throughout. Retrospectively the hub and forward draws coincide, are up to 11% too high during growth and 9% too low in the turn week, with Rt errors down to −0.18. In real time the hub is closer during growth but is 11% too high in the last complete week.](figures/changepoint.svg#only-light) ![Four panels of weekly error by method in a scenario where growth turns sharply at day 80. Top row: relative error in weekly onsets. Bottom row: error in Rt. Left column: retrospective, all cases reported. Right column: real time, cut at day 101, with a truncation correction. The generative method is flat at zero throughout. Retrospectively the hub and forward draws coincide, are up to 11% too high during growth and 9% too low in the turn week, with Rt errors down to −0.18. In real time the hub is closer during growth but is 11% too high in the last complete week.](figures/changepoint-dark.svg#only-dark)
+  <figcaption markdown="1">
+    Expected weekly error by method around a sharp turn in growth.
+    Scenario `D`: growth at 0.06 per day turns to −0.04 per day at day 80 (dotted line).
+    The delay has mean 8 days and SD 8 days, and 40% of onsets are missing at random.
+    Left: retrospective, with every case reported.
+    Right: data cut at day 101, three weeks after the turn, with each method divided by $F(T - s)$ and only complete weeks shown.
+    Rt uses a generation interval with mean 15 days and SD 9 days.
+    These are expected values, not random replicates.
+    The generative method is given the true delay, so it is a best case.
+  </figcaption>
+</figure>
+
+The [Methods](methods.md) page shows why, for a single report day.
+The [interactive page](https://seabbs.github.io/epidemic-imputation-demonstration/) lets you change the scenario.
+
 ## Quick start on your own data
 
 The example line list [`example-linelist.csv`](data/example-linelist.csv) has one row per case.
@@ -59,7 +84,7 @@ Run them from the repository root.
     import datetime as dt
 
     import numpy as np
-    import epidemic_dates as oi
+    import epidemic_dates as ed
 
     np.set_printoptions(linewidth=100)
 
@@ -71,7 +96,7 @@ Run them from the repository root.
         rows = list(csv.DictReader(fh))
     onset = np.array([day(r["onset_date"]) for r in rows])
     report = np.array([day(r["report_date"]) for r in rows])
-    res = oi.impute_linelist(onset, report, cutoff=int(report.max()))
+    res = ed.impute_linelist(onset, report, cutoff=int(report.max()))
     week = np.arange(int(report.max()) + 1) // 7
     for m in ["hub", "mean", "em"]:
         print(m, np.bincount(week, weights=res["imputed"][m]).round(1))

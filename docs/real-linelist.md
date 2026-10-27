@@ -49,7 +49,7 @@ Run the code below from the repository root, or change the paths.
 
     import numpy as np
 
-    import epidemic_dates as oi
+    import epidemic_dates as ed
 
     with open("docs/data/example-linelist.csv") as fh:
         rows = list(csv.DictReader(fh))
@@ -128,7 +128,7 @@ Cases with an onset after their report, or a delay longer than the maximum, are 
 === "Python"
 
     ```python
-    res = oi.impute_linelist(onset, report, cutoff=report.max())
+    res = ed.impute_linelist(onset, report, cutoff=report.max())
     print(f"dropped: {res['dropped']}")
     ```
 
@@ -260,6 +260,17 @@ Week 0 is days 0 to 6.
     ```
 
 `em` in Python and `gen` in JavaScript are the same method and give the same numbers here.
+
+<figure class="doc-figure" markdown="span">
+  ![Weekly cases in the example line list from May to early September 2026. Grey bars show cases by report week. Lines show onsets with a known date and onsets after imputation by the hub, mean shift and EM methods. The three imputed curves lie close together, peak in the week of 24 July and sit above the known-onset curve.](figures/linelist.svg#only-light) ![Weekly cases in the example line list from May to early September 2026. Grey bars show cases by report week. Lines show onsets with a known date and onsets after imputation by the hub, mean shift and EM methods. The three imputed curves lie close together, peak in the week of 24 July and sit above the known-onset curve.](figures/linelist-dark.svg#only-dark)
+  <figcaption markdown="1">
+    Weekly counts from the example line list.
+    Grey bars are cases by report week.
+    The dashed line counts cases with a known onset.
+    Coloured lines add the 76 missing-onset cases back by each method.
+    The data are cut on 31 August, so the last weeks are incomplete under every method.
+  </figcaption>
+</figure>
 
 ## Reading the output
 

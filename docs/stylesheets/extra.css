@@ -18,3 +18,42 @@
 .md-typeset .md-button {
   margin: 0.2rem 0.3rem 0.2rem 0;
 }
+
+/* Small logo mark inline with a page's H1. */
+.md-typeset h1 .title-mark {
+  height: 1.2em;
+  width: auto;
+  vertical-align: -0.22em;
+  margin-right: 0.15em;
+}
+
+/* Short subtitle line under a page's H1. */
+.md-typeset .page-subtitle {
+  margin-top: -0.6em;
+  font-size: 1.05rem;
+  color: var(--md-default-fg-color--light);
+}
+
+/* Figures: full width, with a muted caption. */
+.md-typeset figure.doc-figure {
+  margin: 1.5em 0;
+}
+
+.md-typeset figure.doc-figure img {
+  width: 100%;
+  max-width: 100%;
+}
+
+.md-typeset figure.doc-figure figcaption {
+  max-width: 100%;
+  font-style: normal;
+  color: var(--md-default-fg-color--light);
+}
+
+.md-typeset figure.doc-figure > br {
+  display: none;
+}
+
+.md-typeset .page-subtitle code {
+  font-size: 0.8em;
+}

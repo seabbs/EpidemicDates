@@ -34,6 +34,8 @@ jobs:
         run: >-
           npx --yes jsdoc-to-markdown@9 --no-cache -c docs/jsdoc/jsdoc.json
           epidemic-dates.js > docs/javascript/reference.md
+      - name: Make the docs figures
+        run: uv run --with matplotlib python docs/figures/make_figures.py
       - name: Build the docs into _site/docs
         run: >-
           uv run --with mkdocs-material --with "mkdocstrings[python]"

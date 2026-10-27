@@ -17,7 +17,7 @@ from pathlib import Path
 
 import numpy as np
 
-import epidemic_dates as oi
+import epidemic_dates as ed
 
 SEED = 20261027
 DAY0 = dt.date(2026, 5, 3)
@@ -29,7 +29,7 @@ OUT = Path(__file__).parent / "example-linelist.csv"
 
 def main():
     rng = np.random.default_rng(SEED)
-    onset, report, _ = oi.simulate("C", oi.scenario_setup("C"), rng)
+    onset, report, _ = ed.simulate("C", ed.scenario_setup("C"), rng)
     keep = (rng.random(onset.size) < KEEP) & (report <= CUTOFF)
     onset, report = onset[keep], report[keep]
     order = np.lexsort((onset, report))

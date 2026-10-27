@@ -6,3 +6,4 @@ _site/
 docs/javascript/reference.md
 node_modules/
 .coverage
+docs/figures/*.svg

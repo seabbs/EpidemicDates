@@ -51,6 +51,19 @@ The sum in $g$ is also proportional to $e^{-rd}$ when $T$ is well after the star
 When growth changes, the two differ.
 The hub method then shifts missing onsets into the wrong weeks.
 
+<figure class="doc-figure" markdown="span">
+  ![Two panels of delay probability against delay in days. Left, steady growth: the pooled empirical delay lies on top of the correct backward delay, and both are shorter than the forward delay. Right, ten days after growth turns: the pooled empirical delay is shorter than the correct backward delay, which has extra weight around 10 days.](figures/delays.svg#only-light) ![Two panels of delay probability against delay in days. Left, steady growth: the pooled empirical delay lies on top of the correct backward delay, and both are shorter than the forward delay. Right, ten days after growth turns: the pooled empirical delay is shorter than the correct backward delay, which has extra weight around 10 days.](figures/delays-dark.svg#only-dark)
+  <figcaption markdown="1">
+    Delay distributions for a case reported on the cut-off day, from expected counts.
+    Left: scenario `A`, steady growth at 0.05 per day, cut at day 100.
+    Right: scenario `D`, growth at 0.06 per day that turns to −0.04 at day 80, cut at day 90.
+    The forward delay has mean 8 days and SD 8 days.
+    In steady growth the pooled empirical delay matches the correct backward delay.
+    After the turn it still reflects the growth phase.
+    The correct delay is longer, because more onsets happened around the turn, 10 days before the report.
+  </figcaption>
+</figure>
+
 ## Mean shift
 
 The mean shift (`mean`) moves every missing case back by the rounded mean of the pooled empirical delay:
@@ -126,6 +139,24 @@ A full generative model, such as [epinowcast](https://package.epinowcast.org/art
 - model ascertainment and missingness as part of the observation process;
 - report uncertainty rather than one expected allocation.
 
+## Where each method places one case
+
+This compares the four methods for one report day just after a turn in growth.
+The weekly effect is on the [home page](index.md#bias-at-a-turn-in-growth).
+
+<figure class="doc-figure" markdown="span">
+  ![Probability over onset days 55 to 90 for one missing case reported on day 90, after growth turned at day 80. The generative method lies on the truth, with mean day 82.7. The hub draw is shifted later, with mean day 84.2. The forward draw is shifted earlier, with mean day 82.0. The mean shift puts all its weight on day 84.](figures/placement.svg#only-light) ![Probability over onset days 55 to 90 for one missing case reported on day 90, after growth turned at day 80. The generative method lies on the truth, with mean day 82.7. The hub draw is shifted later, with mean day 84.2. The forward draw is shifted earlier, with mean day 82.0. The mean shift puts all its weight on day 84.](figures/placement-dark.svg#only-dark)
+  <figcaption markdown="1">
+    Where each method places the onset of one missing case reported on day 90.
+    Scenario `D`, with the data cut at day 90, 10 days after growth turns.
+    Truth is the correct posterior $P(s \mid t)$.
+    The generative method is given the true delay, so it matches the truth.
+    The hub draw places onsets too late and the forward draw too early.
+    The mean shift puts every case on one day.
+    The legend gives each method's mean onset day.
+  </figcaption>
+</figure>
+
 ## Comparison modes
 
 Every method gives imputed onsets on day $s$,
@@ -186,6 +217,19 @@ The last $m$ days before $T$ then get no missing cases at all.
 The correction scales these days up the most, so the error grows.
 At the baseline scenario the mean shift is about 12% too low in the final week.
 The hub draw and EM back-projection keep the right shape near the cut-off, so the correction works for them.
+
+<figure class="doc-figure" markdown="span">
+  ![Two panels of expected daily onsets for days 55 to 90 with a cut-off at day 90, in steady growth. Left, hub: the corrected curve lies on the eventual truth, while the uncorrected curve falls towards the cut-off. Right, mean shift: the corrected curve overshoots the truth up to day 84, then drops well below it for the last 6 days.](figures/truncation.svg#only-light) ![Two panels of expected daily onsets for days 55 to 90 with a cut-off at day 90, in steady growth. Left, hub: the corrected curve lies on the eventual truth, while the uncorrected curve falls towards the cut-off. Right, mean shift: the corrected curve overshoots the truth up to day 84, then drops well below it for the last 6 days.](figures/truncation-dark.svg#only-dark)
+  <figcaption markdown="1">
+    Expected daily onsets near a cut-off at day 90 in scenario `A`, steady growth at 0.05 per day.
+    Dashed: onsets after imputation of cases reported by the cut-off.
+    Solid: the same divided by $F(T - s)$.
+    Black: the eventual truth.
+    The hub draw has the right shape in steady growth, so the correction recovers the truth.
+    The mean shift moves every missing case back 6 days and leaves none in the last 6 days.
+    The correction then overshoots before day 85 and undershoots after it.
+  </figcaption>
+</figure>
 
 The generative method has the same correction built in.
 Its onset curve $\lambda(s) = \big(n_c(s) + n_a(s)\big) / F_s\big(\min(T - s, D)\big)$ divides by the fraction reported in the same way.

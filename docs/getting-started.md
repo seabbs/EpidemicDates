@@ -32,9 +32,9 @@ Both can impute a real line list.
     Load it in Python:
 
     ```python
-    import epidemic_dates as oi
+    import epidemic_dates as ed
 
-    oi.METHODS  # ('hub', 'mean', 'forward', 'em')
+    ed.METHODS  # ('hub', 'mean', 'forward', 'em')
     ```
 
     The package also installs the `epidemic-dates` command:

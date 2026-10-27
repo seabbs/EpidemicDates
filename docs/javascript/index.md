@@ -1,7 +1,7 @@
-![EpidemicDates JavaScript module logo](../assets/logo-js.svg#only-light){ width="96" }
-![EpidemicDates JavaScript module logo](../assets/logo-js-dark.svg#only-dark){ width="96" }
+# ![](../assets/logo-js.svg#only-light){ .title-mark } ![](../assets/logo-js-dark.svg#only-dark){ .title-mark } EpidemicDates for JavaScript
 
-# JavaScript guide
+Load `epidemic-dates.js` with `require` in Node, or use the global `EpidemicDates` in a browser.
+{ .page-subtitle }
 
 The JavaScript module `epidemic-dates.js` holds the maths behind the [interactive page](https://seabbs.github.io/epidemic-imputation-demonstration/).
 It simulates an epidemic in expectation, imputes the missing onsets four ways and compares each with the truth.
@@ -69,6 +69,17 @@ hub 4.2 0.5 3.2 6.8 7.2 10.6 19.8 27.3 35.5 43.4 41.9 63.2 54.0 50.5 38.6 25.4 5
 mean 4.0 0.0 5.0 6.0 6.0 11.0 19.0 29.0 34.0 43.0 43.0 62.0 55.0 53.0 38.0 25.0 4.0
 gen 4.2 0.0 2.5 7.8 7.0 10.1 20.0 27.3 35.9 43.7 41.0 65.7 54.2 50.1 37.5 24.8 5.1
 ```
+
+<figure class="doc-figure" markdown="span">
+  ![Weekly cases in the example line list from May to early September 2026. Grey bars show cases by report week. Lines show onsets with a known date and onsets after imputation by the hub, mean shift and EM methods. The three imputed curves lie close together, peak in the week of 24 July and sit above the known-onset curve.](../figures/linelist.svg#only-light) ![Weekly cases in the example line list from May to early September 2026. Grey bars show cases by report week. Lines show onsets with a known date and onsets after imputation by the hub, mean shift and EM methods. The three imputed curves lie close together, peak in the week of 24 July and sit above the known-onset curve.](../figures/linelist-dark.svg#only-dark)
+  <figcaption markdown="1">
+    Weekly counts from the example line list.
+    Grey bars are cases by report week.
+    The dashed line counts cases with a known onset.
+    Coloured lines add the 76 missing-onset cases back by each method.
+    The data are cut on 31 August, so the last weeks are incomplete under every method.
+  </figcaption>
+</figure>
 
 The [worked example](../real-linelist.md) explains each step.
 
