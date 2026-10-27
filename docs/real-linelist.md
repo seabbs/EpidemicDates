@@ -567,6 +567,7 @@ Set `min_reported` (`minReported` in JavaScript) lower to get one, with wide ban
 The eventual true onsets in the last three weeks are 809, 618 and 494.
 The medians of the first two, 820 and 613, are close.
 In the final week, where few cases are reported yet, the median of 393 is too low and the 95% band misses the truth.
+The last week's interval is wide and in this draw the point estimate sits below the truth, because by chance few of its cases were reported by the cut-off.
 
 The table has one row per week and quantile level.
 `target_end_date` is the last onset day in the week.
