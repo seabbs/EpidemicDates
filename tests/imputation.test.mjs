@@ -150,3 +150,15 @@ test("imputeLinelist: input checks and dropped cases", () => {
   assert.equal(res.dropped, 1); // onset after report
   assert.equal(res.missingByReport[3], 1);
 });
+
+test("imputeLinelist: short maxDelay, short delay and null reports stay finite", () => {
+  const onset = [0, 1, null, 3, null, 2, null];
+  const report = [2, 3, 4, 5, 6, null, 8];
+  const finite = r => ["hub", "mean", "gen"].every(k =>
+    r.imputed[k].every(Number.isFinite));
+  const a = M.imputeLinelist({ onset, report, maxDelay: 10 });
+  assert.ok(finite(a));
+  assert.equal(a.cutoff, 8);
+  const b = M.imputeLinelist({ onset, report, delay: [0.2, 0.3, 0.5] });
+  assert.ok(finite(b) && b.imputed.fwd.every(Number.isFinite));
+});
