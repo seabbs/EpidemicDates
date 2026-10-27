@@ -8,14 +8,9 @@ The last section uses a second example in which delays shorten over time.
 
 The code is shown in Python, JavaScript, R and Julia.
 Pick a language in any tab and the other tabs follow.
-The functions are:
+Each package's guide and API reference are on the [Packages](packages/index.md) page.
 
-- `impute_linelist` in the Python package ([source](https://github.com/seabbs/EpidemicDates/tree/main/src/epidemic_dates), [guide](python/index.md));
-- `imputeLinelist` in the JavaScript module ([source](https://github.com/seabbs/EpidemicDates/blob/main/epidemic-dates.js), [guide](javascript/index.md));
-- `impute_linelist` in the R package `epidemicdates` ([source](https://github.com/seabbs/EpidemicDates/tree/main/r), [guide](r/index.md));
-- `impute_linelist` in the Julia package `EpidemicDates.jl` ([source](https://github.com/seabbs/EpidemicDates/tree/main/julia), [guide](julia/index.md)).
-
-Each returns daily onset counts after imputation under each method.
+Each call returns daily onset counts after imputation under each method.
 Step 6 nowcasts the recent weeks with uncertainty, using `nowcast_linelist` in Python and `nowcastLinelist` in JavaScript.
 Read the [Assumptions](assumptions.md) before relying on the output.
 
