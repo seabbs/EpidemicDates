@@ -2,7 +2,7 @@
 import numpy as np
 import pytest
 
-import epidemic_dates as oi
+import epidemic_dates as ed
 from epidemic_dates.delays import DMAX
 from epidemic_dates.linelist import impute_linelist
 from epidemic_dates.methods import em_fit
@@ -12,8 +12,8 @@ from epidemic_dates.methods import em_fit
 def scenario_c():
     """A line list from scenario C, cut at day 140, with the truth."""
     rng = np.random.default_rng(1)
-    setup = oi.scenario_setup("C")
-    onset, report, missing = oi.simulate("C", setup, rng)
+    setup = ed.scenario_setup("C")
+    onset, report, missing = ed.simulate("C", setup, rng)
     keep = report <= 140
     onset, report, missing = onset[keep], report[keep], missing[keep]
     observed = np.where(missing, np.nan, onset.astype(float))

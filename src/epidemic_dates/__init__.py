@@ -41,10 +41,10 @@ epidemic-dates --reps 50 --scenarios C W
 **Run one scenario** from Python and look at the bias of each method:
 
 ```python
-import epidemic_dates as oi
+import epidemic_dates as ed
 
-oi.DESC                                  # what each scenario does
-rows = oi.run_scenario("W", reps=100)    # one row per cut-off and method
+ed.DESC                                  # what each scenario does
+rows = ed.run_scenario("W", reps=100)    # one row per cut-off and method
 for r in rows:
     print(r["cutoff"], r["method"], r["relbias_mean"], r["relbias_maxabs"])
 ```
@@ -55,11 +55,11 @@ whole numbers such as days since the first report:
 
 ```python
 import numpy as np
-import epidemic_dates as oi
+import epidemic_dates as ed
 
 onset = np.array([0, 2, np.nan, 5, np.nan])
 report = np.array([3, 6, 7, 9, 12])
-res = oi.impute_linelist(onset, report, cutoff=12)
+res = ed.impute_linelist(onset, report, cutoff=12)
 
 res["imputed"]["hub"]    # daily onset counts, pooled empirical delays
 res["imputed"]["mean"]   # daily onset counts, mean shift

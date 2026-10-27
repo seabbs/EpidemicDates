@@ -5,7 +5,7 @@ from importlib.resources import files
 
 import pytest
 
-import epidemic_dates as oi
+import epidemic_dates as ed
 
 MODULES = [
     "epidemic_dates",
@@ -19,13 +19,13 @@ MODULES = [
 
 
 def test_version_is_a_string():
-    assert isinstance(oi.__version__, str)
-    assert oi.__version__
+    assert isinstance(ed.__version__, str)
+    assert ed.__version__
 
 
 def test_all_names_exist_and_are_documented():
-    for name in oi.__all__:
-        obj = getattr(oi, name)
+    for name in ed.__all__:
+        obj = getattr(ed, name)
         if callable(obj) and name != "__version__":
             assert obj.__doc__, name
 

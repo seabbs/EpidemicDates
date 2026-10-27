@@ -13,7 +13,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-import epidemic_dates as oi
+import epidemic_dates as ed
 
 ROOT = Path(__file__).resolve().parents[1]
 JS = ROOT / "epidemic-dates.js"
@@ -44,8 +44,8 @@ def run_js(code, payload):
 def linelist():
     """A simulated line list with a turn in growth, cut at day 140."""
     rng = np.random.default_rng(3)
-    sp = oi.scenario_setup("C")
-    onset, report, missing = oi.simulate("C", sp, rng)
+    sp = ed.scenario_setup("C")
+    onset, report, missing = ed.simulate("C", sp, rng)
     keep = report <= 140
     onset, report, missing = onset[keep], report[keep], missing[keep]
     return {
@@ -62,9 +62,9 @@ def test_delay_pmf_matches(mean, cv):
     js = run_js(
         "Array.from(M.delayPmf(input.mean, input.cv))", {"mean": mean, "cv": cv}
     )
-    js = np.array(js[: oi.DMAX + 1])
+    js = np.array(js[: ed.DMAX + 1])
     js /= js.sum()
-    py = oi.gamma_pmf(mean, mean * cv)
+    py = ed.gamma_pmf(mean, mean * cv)
     assert np.allclose(js, py, atol=1e-8)
 
 
@@ -76,7 +76,7 @@ def test_linelist_hub_and_mean_match(linelist):
     obs = np.array(
         [np.nan if o is None else o for o in linelist["onset"]], dtype=float
     )
-    py = oi.impute_linelist(obs, linelist["report"], cutoff=140)["imputed"]
+    py = ed.impute_linelist(obs, linelist["report"], cutoff=140)["imputed"]
     assert np.allclose(js["hub"], py["hub"], atol=1e-9)
     assert np.allclose(js["mean"], py["mean"], atol=1e-9)
 
@@ -88,7 +88,7 @@ def test_linelist_em_agrees(linelist):
     obs = np.array(
         [np.nan if o is None else o for o in linelist["onset"]], dtype=float
     )
-    py = oi.impute_linelist(obs, linelist["report"], cutoff=140)["imputed"]
+    py = ed.impute_linelist(obs, linelist["report"], cutoff=140)["imputed"]
     js_w = np.add.reduceat(np.array(js), np.arange(0, 140, 7))
     py_w = np.add.reduceat(py["em"], np.arange(0, 140, 7))
     busy = py_w >= 50
