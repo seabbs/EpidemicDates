@@ -1,10 +1,10 @@
 # Python guide
 
-The Python package `onset_imputation` is an independent stochastic simulation.
+The Python package `epidemic_dates` is an independent stochastic simulation.
 It cross-checks the expected-value maths in the [JavaScript module](../javascript/index.md) that drives the [interactive page](https://seabbs.github.io/epidemic-imputation-demonstration/).
 It can also impute a real line list.
 
-- Source: [`src/onset_imputation/`](https://github.com/seabbs/epidemic-imputation-demonstration/tree/main/src/onset_imputation)
+- Source: [`src/epidemic_dates/`](https://github.com/seabbs/epidemic-imputation-demonstration/tree/main/src/epidemic_dates)
 - Every function: [API reference](reference.md)
 - The maths: [Methods](../methods.md)
 - What it relies on: [Assumptions](../assumptions.md)
@@ -31,7 +31,7 @@ import csv
 import datetime as dt
 
 import numpy as np
-import onset_imputation as oi
+import epidemic_dates as oi
 
 np.set_printoptions(linewidth=100)
 
@@ -75,8 +75,8 @@ The study simulates each scenario many times and measures the bias of each metho
 From the command line, results go to `output/results.csv`:
 
 ```bash
-onset-imputation --reps 200 --out output
-onset-imputation --reps 50 --scenarios C W
+epidemic-dates --reps 200 --out output
+epidemic-dates --reps 50 --scenarios C W
 ```
 
 The options are `--reps`, `--seed`, `--out` and `--scenarios`.
@@ -84,7 +84,7 @@ The options are `--reps`, `--seed`, `--out` and `--scenarios`.
 From Python, run one scenario:
 
 ```python
-import onset_imputation as oi
+import epidemic_dates as oi
 
 oi.DESC["W"]                           # 'two waves: growth, control, ...'
 rows = oi.run_scenario("W", reps=100)  # one row per cut-off and method
@@ -95,7 +95,7 @@ for r in rows:
 Each row has the scenario, cut-off, method and bias summaries.
 `relbias_mean` and `relbias_maxabs` are the mean and largest absolute relative bias in weekly counts.
 Columns starting `gr_` measure bias in the growth rate.
-See [`run_scenario`][onset_imputation.run_scenario] in the API reference for every column.
+See [`run_scenario`][epidemic_dates.run_scenario] in the API reference for every column.
 
 Run every scenario and write the results:
 

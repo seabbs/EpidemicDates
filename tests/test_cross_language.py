@@ -1,7 +1,7 @@
 # Copyright (c) 2026 Sam Abbott. MIT licence, see LICENSE.
 """Check the JavaScript module and the Python package agree.
 
-Runs onset-imputation.js in Node on the same inputs as the Python code.
+Runs epidemic-dates.js in Node on the same inputs as the Python code.
 Skipped if Node is not installed.
 """
 
@@ -13,10 +13,10 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-import onset_imputation as oi
+import epidemic_dates as oi
 
 ROOT = Path(__file__).resolve().parents[1]
-JS = ROOT / "onset-imputation.js"
+JS = ROOT / "epidemic-dates.js"
 
 pytestmark = pytest.mark.skipif(
     shutil.which("node") is None, reason="Node is not installed"

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Sam Abbott. MIT licence, see LICENSE.
-// Delays, curves, Rt and small helpers in onset-imputation.js.
+// Delays, curves, Rt and small helpers in epidemic-dates.js.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
@@ -35,7 +35,7 @@ test("results do not depend on what ran before", () => {
   const set = { mu0: 12, mu1: 4 };
   // a fresh process has no history
   const code =
-    "const M = require('./onset-imputation.js');" +
+    "const M = require('./epidemic-dates.js');" +
     `process.stdout.write(JSON.stringify(M.run(${JSON.stringify(set)})));`;
   const fresh = execFileSync(process.execPath, ["-e", code], {
     cwd: new URL("..", import.meta.url),

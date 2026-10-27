@@ -3,7 +3,7 @@
 import { createRequire } from "node:module";
 
 /** The module under test, loaded as Node users load it. */
-export const M = createRequire(import.meta.url)("../onset-imputation.js");
+export const M = createRequire(import.meta.url)("../epidemic-dates.js");
 
 /**
  * Run the expected-value pipeline step by step, returning every stage.

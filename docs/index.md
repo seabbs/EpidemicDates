@@ -25,8 +25,8 @@ The project compares it with three other methods.
 | Part | What it is |
 |---|---|
 | [Interactive page](https://seabbs.github.io/epidemic-imputation-demonstration/) | Simulates an epidemic and shows the bias of each method as you change the scenario. |
-| [`onset-imputation.js`](javascript/index.md) | The maths behind the page as a JavaScript module with no dependencies. |
-| [`onset_imputation`](python/index.md) | An independent stochastic simulation in Python, used to cross-check the page. |
+| [`epidemic-dates.js`](javascript/index.md) | The maths behind the page as a JavaScript module with no dependencies. |
+| [`epidemic_dates`](python/index.md) | An independent stochastic simulation in Python, used to cross-check the page. |
 
 Both languages can also impute a [real line list](real-linelist.md).
 
@@ -56,7 +56,7 @@ Run them from the repository root.
     import datetime as dt
 
     import numpy as np
-    import onset_imputation as oi
+    import epidemic_dates as oi
 
     np.set_printoptions(linewidth=100)
 
@@ -84,7 +84,7 @@ Run them from the repository root.
 
     ```js
     const fs = require("node:fs");
-    const { imputeLinelist } = require("./onset-imputation.js");
+    const { imputeLinelist } = require("./epidemic-dates.js");
 
     const t0 = Date.parse("2026-05-08"); // earliest date in the file
     const day = (x) => (x ? (Date.parse(x) - t0) / 86400000 : null);

@@ -2,7 +2,7 @@
 import numpy as np
 import pytest
 
-from onset_imputation.delays import DMAX, F_DEFAULT, gamma_pmf
+from epidemic_dates.delays import DMAX, F_DEFAULT, gamma_pmf
 
 
 def test_gamma_pmf_sums_to_one():

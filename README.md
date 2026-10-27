@@ -12,7 +12,7 @@ This is the approach discussed in [BDBV-Modeling-Hub issue #61](https://github.c
 
 **Live page:** <https://seabbs.github.io/epidemic-imputation-demonstration/>
 
-**API docs, with the maths:** [JavaScript](https://seabbs.github.io/epidemic-imputation-demonstration/js/) · [Python](https://seabbs.github.io/epidemic-imputation-demonstration/python/onset_imputation.html)
+**Docs:** <https://seabbs.github.io/epidemic-imputation-demonstration/docs/> · [JavaScript](https://seabbs.github.io/epidemic-imputation-demonstration/docs/javascript/) · [Python](https://seabbs.github.io/epidemic-imputation-demonstration/docs/python/)
 
 The page simulates an epidemic with time-varying growth, reporting delays, missing onset dates and changing ascertainment.
 It compares four ways of imputing missing onsets against the true onsets of the same cases:
@@ -31,10 +31,10 @@ Presets use Ebola settings from [epiforecasts/BVDOutbreakSize](https://github.co
 
 | Path | What it is |
 |---|---|
-| `index.html` | The page. Loads `onset-imputation.js`. |
-| `onset-imputation.js` | The maths behind the page, as a JavaScript module. Expected values plus optional Poisson replicates. |
-| `src/onset_imputation/` | An independent stochastic simulation in Python, used to cross-check the page. |
-| `tests/` | Node tests for `onset-imputation.js` and pytest tests for `onset_imputation`. |
+| `index.html` | The page. Loads `epidemic-dates.js`. |
+| `epidemic-dates.js` | The maths behind the page, as a JavaScript module. Expected values plus optional Poisson replicates. |
+| `src/epidemic_dates/` | An independent stochastic simulation in Python, used to cross-check the page. |
+| `tests/` | Node tests for `epidemic-dates.js` and pytest tests for `epidemic_dates`. |
 
 ## Assumptions
 
@@ -48,25 +48,25 @@ Presets use Ebola settings from [epiforecasts/BVDOutbreakSize](https://github.co
 ## Using the code
 
 Both parts are documented in full, with the maths for each method, in the API docs:
-[JavaScript](https://seabbs.github.io/epidemic-imputation-demonstration/js/) and [Python](https://seabbs.github.io/epidemic-imputation-demonstration/python/onset_imputation.html).
+[JavaScript](https://seabbs.github.io/epidemic-imputation-demonstration/docs/javascript/) and [Python](https://seabbs.github.io/epidemic-imputation-demonstration/docs/python/).
 
-**JavaScript.** `onset-imputation.js` has no dependencies.
-In a browser it defines a global `OnsetImputation`; in Node, load it with `require`.
+**JavaScript.** `epidemic-dates.js` has no dependencies.
+In a browser it defines a global `EpidemicDates`; in Node, load it with `require`.
 
 ```js
-const OnsetImputation = require("./onset-imputation.js");
-const res = OnsetImputation.run(OnsetImputation.PRESETS[0].set);
+const EpidemicDates = require("./epidemic-dates.js");
+const res = EpidemicDates.run(EpidemicDates.PRESETS[0].set);
 res.metrics.hub.maxRel;   // largest weekly relative error, hub method
 ```
 
-**Python.** The simulation is the `onset_imputation` package, managed with [uv](https://docs.astral.sh/uv/).
+**Python.** The simulation is the `epidemic_dates` package, managed with [uv](https://docs.astral.sh/uv/).
 
 ```bash
-uv run onset-imputation --reps 200 --out output
+uv run epidemic-dates --reps 200 --out output
 ```
 
 ```python
-import onset_imputation as sim
+import epidemic_dates as sim
 rows = sim.run_scenario("W", reps=100)
 ```
 
@@ -86,7 +86,7 @@ In Python (pandas shown for reading the data):
 
 ```python
 import pandas as pd
-import onset_imputation as sim
+import epidemic_dates as sim
 
 ll = pd.read_csv("linelist.csv", parse_dates=["onset_date", "report_date"])
 day0 = ll["report_date"].min()
@@ -102,7 +102,7 @@ res["empirical_delay"]   # pooled delay pmf from cases with both dates
 In JavaScript:
 
 ```js
-const { imputeLinelist } = require("./onset-imputation.js");
+const { imputeLinelist } = require("./epidemic-dates.js");
 
 const res = imputeLinelist({
   onset: [0, 2, null, 5, null],   // null where onset is missing

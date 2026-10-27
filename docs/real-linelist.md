@@ -3,7 +3,7 @@
 This page works through imputing missing onsets in a line list, step by step, in Python and JavaScript.
 Pick a language in any tab and the other tabs follow.
 
-The functions are `impute_linelist` in the Python package ([source](https://github.com/seabbs/epidemic-imputation-demonstration/tree/main/src/onset_imputation)) and `imputeLinelist` in the JavaScript module ([source](https://github.com/seabbs/epidemic-imputation-demonstration/blob/main/onset-imputation.js)).
+The functions are `impute_linelist` in the Python package ([source](https://github.com/seabbs/epidemic-imputation-demonstration/tree/main/src/epidemic_dates)) and `imputeLinelist` in the JavaScript module ([source](https://github.com/seabbs/epidemic-imputation-demonstration/blob/main/epidemic-dates.js)).
 Both return daily onset counts after imputation under each method.
 Read the [Assumptions](assumptions.md) before relying on the output.
 
@@ -49,7 +49,7 @@ Run the code below from the repository root, or change the paths.
 
     import numpy as np
 
-    import onset_imputation as oi
+    import epidemic_dates as oi
 
     with open("docs/data/example-linelist.csv") as fh:
         rows = list(csv.DictReader(fh))
@@ -62,7 +62,7 @@ Run the code below from the repository root, or change the paths.
 
     ```js
     const fs = require("node:fs");
-    const { imputeLinelist } = require("./onset-imputation.js");
+    const { imputeLinelist } = require("./epidemic-dates.js");
 
     const [header, ...lines] = fs
       .readFileSync("docs/data/example-linelist.csv", "utf8")

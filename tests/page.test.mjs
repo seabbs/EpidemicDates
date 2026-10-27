@@ -8,9 +8,7 @@ import { createRequire } from "node:module";
 import vm from "node:vm";
 
 const page = readFileSync(new URL("../page.js", import.meta.url), "utf8");
-const OnsetImputation = createRequire(import.meta.url)(
-  "../onset-imputation.js"
-);
+const EpidemicDates = createRequire(import.meta.url)("../epidemic-dates.js");
 
 // an element stub that accepts any property access, call or assignment
 const stub = () =>
@@ -31,7 +29,7 @@ const stub = () =>
 
 function loadPage() {
   const ctx = {
-    OnsetImputation,
+    EpidemicDates,
     Math,
     JSON,
     Array,
@@ -102,8 +100,8 @@ test("every step of the step-through renders for every method", () => {
 test("editing the curves does not change the module's constants", () => {
   const ctx = loadPage();
   vm.runInContext("P.knots[0] = 0.1; P.asc[0] = 2; P.seed = 3; render();", ctx);
-  assert.equal(OnsetImputation.DEFAULTS.knots[0], 0.05);
-  assert.equal(OnsetImputation.PRESETS[0].set.asc[0], 0.5);
+  assert.equal(EpidemicDates.DEFAULTS.knots[0], 0.05);
+  assert.equal(EpidemicDates.PRESETS[0].set.asc[0], 0.5);
 });
 
 test("stochastic replicates on the page are seeded", () => {

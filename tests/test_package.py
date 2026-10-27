@@ -5,16 +5,16 @@ from importlib.resources import files
 
 import pytest
 
-import onset_imputation as oi
+import epidemic_dates as oi
 
 MODULES = [
-    "onset_imputation",
-    "onset_imputation.cli",
-    "onset_imputation.delays",
-    "onset_imputation.linelist",
-    "onset_imputation.methods",
-    "onset_imputation.scenarios",
-    "onset_imputation.study",
+    "epidemic_dates",
+    "epidemic_dates.cli",
+    "epidemic_dates.delays",
+    "epidemic_dates.linelist",
+    "epidemic_dates.methods",
+    "epidemic_dates.scenarios",
+    "epidemic_dates.study",
 ]
 
 
@@ -47,4 +47,4 @@ def test_doctests(module):
 
 
 def test_py_typed_marker_is_shipped():
-    assert files("onset_imputation").joinpath("py.typed").is_file()
+    assert files("epidemic_dates").joinpath("py.typed").is_file()

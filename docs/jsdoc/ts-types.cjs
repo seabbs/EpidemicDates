@@ -2,7 +2,7 @@
 /**
  * JSDoc plugin that rewrites TypeScript-only type syntax into types the
  * JSDoc (Closure) parser accepts, so jsdoc-to-markdown can read
- * `onset-imputation.js`. It only changes the docs, not the source.
+ * `epidemic-dates.js`. It only changes the docs, not the source.
  *
  * - Function types such as `(a: T) => U` become `function`.
  * - `readonly` modifiers are dropped.

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Sam Abbott. MIT licence, see LICENSE.
-// Scenarios, the four imputation methods and run() in onset-imputation.js.
+// Scenarios, the four imputation methods and run() in epidemic-dates.js.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {

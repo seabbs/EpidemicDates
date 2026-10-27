@@ -2,10 +2,10 @@
 import numpy as np
 import pytest
 
-import onset_imputation as oi
-from onset_imputation.delays import DMAX
-from onset_imputation.linelist import impute_linelist
-from onset_imputation.methods import em_fit
+import epidemic_dates as oi
+from epidemic_dates.delays import DMAX
+from epidemic_dates.linelist import impute_linelist
+from epidemic_dates.methods import em_fit
 
 
 @pytest.fixture(scope="module")

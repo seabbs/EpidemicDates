@@ -1,30 +1,38 @@
 version: "3"
 
 tasks:
+  setup:
+    desc: Install JavaScript and Python dependencies
+    cmds:
+      - npm ci
+      - uv sync
   test:
     desc: Test the JavaScript and Python code
     cmds:
-      - node --test "tests/*.test.mjs"
-      - uv run pytest -q
+      - npm test
+      - uv run pytest -q --cov=epidemic_dates
   sim:
     desc: Run the independent stochastic simulation
     cmds:
-      - uv run onset-imputation {{.CLI_ARGS}}
+      - uv run epidemic-dates {{.CLI_ARGS}}
   lint:
     desc: Lint the JavaScript and Python code
     cmds:
-      - npx --yes eslint@10 .
+      - npm run lint
+      - npm run format:check
+      - npm run typecheck
       - uv run ruff check src tests
       - uv run ruff format --check src tests
+      - uv run mypy src
   docs:
     desc: Build the page and the docs site into _site/ (docs at _site/docs)
     cmds:
       - mkdir -p _site
-      - cp index.html onset-imputation.js page.js _site/
+      - cp index.html epidemic-dates.js page.js _site/
       - cp -R docs-redirects/. _site/
       - >-
         npx --yes jsdoc-to-markdown@9 --no-cache -c docs/jsdoc/jsdoc.json
-        onset-imputation.js > docs/javascript/reference.md
+        epidemic-dates.js > docs/javascript/reference.md
       - >-
         uv run --with mkdocs-material --with "mkdocstrings[python]"
         mkdocs build --strict

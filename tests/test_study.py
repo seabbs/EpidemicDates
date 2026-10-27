@@ -4,10 +4,10 @@ import csv
 import numpy as np
 import pytest
 
-from onset_imputation.delays import DMAX
-from onset_imputation.methods import METHODS
-from onset_imputation.scenarios import SCEN, scenario_setup
-from onset_imputation.study import (
+from epidemic_dates.delays import DMAX
+from epidemic_dates.methods import METHODS
+from epidemic_dates.scenarios import SCEN, scenario_setup
+from epidemic_dates.study import (
     OFF,
     analytic,
     first_negative_week,

@@ -18,7 +18,7 @@ export default [
   },
   js.configs.recommended,
   {
-    files: ["onset-imputation.js"],
+    files: ["epidemic-dates.js"],
     languageOptions: {
       ecmaVersion: 2022,
       sourceType: "script",
@@ -31,7 +31,7 @@ export default [
     languageOptions: {
       ecmaVersion: 2022,
       sourceType: "script",
-      globals: { ...globals.browser, OnsetImputation: "readonly" }
+      globals: { ...globals.browser, EpidemicDates: "readonly" }
     },
     rules
   },

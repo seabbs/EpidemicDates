@@ -23,7 +23,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Copy the interactive page
-        run: mkdir -p _site && cp index.html onset-imputation.js page.js _site/
+        run: mkdir -p _site && cp index.html epidemic-dates.js page.js _site/
       - name: Copy redirects from the old API docs
         run: cp -R docs-redirects/. _site/
       - uses: actions/setup-node@v4
@@ -33,7 +33,7 @@ jobs:
       - name: Generate the JavaScript reference
         run: >-
           npx --yes jsdoc-to-markdown@9 --no-cache -c docs/jsdoc/jsdoc.json
-          onset-imputation.js > docs/javascript/reference.md
+          epidemic-dates.js > docs/javascript/reference.md
       - name: Build the docs into _site/docs
         run: >-
           uv run --with mkdocs-material --with "mkdocstrings[python]"

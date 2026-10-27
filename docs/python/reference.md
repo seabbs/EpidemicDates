@@ -1,11 +1,11 @@
 # Python API reference
 
-The public API of `onset_imputation`, generated from the numpy-style docstrings.
+The public API of `epidemic_dates`, generated from the numpy-style docstrings.
 Everything listed in the package's `__all__` appears here.
 For a guided tour see the [Python guide](index.md).
 For the JavaScript equivalent see the [JavaScript API reference](../javascript/reference.md).
 
-::: onset_imputation
+::: epidemic_dates
     options:
       show_root_heading: false
       show_root_toc_entry: false

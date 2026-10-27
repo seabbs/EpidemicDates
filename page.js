@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Sam Abbott. MIT licence, see LICENSE.
 // Page logic for index.html: controls, charts and the step-through.
 "use strict";
-// ---------- maths from onset-imputation.js ----------
+// ---------- maths from epidemic-dates.js ----------
 const {
   D,
   KNOTS,
@@ -25,7 +25,7 @@ const {
   comparisonSeries,
   emImpute,
   correctTruncation
-} = OnsetImputation;
+} = EpidemicDates;
 // line styles keep overlapping methods visible
 const STYLE = {
   hub: { col: "--series-1", width: 4 },
@@ -33,7 +33,7 @@ const STYLE = {
   fwd: { col: "--series-3", width: 2, dash: "6 4" },
   gen: { col: "--series-4", width: 2.5, dash: "1 4" }
 };
-const METHODS = OnsetImputation.METHODS.map(m => ({ ...m, ...STYLE[m.key] }));
+const METHODS = EpidemicDates.METHODS.map(m => ({ ...m, ...STYLE[m.key] }));
 
 // ---------- page state and controls spec ----------
 const CONTROLS = [

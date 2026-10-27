@@ -2,8 +2,8 @@
 import numpy as np
 import pytest
 
-from onset_imputation.delays import DMAX, F_DEFAULT
-from onset_imputation.scenarios import (
+from epidemic_dates.delays import DMAX, F_DEFAULT
+from epidemic_dates.scenarios import (
     DESC,
     SCEN,
     Scenario,

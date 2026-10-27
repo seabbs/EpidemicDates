@@ -1,5 +1,5 @@
 # Copyright (c) 2026 Sam Abbott. MIT licence, see LICENSE.
-"""Command-line entry point, `onset-imputation`."""
+"""Command-line entry point, `epidemic-dates`."""
 
 from __future__ import annotations
 
@@ -28,7 +28,7 @@ def _positive_int(value: str) -> int:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    """Build the argument parser for `onset-imputation`.
+    """Build the argument parser for `epidemic-dates`.
 
     Returns
     -------
@@ -37,7 +37,7 @@ def build_parser() -> argparse.ArgumentParser:
         and `--quiet`.
     """
     parser = argparse.ArgumentParser(
-        prog="onset-imputation",
+        prog="epidemic-dates",
         description="Simulation study of onset-date imputation bias.",
     )
     parser.add_argument(

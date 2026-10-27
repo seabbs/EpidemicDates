@@ -2,8 +2,8 @@
 import numpy as np
 import pytest
 
-from onset_imputation.delays import DMAX
-from onset_imputation.methods import (
+from epidemic_dates.delays import DMAX
+from epidemic_dates.methods import (
     METHODS,
     em_backproject,
     em_fit,

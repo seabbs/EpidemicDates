@@ -2,7 +2,7 @@
 """Make the example line list used in the docs.
 
 Simulates scenario `C` (growth that slows and turns to decline) with
-`onset_imputation`, keeps a random 12% of cases, cuts the data at report
+`epidemic_dates`, keeps a random 12% of cases, cuts the data at report
 day 120, and sets 15% of onsets to missing at random.
 Day 0 is 2026-05-03.
 
@@ -17,7 +17,7 @@ from pathlib import Path
 
 import numpy as np
 
-import onset_imputation as oi
+import epidemic_dates as oi
 
 SEED = 20261027
 DAY0 = dt.date(2026, 5, 3)

@@ -1,5 +1,5 @@
 [project]
-name = "epidemic-imputation-demonstration"
+name = "epidemic-dates"
 version = "0.1.0"
 description = "Comparing methods for imputing missing symptom onsets: simulation and imputation for line lists"
 readme = "README.md"
@@ -40,7 +40,7 @@ Repository = "https://github.com/seabbs/epidemic-imputation-demonstration"
 Issues = "https://github.com/seabbs/epidemic-imputation-demonstration/issues"
 
 [project.scripts]
-onset-imputation = "onset_imputation.cli:main"
+epidemic-dates = "epidemic_dates.cli:main"
 
 [build-system]
 requires = ["uv_build>=0.8,<0.14"]
@@ -55,7 +55,7 @@ dev = [
 ]
 
 [tool.uv.build-backend]
-module-name = "onset_imputation"
+module-name = "epidemic_dates"
 
 [tool.ruff]
 line-length = 80
@@ -89,7 +89,7 @@ addopts = ["-ra", "--strict-markers", "--strict-config"]
 xfail_strict = true
 
 [tool.coverage.run]
-source = ["onset_imputation"]
+source = ["epidemic_dates"]
 branch = true
 
 [tool.coverage.report]

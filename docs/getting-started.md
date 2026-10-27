@@ -13,7 +13,7 @@ Both can impute a real line list.
 
 === "Python"
 
-    The package is `onset_imputation`.
+    The package is `epidemic_dates`.
     It needs Python 3.11 or later, NumPy and SciPy.
     Install it from GitHub with `pip` or [uv](https://docs.astral.sh/uv/):
 
@@ -26,26 +26,26 @@ Both can impute a real line list.
     ```bash
     git clone https://github.com/seabbs/epidemic-imputation-demonstration
     cd epidemic-imputation-demonstration
-    uv run python -c "import onset_imputation; print(onset_imputation.METHODS)"
+    uv run python -c "import epidemic_dates; print(epidemic_dates.METHODS)"
     ```
 
     Load it in Python:
 
     ```python
-    import onset_imputation as oi
+    import epidemic_dates as oi
 
     oi.METHODS  # ('hub', 'mean', 'forward', 'em')
     ```
 
-    The package also installs the `onset-imputation` command:
+    The package also installs the `epidemic-dates` command:
 
     ```bash
-    onset-imputation --reps 50 --scenarios C W
+    epidemic-dates --reps 50 --scenarios C W
     ```
 
 === "JavaScript"
 
-    The module is the single file [`onset-imputation.js`](https://github.com/seabbs/epidemic-imputation-demonstration/blob/main/onset-imputation.js).
+    The module is the single file [`epidemic-dates.js`](https://github.com/seabbs/epidemic-imputation-demonstration/blob/main/epidemic-dates.js).
     It has no dependencies.
     Copy it into your project, or clone the repository:
 
@@ -57,17 +57,17 @@ Both can impute a real line list.
     In Node 20 or later, load it with `require`:
 
     ```js
-    const OnsetImputation = require("./onset-imputation.js");
+    const EpidemicDates = require("./epidemic-dates.js");
 
-    OnsetImputation.METHODS.map((m) => m.key); // ['hub', 'mean', 'fwd', 'gen']
+    EpidemicDates.METHODS.map((m) => m.key); // ['hub', 'mean', 'fwd', 'gen']
     ```
 
-    In a browser, the script defines the global `OnsetImputation`:
+    In a browser, the script defines the global `EpidemicDates`:
 
     ```html
-    <script src="onset-imputation.js"></script>
+    <script src="epidemic-dates.js"></script>
     <script>
-      const res = OnsetImputation.run();
+      const res = EpidemicDates.run();
     </script>
     ```
 

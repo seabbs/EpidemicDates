@@ -11,5 +11,5 @@
     "maxNodeModuleJsDepth": 0,
     "types": ["node"]
   },
-  "files": ["onset-imputation.js"]
+  "files": ["epidemic-dates.js"]
 }

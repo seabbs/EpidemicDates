@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Sam Abbott. MIT licence, see LICENSE.
-// imputeLinelist in onset-imputation.js, for real line lists.
+// imputeLinelist in epidemic-dates.js, for real line lists.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { M, byWeek, linelist, sum } from "./helpers.mjs";

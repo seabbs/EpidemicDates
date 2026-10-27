@@ -5,10 +5,10 @@ Some line lists fill a missing event date (such as symptom onset) with
 the report date minus a delay drawn from the pooled empirical
 event-to-report delays of cases with both dates.
 The examples here use symptom onset as the earlier event.
-`onset_imputation` is a stochastic simulation that measures the bias of this
+`epidemic_dates` is a stochastic simulation that measures the bias of this
 approach and of three alternatives.
 It is an independent cross-check of the expected-value maths in
-`onset-imputation.js`, which drives the interactive page.
+`epidemic-dates.js`, which drives the interactive page.
 It also provides `impute_linelist` to apply the methods to a real line
 list.
 
@@ -34,14 +34,14 @@ pip install git+https://github.com/seabbs/epidemic-imputation-demonstration
 Results go to `output/results.csv`:
 
 ```bash
-onset-imputation --reps 200 --out output
-onset-imputation --reps 50 --scenarios C W
+epidemic-dates --reps 200 --out output
+epidemic-dates --reps 50 --scenarios C W
 ```
 
 **Run one scenario** from Python and look at the bias of each method:
 
 ```python
-import onset_imputation as oi
+import epidemic_dates as oi
 
 oi.DESC                                  # what each scenario does
 rows = oi.run_scenario("W", reps=100)    # one row per cut-off and method
@@ -55,7 +55,7 @@ whole numbers such as days since the first report:
 
 ```python
 import numpy as np
-import onset_imputation as oi
+import epidemic_dates as oi
 
 onset = np.array([0, 2, np.nan, 5, np.nan])
 report = np.array([3, 6, 7, 9, 12])
@@ -157,12 +157,12 @@ Scenarios `A`, `B`, `B0`, `C`, `D` and `E` vary the growth rate.
 
 Modules
 -------
-- `onset_imputation.delays`: delay pmfs (`gamma_pmf`, `F_DEFAULT`).
-- `onset_imputation.scenarios`: scenario settings and simulation.
-- `onset_imputation.methods`: the imputation methods and EM.
-- `onset_imputation.linelist`: `impute_linelist` for real data.
-- `onset_imputation.study`: the simulation study and its outputs.
-- `onset_imputation.cli`: the `onset-imputation` command.
+- `epidemic_dates.delays`: delay pmfs (`gamma_pmf`, `F_DEFAULT`).
+- `epidemic_dates.scenarios`: scenario settings and simulation.
+- `epidemic_dates.methods`: the imputation methods and EM.
+- `epidemic_dates.linelist`: `impute_linelist` for real data.
+- `epidemic_dates.study`: the simulation study and its outputs.
+- `epidemic_dates.cli`: the `epidemic-dates` command.
 
 Quick start
 -----------
@@ -170,13 +170,13 @@ From the command line, run two scenarios with 50 replicates each.
 Results go to `output/results.csv` and `output/analytic.txt`.
 
 ```bash
-uv run onset-imputation --reps 50 --scenarios C W
+uv run epidemic-dates --reps 50 --scenarios C W
 ```
 
 From Python:
 
 ```python
-import onset_imputation as sim
+import epidemic_dates as sim
 
 sim.DESC["W"]
 rows = sim.run_scenario("W", reps=100)

@@ -1,11 +1,11 @@
 # JavaScript guide
 
-The JavaScript module `onset-imputation.js` holds the maths behind the [interactive page](https://seabbs.github.io/epidemic-imputation-demonstration/).
+The JavaScript module `epidemic-dates.js` holds the maths behind the [interactive page](https://seabbs.github.io/epidemic-imputation-demonstration/).
 It simulates an epidemic in expectation, imputes the missing onsets four ways and compares each with the truth.
 It can also impute a real line list.
 It has no dependencies.
 
-- Source: [`onset-imputation.js`](https://github.com/seabbs/epidemic-imputation-demonstration/blob/main/onset-imputation.js)
+- Source: [`epidemic-dates.js`](https://github.com/seabbs/epidemic-imputation-demonstration/blob/main/epidemic-dates.js)
 - Every function and type: [API reference](reference.md)
 - The maths: [Methods](../methods.md)
 - What it relies on: [Assumptions](../assumptions.md)
@@ -17,19 +17,19 @@ It has no dependencies.
 
 ## Load it
 
-In a browser, the script defines the global `OnsetImputation`:
+In a browser, the script defines the global `EpidemicDates`:
 
 ```html
-<script src="onset-imputation.js"></script>
+<script src="epidemic-dates.js"></script>
 <script>
-  const res = OnsetImputation.run();
+  const res = EpidemicDates.run();
 </script>
 ```
 
 In Node 20 or later:
 
 ```js
-const OnsetImputation = require("./onset-imputation.js");
+const EpidemicDates = require("./epidemic-dates.js");
 ```
 
 ## Quick start on your own data
@@ -38,7 +38,7 @@ This reads the [example line list](../data/example-linelist.csv), imputes the mi
 
 ```js
 const fs = require("node:fs");
-const { imputeLinelist } = require("./onset-imputation.js");
+const { imputeLinelist } = require("./epidemic-dates.js");
 
 const t0 = Date.parse("2026-05-08"); // earliest date in the file
 const day = (x) => (x ? (Date.parse(x) - t0) / 86400000 : null);
@@ -69,7 +69,7 @@ gen 4.2 0.0 2.5 7.8 7.0 10.1 20.0 27.3 35.9 43.7 41.0 65.7 54.2 50.1 37.5 24.8 5
 
 The [worked example](../real-linelist.md) explains each step.
 
-`imputeLinelist` takes one object ([`LinelistInput`](reference.md#module_onset-imputation.LinelistInput)) with:
+`imputeLinelist` takes one object ([`LinelistInput`](reference.md#module_epidemic-dates.LinelistInput)) with:
 
 - `onset`: onset day per case, `null` where missing;
 - `report`: report day per case;
@@ -77,7 +77,7 @@ The [worked example](../real-linelist.md) explains each step.
 - `delay`: a forward delay pmf indexed by day, to hold the delay fixed and to fill in the forward draw;
 - `maxDelay` and `iterations`: the longest delay kept and the number of EM iterations.
 
-It returns a [`LinelistResult`](reference.md#module_onset-imputation.LinelistResult).
+It returns a [`LinelistResult`](reference.md#module_epidemic-dates.LinelistResult).
 `imputed` holds daily onset counts for `hub`, `mean`, `fwd` and `gen`.
 `fwd` is `null` without `delay`.
 `generativeDelay` is the delay used or estimated by EM.
@@ -85,12 +85,12 @@ It returns a [`LinelistResult`](reference.md#module_onset-imputation.LinelistRes
 ## Simulate a scenario and compare the methods
 
 `run()` simulates an epidemic, imputes the missing onsets four ways and compares each with the truth.
-Every parameter has a default in `OnsetImputation.DEFAULTS`.
+Every parameter has a default in `EpidemicDates.DEFAULTS`.
 Pass only what you want to change.
-The parameters are listed under [`ScenarioParams`](reference.md#module_onset-imputation.ScenarioParams).
+The parameters are listed under [`ScenarioParams`](reference.md#module_epidemic-dates.ScenarioParams).
 
 ```js
-const { run, knotsFrom } = OnsetImputation;
+const { run, knotsFrom } = EpidemicDates;
 
 const res = run({
   knots: knotsFrom([[0, 0.05], [60, 0.05], [110, -0.01], [175, 0.03]]), // growth rate per day
@@ -107,16 +107,16 @@ res.metrics.hub.maxRel;  // largest weekly relative error
 res.metrics.hub.maxR;    // largest Rt error
 ```
 
-The result is a [`RunResult`](reference.md#module_onset-imputation.RunResult).
-The error measures are described under [`Metrics`](reference.md#module_onset-imputation.Metrics).
+The result is a [`RunResult`](reference.md#module_epidemic-dates.RunResult).
+The error measures are described under [`Metrics`](reference.md#module_epidemic-dates.Metrics).
 
 ## The page's scenarios
 
-The scenarios on the page are in `OnsetImputation.PRESETS`.
+The scenarios on the page are in `EpidemicDates.PRESETS`.
 This prints the largest weekly relative error of the hub and generative methods for each one:
 
 ```js
-for (const p of OnsetImputation.PRESETS) {
+for (const p of EpidemicDates.PRESETS) {
   const m = run(p.set).metrics;
   console.log(p.name.padEnd(40), m.hub.maxRel.toFixed(3), m.gen.maxRel.toFixed(3));
 }
@@ -147,15 +147,15 @@ It is also off in "Longer delays: 14 days, 70% missing".
 
 ## Building blocks
 
-- [`delayPmf(mu, cv)`](reference.md#module_onset-imputation.delayPmf) gives a double interval censored daily Gamma delay pmf.
-- [`rToR(r)`](reference.md#module_onset-imputation.rToR) turns a growth rate into Rt.
-- [`convImpute`](reference.md#module_onset-imputation.convImpute), [`shiftImpute`](reference.md#module_onset-imputation.shiftImpute) and [`emImpute`](reference.md#module_onset-imputation.emImpute) are the imputation methods on daily counts.
-- [`stochastic`](reference.md#module_onset-imputation.stochastic) runs Poisson replicates and returns 90% bands.
+- [`delayPmf(mu, cv)`](reference.md#module_epidemic-dates.delayPmf) gives a double interval censored daily Gamma delay pmf.
+- [`rToR(r)`](reference.md#module_epidemic-dates.rToR) turns a growth rate into Rt.
+- [`convImpute`](reference.md#module_epidemic-dates.convImpute), [`shiftImpute`](reference.md#module_epidemic-dates.shiftImpute) and [`emImpute`](reference.md#module_epidemic-dates.emImpute) are the imputation methods on daily counts.
+- [`stochastic`](reference.md#module_epidemic-dates.stochastic) runs Poisson replicates and returns 90% bands.
 
 ```js
-const f = OnsetImputation.delayPmf(8, 1); // mean 8 days, CV 1
-OnsetImputation.pmfMean(f);               // 8.00
-OnsetImputation.rToR(0.05);               // 1.94
+const f = EpidemicDates.delayPmf(8, 1); // mean 8 days, CV 1
+EpidemicDates.pmfMean(f);               // 8.00
+EpidemicDates.rToR(0.05);               // 1.94
 ```
 
 ## See also

@@ -5,9 +5,9 @@ import sys
 
 import pytest
 
-from onset_imputation import main
-from onset_imputation.cli import build_parser
-from onset_imputation.methods import METHODS
+from epidemic_dates import main
+from epidemic_dates.cli import build_parser
+from epidemic_dates.methods import METHODS
 
 
 def test_parser_defaults():
@@ -61,8 +61,8 @@ def test_main_help(capsys):
 
 
 def test_module_entry_point(tmp_path, monkeypatch, capsys):
-    argv = ["onset-imputation", "--reps", "1", "--scenarios", "B0"]
+    argv = ["epidemic-dates", "--reps", "1", "--scenarios", "B0"]
     argv += ["--out", str(tmp_path), "--quiet"]
     monkeypatch.setattr(sys, "argv", argv)
-    runpy.run_module("onset_imputation", run_name="__main__")
+    runpy.run_module("epidemic_dates", run_name="__main__")
     assert (tmp_path / "results.csv").exists()

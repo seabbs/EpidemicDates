@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Sam Abbott. MIT licence, see LICENSE.
-// Seeded stochastic replicates in onset-imputation.js.
+// Seeded stochastic replicates in epidemic-dates.js.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { M, bvd, pipeline } from "./helpers.mjs";
