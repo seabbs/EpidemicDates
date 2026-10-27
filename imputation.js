@@ -249,8 +249,8 @@
    * @alias module:imputation.PRESETS
    */
   const PRESETS = [
-    { name: "BVD 2026: slowing, then rising", note: "Growth about 0.05/day (Rt about 1.8) slows to slight decline after the response, then picks up again at the end.",
-      set: { ...BVD } },
+    { name: "BVD 2026: slowing, then rising", note: "Growth about 0.05/day (Rt about 1.8) slows to slight decline after the response, then picks up again at the end, with random wobble in growth throughout.",
+      set: { ...BVD, rwSd: 0.003, seed: 2 } },
     { name: "BVD 2026: slow, stall, rebound", note: "Growth slows, stalls near Rt = 1, picks up again, then is brought down. Four changes.",
       set: { knots: knotsFrom([[0, 0.05], [45, 0.05], [75, 0], [105, 0], [120, 0.03], [150, 0.03], [180, -0.03]]), O0: 1 } },
     { name: "BVD 2026: real time", note: "The slowing scenario, with data cut at day 120 after the turn.",
