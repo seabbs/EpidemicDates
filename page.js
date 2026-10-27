@@ -175,7 +175,7 @@ const CONTROLS = [
     group: "Missing onset dates",
     editor: {
       id: "piEditor",
-      hint: "Fraction of cases with no onset date, by report day."
+      hint: "Among cases in the line list, the share with a report date but no onset date, by report day. These are the cases each method imputes."
     },
     items: [
       {
@@ -193,7 +193,7 @@ const CONTROLS = [
     group: "Case ascertainment",
     editor: {
       id: "aEditor",
-      hint: "Relative to day 0, by onset day. 1 is no change."
+      hint: "The share of all cases that are confirmed and appear in the line list at all, by onset day, relative to day 0. It changes the confirmed curve the methods try to recover, not the share of missing onsets."
     },
     items: []
   },
