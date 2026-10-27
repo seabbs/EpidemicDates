@@ -1,0 +1,19 @@
+{
+  "source": {
+    "include": ["imputation.js"]
+  },
+  "plugins": ["plugins/markdown"],
+  "markdown": {
+    "idInHeadings": true
+  },
+  "opts": {
+    "encoding": "utf8",
+    "recurse": false
+  },
+  "templates": {
+    "cleverLinks": true,
+    "default": {
+      "includeDate": false
+    }
+  }
+}
