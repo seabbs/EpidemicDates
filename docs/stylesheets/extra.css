@@ -103,3 +103,20 @@
   color: var(--md-accent-bg-color);
   background: var(--md-typeset-a-color);
 }
+
+/* package cards: the whole card links to the guide */
+.pkg-cards .pkg-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  color: var(--md-default-fg-color);
+  text-decoration: none;
+}
+.pkg-cards .pkg-card:hover {
+  border-color: var(--md-accent-fg-color);
+  box-shadow: var(--md-shadow-z2);
+}
+.pkg-cards .pkg-card strong { font-size: 0.9rem; }
+.pkg-cards .pkg-logo { height: 2.2rem; width: auto; }
+[data-md-color-scheme="default"] .pkg-cards .only-dark,
+[data-md-color-scheme="slate"] .pkg-cards .only-light { display: none; }
