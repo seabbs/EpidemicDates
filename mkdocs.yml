@@ -44,6 +44,7 @@ theme:
   logo: assets/logo-mark.svg
   favicon: assets/favicon.svg
   icon:
+    alternate: material/code-braces
     repo: fontawesome/brands/github
     edit: material/pencil
   features:
@@ -75,6 +76,21 @@ theme:
         name: Switch to light mode
 
 extra:
+  # the header's language selector, reused to switch between the guides
+  # for each programming language
+  alternate:
+    - name: Python
+      link: https://seabbs.github.io/epidemic-imputation-demonstration/docs/python/
+      lang: py
+    - name: JavaScript
+      link: https://seabbs.github.io/epidemic-imputation-demonstration/docs/javascript/
+      lang: js
+    - name: R
+      link: https://seabbs.github.io/epidemic-imputation-demonstration/docs/r/
+      lang: r
+    - name: Julia
+      link: https://seabbs.github.io/epidemic-imputation-demonstration/docs/julia/
+      lang: jl
   social:
     - icon: fontawesome/brands/github
       link: https://github.com/seabbs/epidemic-imputation-demonstration
