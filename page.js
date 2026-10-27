@@ -145,11 +145,12 @@ const CONTROLS = [
       },
       {
         id: "days",
-        label: "Days shown",
+        label: "Outbreak length (days)",
         min: 70,
         max: 357,
         step: 7,
-        fmt: v => `${v} (to ${fmtShort(v - 1)})`
+        fmt: v => `${v} (to ${fmtShort(v - 1)})`,
+        hint: 'How long the outbreak is simulated. The cut-off is set by "Real time as of" above the results.'
       }
     ]
   },

@@ -262,7 +262,7 @@ Week 0 is days 0 to 6.
 `em` in Python and `gen` in JavaScript are the same method and give the same numbers here.
 
 <figure class="doc-figure" markdown="span">
-  ![Weekly cases in the example line list from May to early September 2026. Grey bars show cases by report week. Lines show onsets with a known date and onsets after imputation by the hub, mean shift and EM methods. The three imputed curves lie close together, peak in the week of 24 July and sit above the known-onset curve.](figures/linelist.svg#only-light) ![Weekly cases in the example line list from May to early September 2026. Grey bars show cases by report week. Lines show onsets with a known date and onsets after imputation by the hub, mean shift and EM methods. The three imputed curves lie close together, peak in the week of 24 July and sit above the known-onset curve.](figures/linelist-dark.svg#only-dark)
+  ![Weekly cases in the example line list from May to early September 2026. Grey bars show cases by report week. Lines show onsets with a known date and onsets after imputation by the back-sampling, mean shift and EM methods. The three imputed curves lie close together, peak in the week of 24 July and sit above the known-onset curve.](figures/linelist.svg#only-light) ![Weekly cases in the example line list from May to early September 2026. Grey bars show cases by report week. Lines show onsets with a known date and onsets after imputation by the back-sampling, mean shift and EM methods. The three imputed curves lie close together, peak in the week of 24 July and sit above the known-onset curve.](figures/linelist-dark.svg#only-dark)
   <figcaption markdown="1">
     Weekly counts from the example line list.
     Grey bars are cases by report week.
