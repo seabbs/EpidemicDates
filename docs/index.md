@@ -1,4 +1,4 @@
-# ![EpidemicDates](assets/logo.svg#only-light){ .title-logo width="245" height="44" } ![EpidemicDates](assets/logo-dark.svg#only-dark){ .title-logo width="245" height="44" }
+# ![EpidemicDates](assets/logo.svg#only-light){ .title-logo width="245" height="44" } ![](assets/logo-dark.svg#only-dark){ .title-logo width="245" height="44" }
 
 Comparing methods for imputing missing symptom onsets.
 { .page-subtitle }
