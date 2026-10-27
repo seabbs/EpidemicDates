@@ -104,19 +104,33 @@
   background: var(--md-typeset-a-color);
 }
 
-/* package cards: the whole card links to the guide */
-.pkg-cards .pkg-card {
+/* package cards: compact, and the whole card links to the guide */
+.md-typeset .pkg-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr));
+  gap: 0.6rem;
+  margin: 1rem 0;
+}
+.md-typeset .pkg-cards > a.pkg-card {
   display: flex;
   flex-direction: column;
-  gap: 0.4rem;
+  gap: 0.25rem;
+  padding: 0.7rem 0.8rem;
+  border: 1px solid var(--md-default-fg-color--lightest);
+  border-radius: 4px;
   color: var(--md-default-fg-color);
   text-decoration: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
 }
-.pkg-cards .pkg-card:hover {
+.md-typeset .pkg-cards > a.pkg-card:hover,
+.md-typeset .pkg-cards > a.pkg-card:focus {
   border-color: var(--md-accent-fg-color);
-  box-shadow: var(--md-shadow-z2);
+  box-shadow: var(--md-shadow-z1);
 }
-.pkg-cards .pkg-card strong { font-size: 0.9rem; }
-.pkg-cards .pkg-logo { height: 2.2rem; width: auto; }
-[data-md-color-scheme="default"] .pkg-cards .only-dark,
-[data-md-color-scheme="slate"] .pkg-cards .only-light { display: none; }
+.md-typeset .pkg-cards .pkg-head { display: flex; align-items: center; gap: 0.5rem; }
+.md-typeset .pkg-cards .pkg-logo { height: 1.6rem; width: auto; margin: 0; }
+.md-typeset .pkg-cards .pkg-name { font-weight: 700; font-size: 0.8rem; }
+.md-typeset .pkg-cards .pkg-desc { font-size: 0.7rem; color: var(--md-default-fg-color--light); }
+.md-typeset .pkg-cards .pkg-open { font-size: 0.7rem; color: var(--md-typeset-a-color); margin-top: 0.2rem; }
+[data-md-color-scheme="default"] .md-typeset .pkg-cards .pkg-dark,
+[data-md-color-scheme="slate"] .md-typeset .pkg-cards .pkg-light { display: none; }
