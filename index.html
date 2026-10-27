@@ -187,9 +187,22 @@ code, .math { font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
 .tabs { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-bottom: 8px; }
 .tab { font: inherit; font-size: 0.85rem; padding: 4px 12px; border-radius: 999px;
   border: 1px solid var(--border); background: var(--surface-0); color: var(--text-secondary); cursor: pointer; }
+.mtab { font: inherit; font-size: 0.8rem; padding: 3px 10px; border-radius: 999px;
+  border: 1px solid var(--border); background: var(--surface-0); color: var(--text-secondary); cursor: pointer; }
+.mtab.active { color: var(--text-primary); border-color: var(--series-1); box-shadow: inset 0 0 0 1px var(--series-1); }
 .tab.active { color: var(--text-primary); border-color: var(--series-1); box-shadow: inset 0 0 0 1px var(--series-1); }
 table.maths td, table.maths th { text-align: left; vertical-align: top; }
 table.maths td:nth-child(2) { white-space: nowrap; }
+.stepnav { display: flex; align-items: center; gap: 10px; margin: 6px 0; font-size: 0.9rem; }
+.stepnav button { font: inherit; font-size: 0.8rem; padding: 3px 10px; border-radius: 6px;
+  border: 1px solid var(--border); background: var(--surface-0); color: var(--text-primary); cursor: pointer; }
+.stepnav button:disabled { opacity: 0.4; cursor: default; }
+.steptext { max-width: 80ch; margin-top: 6px; }
+.links { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0 0; }
+.links a { display: inline-flex; align-items: center; gap: 6px; font-size: 0.85rem; text-decoration: none;
+  color: var(--text-primary); border: 1px solid var(--border); background: var(--surface-1);
+  border-radius: 999px; padding: 4px 12px; }
+.links a:hover { border-color: var(--series-1); }
 .zoombar { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 6px; }
 .zoombar button { font: inherit; font-size: 0.8rem; padding: 3px 8px; border-radius: 6px;
   border: 1px solid var(--border); background: var(--surface-0); color: var(--text-primary); cursor: pointer; }
@@ -209,50 +222,11 @@ table.maths td:nth-child(2) { white-space: nowrap; }
     (<a href="https://github.com/InsightNet-US/BDBV-Modeling-Hub/issues/61">issue #61</a>).
     Are there potential issues with that or similar approaches?
   </p>
-  <p class="sub" style="margin-top:6px">API docs with the maths: <a href="https://seabbs.github.io/epidemic-imputation-demonstration/js/">JavaScript</a> · <a href="https://seabbs.github.io/epidemic-imputation-demonstration/python/imputation_sim.html">Python</a> · <a href="https://github.com/seabbs/epidemic-imputation-demonstration">Source</a></p>
-
-  <section class="card" style="margin-top:14px">
-    <div class="tabs" role="tablist">
-      <h2 style="margin:0 12px 0 0">How the methods work</h2>
-      <button type="button" role="tab" class="tab active" data-tab="demo" aria-selected="true">Demo</button>
-      <button type="button" role="tab" class="tab" data-tab="maths" aria-selected="false">Maths</button>
-      <button type="button" role="tab" class="tab" data-tab="assumptions" aria-selected="false">Assumptions</button>
-    </div>
-    <div class="tabpanel" id="tab-demo">
-      <p class="sub">A case is reported on day t with no onset date. Where does each method put its onset? Ink is where it truly falls, given the simulated epidemic. Uses the scenario set below.</p>
-      <div class="ctl" style="max-width:520px">
-        <label for="tSel">Report day t <output id="tSelOut"></output></label>
-        <input type="range" id="tSel" min="0" max="180" step="1" value="120">
-      </div>
-      <div class="legend" id="legendD"></div>
-      <div class="chart" id="chartD"></div>
-    </div>
-    <div class="tabpanel prose" id="tab-assumptions" hidden>
-      <ul>
-        <li><b>The hub method.</b> We assume each missing onset is drawn from the raw empirical delays of cases with both dates, pooled over the whole data vintage, with no correction for right truncation and no stratification by time or place. This follows the description in issue #61 but is not confirmed. If the delays were corrected for truncation, the method would behave like the forward draw.</li>
-        <li><b>The target.</b> Truth is the onsets of the cases reported by the cut-off. Recent weeks are therefore incomplete for the truth and every method alike. Neither the hub target, as far as we know, nor this page corrects for right truncation. The comparisons isolate imputation error. They say nothing about the much larger truncation in recent weeks, or about scoring forecasts against later vintages.</li>
-        <li><b>Missingness.</b> Onsets are missing at random given the report day, unless "Extra missingness with long delays" is set above 0.</li>
-        <li><b>Delays.</b> Double interval censored daily Gamma, the same for every case unless the mean is set to change over time. Real delays have heavier tails.</li>
-        <li><b>The generative method.</b> It is given the true delay and noise-free expected counts, so it is a best case.</li>
-        <li><b>Outputs.</b> Expected values unless replicates are switched on. Counts are summed to onset weeks. Rt uses a Gamma generation interval with mean 15 days and SD 9.</li>
-      </ul>
-    </div>
-    <div class="tabpanel prose" id="tab-maths" hidden>
-      <p>Notation: a case reported on day <i>t</i> has unknown onset day <i>s</i>. <i>C</i>(<i>s</i>) is expected confirmed onsets, <i>f</i>(<i>d</i>) the forward onset-to-report delay, <i>F</i> its CDF, π(<i>t</i>, <i>d</i>) the chance an onset is missing, and <i>T</i> the data cut-off.</p>
-      <table class="maths">
-        <tr><th>Method</th><th>Where a missing onset goes</th><th>In words</th></tr>
-        <tr><td>Truth</td><td>P(<i>s</i> | <i>t</i>) ∝ <i>C</i>(<i>s</i>) <i>f</i>(<i>t</i>−<i>s</i>) π(<i>t</i>, <i>t</i>−<i>s</i>)</td><td>Depends on how many onsets there were on each earlier day.</td></tr>
-        <tr><td>Hub</td><td>P(<i>s</i> | <i>t</i>) = <i>g</i>(<i>t</i>−<i>s</i>), &nbsp; <i>g</i>(<i>d</i>) ∝ <i>f</i>(<i>d</i>) Σ<sub><i>u</i> ≤ <i>T</i>−<i>d</i></sub> <i>C</i>(<i>u</i>)(1−π)</td><td>Pooled delays of complete cases reported by <i>T</i>. The same for every <i>t</i>.</td></tr>
-        <tr><td>Mean shift</td><td><i>s</i> = <i>t</i> − round(Σ<sub><i>d</i></sub> <i>d</i> <i>g</i>(<i>d</i>))</td><td>Every missing case moves back by the same amount.</td></tr>
-        <tr><td>Forward draw</td><td>P(<i>s</i> | <i>t</i>) = <i>f</i>(<i>t</i>−<i>s</i>)</td><td>The delay from onset, ignoring how many onsets there were.</td></tr>
-        <tr><td>Generative</td><td>P(<i>s</i> | <i>t</i>) ∝ λ(<i>s</i>) <i>f</i>(<i>t</i>−<i>s</i>), &nbsp; λ(<i>s</i>) = [<i>n</i><sub>complete</sub>(<i>s</i>) + <i>n</i><sub>allocated</sub>(<i>s</i>)] / <i>F</i>(<i>T</i>−<i>s</i>)</td><td>EM back-projection: share missing cases by the current onset curve, re-estimate the curve, repeat.</td></tr>
-      </table>
-      <p><b>Steady growth.</b> If <i>C</i>(<i>s</i>) ∝ e<sup><i>rs</i></sup> and π is constant, the truth is ∝ <i>f</i>(<i>d</i>) e<sup>−<i>rd</i></sup>. The sum in <i>g</i> is also ∝ e<sup>−<i>rd</i></sup>, so the hub draw matches the truth. When growth changes, the two differ.</p>
-      <p><b>Delays.</b> <i>f</i> is a double interval censored daily Gamma (primarycensored form): <i>f</i>(<i>d</i>) = <i>G</i>(<i>d</i>+1) − 2<i>G</i>(<i>d</i>) + <i>G</i>(<i>d</i>−1), with <i>G</i>(<i>x</i>) = ∫<sub>0</sub><sup><i>x</i></sup> <i>F</i>(<i>u</i>) d<i>u</i>.</p>
-      <p><b>Rt.</b> From the weekly growth rate <i>r</i> with a Gamma generation interval (shape <i>k</i>, scale θ): <i>R</i> = (1 + <i>r</i>θ)<sup><i>k</i></sup>.</p>
-      <p><b>A proper model.</b> Here the generative method is given the true delay, and that is fine for this demonstration. A full model would estimate a time-varying delay jointly with a smoothed onset curve (for example a renewal process) and could model ascertainment, as epinowcast does.</p>
-    </div>
-  </section>
+  <nav class="links" aria-label="Project links">
+    <a href="https://github.com/seabbs/epidemic-imputation-demonstration"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg><span>GitHub</span></a>
+    <a href="https://seabbs.github.io/epidemic-imputation-demonstration/js/">JavaScript docs</a>
+    <a href="https://seabbs.github.io/epidemic-imputation-demonstration/python/imputation_sim.html">Python docs</a>
+  </nav>
 
   <div id="verdict" class="verdict" style="margin-top:14px"></div>
 
@@ -301,6 +275,57 @@ table.maths td:nth-child(2) { white-space: nowrap; }
         <div class="table-wrap"><table id="summary"></table></div>
       </section>
 
+      <section class="card">
+        <div class="tabs" role="tablist">
+          <h2 style="margin:0 12px 0 0">How the methods work</h2>
+          <button type="button" role="tab" class="tab active" data-tab="steps" aria-selected="true">Step through</button>
+          <button type="button" role="tab" class="tab" data-tab="demo" aria-selected="false">On this scenario</button>
+          <button type="button" role="tab" class="tab" data-tab="maths" aria-selected="false">Maths</button>
+          <button type="button" role="tab" class="tab" data-tab="assumptions" aria-selected="false">Assumptions</button>
+        </div>
+        <div class="tabpanel" id="tab-steps">
+          <p class="sub">A toy line list of 15 cases. Two have no onset date. Pick a method and step through how it imputes the onset of the case reported on day 17.</p>
+          <div class="tabs" id="stepMethods"></div>
+          <div class="stepnav"><button type="button" id="stepPrev">◀ Back</button><span id="stepTitle"></span><button type="button" id="stepNext">Next ▶</button></div>
+          <div class="chart" id="stepChart"></div>
+          <p id="stepText" class="steptext"></p>
+        </div>
+        <div class="tabpanel" id="tab-demo" hidden>
+          <p class="sub">A case is reported on day t with no onset date. Where does each method put its onset? Ink is where it truly falls, given the simulated epidemic. Uses the scenario set below.</p>
+          <div class="ctl" style="max-width:520px">
+            <label for="tSel">Report day t <output id="tSelOut"></output></label>
+            <input type="range" id="tSel" min="0" max="180" step="1" value="120">
+          </div>
+          <div class="legend" id="legendD"></div>
+          <div class="chart" id="chartD"></div>
+        </div>
+        <div class="tabpanel prose" id="tab-assumptions" hidden>
+          <ul>
+            <li><b>The hub method.</b> We assume each missing onset is drawn from the raw empirical delays of cases with both dates, pooled over the whole data vintage, with no correction for right truncation and no stratification by time or place. This follows the description in issue #61 but is not confirmed. If the delays were corrected for truncation, the method would behave like the forward draw.</li>
+            <li><b>The target.</b> Truth is the onsets of the cases reported by the cut-off. Recent weeks are therefore incomplete for the truth and every method alike. Neither the hub target, as far as we know, nor this page corrects for right truncation. The comparisons isolate imputation error. They say nothing about the much larger truncation in recent weeks, or about scoring forecasts against later vintages.</li>
+            <li><b>Missingness.</b> Onsets are missing at random given the report day, unless "Extra missingness with long delays" is set above 0.</li>
+            <li><b>Delays.</b> Double interval censored daily Gamma, the same for every case unless the mean is set to change over time. Real delays have heavier tails.</li>
+            <li><b>The generative method.</b> It is given the true delay and noise-free expected counts, so it is a best case.</li>
+            <li><b>Outputs.</b> Expected values unless replicates are switched on. Counts are summed to onset weeks. Rt uses a Gamma generation interval with mean 15 days and SD 9.</li>
+          </ul>
+        </div>
+        <div class="tabpanel prose" id="tab-maths" hidden>
+          <p>Notation: a case reported on day <i>t</i> has unknown onset day <i>s</i>. <i>C</i>(<i>s</i>) is expected confirmed onsets, <i>f</i>(<i>d</i>) the forward onset-to-report delay, <i>F</i> its CDF, π(<i>t</i>, <i>d</i>) the chance an onset is missing, and <i>T</i> the data cut-off.</p>
+          <table class="maths">
+            <tr><th>Method</th><th>Where a missing onset goes</th><th>In words</th></tr>
+            <tr><td>Truth</td><td>P(<i>s</i> | <i>t</i>) ∝ <i>C</i>(<i>s</i>) <i>f</i>(<i>t</i>−<i>s</i>) π(<i>t</i>, <i>t</i>−<i>s</i>)</td><td>Depends on how many onsets there were on each earlier day.</td></tr>
+            <tr><td>Hub</td><td>P(<i>s</i> | <i>t</i>) = <i>g</i>(<i>t</i>−<i>s</i>), &nbsp; <i>g</i>(<i>d</i>) ∝ <i>f</i>(<i>d</i>) Σ<sub><i>u</i> ≤ <i>T</i>−<i>d</i></sub> <i>C</i>(<i>u</i>)(1−π)</td><td>Pooled delays of complete cases reported by <i>T</i>. The same for every <i>t</i>.</td></tr>
+            <tr><td>Mean shift</td><td><i>s</i> = <i>t</i> − round(Σ<sub><i>d</i></sub> <i>d</i> <i>g</i>(<i>d</i>))</td><td>Every missing case moves back by the same amount.</td></tr>
+            <tr><td>Forward draw</td><td>P(<i>s</i> | <i>t</i>) = <i>f</i>(<i>t</i>−<i>s</i>)</td><td>The delay from onset, ignoring how many onsets there were.</td></tr>
+            <tr><td>Generative</td><td>P(<i>s</i> | <i>t</i>) ∝ λ(<i>s</i>) <i>f</i>(<i>t</i>−<i>s</i>), &nbsp; λ(<i>s</i>) = [<i>n</i><sub>complete</sub>(<i>s</i>) + <i>n</i><sub>allocated</sub>(<i>s</i>)] / <i>F</i>(<i>T</i>−<i>s</i>)</td><td>EM back-projection: share missing cases by the current onset curve, re-estimate the curve, repeat.</td></tr>
+          </table>
+          <p><b>Steady growth.</b> If <i>C</i>(<i>s</i>) ∝ e<sup><i>rs</i></sup> and π is constant, the truth is ∝ <i>f</i>(<i>d</i>) e<sup>−<i>rd</i></sup>. The sum in <i>g</i> is also ∝ e<sup>−<i>rd</i></sup>, so the hub draw matches the truth. When growth changes, the two differ.</p>
+          <p><b>Delays.</b> <i>f</i> is a double interval censored daily Gamma (primarycensored form): <i>f</i>(<i>d</i>) = <i>G</i>(<i>d</i>+1) − 2<i>G</i>(<i>d</i>) + <i>G</i>(<i>d</i>−1), with <i>G</i>(<i>x</i>) = ∫<sub>0</sub><sup><i>x</i></sup> <i>F</i>(<i>u</i>) d<i>u</i>.</p>
+          <p><b>Rt.</b> From the weekly growth rate <i>r</i> with a Gamma generation interval (shape <i>k</i>, scale θ): <i>R</i> = (1 + <i>r</i>θ)<sup><i>k</i></sup>.</p>
+          <p><b>A proper model.</b> Here the generative method is given the true delay, and that is fine for this demonstration. A full model would estimate a time-varying delay jointly with a smoothed onset curve (for example a renewal process) and could model ascertainment, as epinowcast does.</p>
+        </div>
+      </section>
+
       <section class="card prose">
         <details>
           <summary>Notes</summary>
@@ -327,7 +352,7 @@ table.maths td:nth-child(2) { white-space: nowrap; }
 // ---------- maths from imputation.js ----------
 const {
   D, KNOTS, R_MIN, R_MAX, DEFAULTS, PRESETS, knotsFrom, rToR, wrongSideOf1,
-  clamp, normalise, pmfMean, scenario, expectedData, runMethods, weekly,
+  clamp, normalise, pmfMean, delayPmf, scenario, expectedData, runMethods, weekly,
   growth, stochastic, metrics, completeWeeks
 } = Imputation;
 // line styles keep overlapping methods visible
@@ -831,8 +856,161 @@ new ResizeObserver(entries => {
   const w = Math.round(entries[0].contentRect.width);
   if (w !== lastWidth) { lastWidth = w; schedule(); }
 }).observe(document.querySelector(".charts"));
+
+// ---------- step-through of the methods on a toy line list ----------
+const TOY = {
+  complete: [[2, 5], [3, 9], [4, 6], [5, 7], [6, 12], [7, 9], [8, 10], [9, 14],
+    [10, 12], [11, 13], [12, 18], [13, 15], [14, 16]],
+  missing: [17, 19], t: 17, T: 20, days: 20
+};
+const STEP = { method: "hub", step: 0 };
+function toyWeights() {
+  const dmax = 10, { t, T } = TOY;
+  const delays = TOY.complete.map(([o, r]) => r - o);
+  const g = new Array(dmax + 1).fill(0);
+  for (const d of delays) g[d] += 1 / delays.length;
+  const f = Array.from(delayPmf(4, 0.8).slice(0, dmax + 1));
+  const fs = f.reduce((a, b) => a + b, 0); for (let d = 0; d <= dmax; d++) f[d] /= fs;
+  const m = Math.round(delays.reduce((a, b) => a + b, 0) / delays.length);
+  // onset curve: complete onsets per day, smoothed over 3 days and divided
+  // by the fraction of cases with that onset reported by T
+  const n = new Array(T + 1).fill(0);
+  for (const [o] of TOY.complete) n[o]++;
+  const F = d => f.slice(0, Math.min(d, dmax) + 1).reduce((a, b) => a + b, 0);
+  const lam = n.map((_, s) => ((n[s - 1] || 0) + n[s] + (n[s + 1] || 0)) / 3 / Math.max(F(T - s), 0.05));
+  const onsetW = { hub: [], fwd: [], gen: [], mean: [] };
+  let gs = 0;
+  for (let d = 0; d <= dmax; d++) {
+    const s = t - d;
+    onsetW.hub.push({ s, w: g[d] }); onsetW.fwd.push({ s, w: f[d] });
+    const w = (lam[s] || 0) * f[d]; onsetW.gen.push({ s, w }); gs += w;
+  }
+  onsetW.gen.forEach(o => { o.w /= gs; });
+  onsetW.mean = [{ s: t - m, w: 1 }];
+  return { g, f, m, lam, onsetW, delays, dmax };
+}
+const STEP_TITLES = ["The data", "The delay the method uses", "Where the onset could be", "Impute"];
+const STEP_TEXT = {
+  hub: [
+    "Thirteen cases have an onset (dot) and a report day (square). The line between them is the delay. Two cases have only a report day.",
+    "The hub method pools the delays of every case with both dates into one distribution. Here most delays are 2 days, with a tail to 6.",
+    "For the case reported on day 17, each possible onset day gets the probability of the matching delay. The same distribution is used whatever day the case was reported.",
+    "One delay is drawn at random from that distribution, and the onset is set to the report day minus the delay. Repeating this for every missing case gives the imputed onset curve."
+  ],
+  mean: [
+    "Thirteen cases have an onset (dot) and a report day (square). The line between them is the delay. Two cases have only a report day.",
+    "The mean shift uses only the average of the pooled delays, here rounded to 3 days.",
+    "There is one possible onset: the report day minus the mean delay.",
+    "Every missing case moves back by the same 3 days. There is no spread, so the shape of the report curve is kept but shifted."
+  ],
+  fwd: [
+    "Thirteen cases have an onset (dot) and a report day (square). The line between them is the delay. Two cases have only a report day.",
+    "The forward draw uses the delay from onset to report as it would be estimated with corrections for truncation and censoring. Here it has a mean of 4 days.",
+    "Each possible onset day gets the probability of the matching forward delay. It ignores how many onsets there were on each day.",
+    "One delay is drawn at random and subtracted from the report day, as for the hub method but with the forward delay."
+  ],
+  gen: [
+    "Thirteen cases have an onset (dot) and a report day (square). The line between them is the delay. Two cases have only a report day.",
+    "The generative method uses the forward delay and an estimate of the onset curve λ (line), built from the complete cases and corrected for cases not yet reported.",
+    "Each possible onset day s is weighted by λ(s) × f(17 − s): how many onsets there were that day times the chance of that delay. Days with more onsets get more weight.",
+    "The missing case is shared across onset days in proportion to those weights. The onset curve is then re-estimated with the shared cases added, and the two steps repeat until nothing changes."
+  ]
+};
+function drawSteps() {
+  const el = document.getElementById("stepChart");
+  if (!el) return;
+  const { onsetW, g, f, m, lam, dmax } = toyWeights();
+  const key = STEP.method, step = STEP.step, color = `var(${METHODS.find(x => x.key === key).col})`;
+  const W = 900, H = 330, x0 = 60, dx = 38, rowH = 11, top = 14;
+  const X = d => x0 + d * dx;
+  const nRows = TOY.complete.length + TOY.missing.length;
+  const axisY = top + nRows * rowH + 10, lowTop = axisY + 34, lowBase = H - 26;
+  let g2 = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Step-through of the imputation method">`;
+  // day axis
+  for (let d = 0; d <= TOY.days; d++) {
+    g2 += `<line x1="${X(d)}" x2="${X(d)}" y1="${top - 4}" y2="${axisY}" stroke="var(--grid)"/>`;
+    g2 += `<text x="${X(d)}" y="${axisY + 13}" text-anchor="middle" font-size="10" fill="var(--text-muted)">${d}</text>`;
+  }
+  g2 += `<text x="${X(TOY.days) + 8}" y="${axisY + 13}" font-size="10" fill="var(--text-muted)">day</text>`;
+  // complete cases
+  TOY.complete.forEach(([o, r], i) => {
+    const y = top + i * rowH;
+    g2 += `<line x1="${X(o)}" x2="${X(r)}" y1="${y}" y2="${y}" stroke="var(--text-secondary)" stroke-width="2"/>`;
+    g2 += `<circle cx="${X(o)}" cy="${y}" r="4" fill="var(--text-primary)"/>`;
+    g2 += `<rect x="${X(r) - 4}" y="${y - 4}" width="8" height="8" fill="var(--text-secondary)"/>`;
+  });
+  // missing cases
+  TOY.missing.forEach((r, j) => {
+    const y = top + (TOY.complete.length + j) * rowH, sel = r === TOY.t;
+    g2 += `<text x="${X(r) - 10}" y="${y + 4}" text-anchor="end" font-size="11" font-weight="700" fill="${sel ? color : "var(--text-muted)"}">?</text>`;
+    g2 += `<rect x="${X(r) - 4}" y="${y - 4}" width="8" height="8" fill="${sel ? color : "var(--text-muted)"}"/>`;
+    if (sel && step === 3) {
+      if (key === "hub" || key === "fwd") {
+        // show one draw: the most likely delay, for illustration
+        const best = onsetW[key].reduce((a, b) => (b.w > a.w ? b : a));
+        g2 += `<line x1="${X(best.s)}" x2="${X(r)}" y1="${y}" y2="${y}" stroke="${color}" stroke-width="2" stroke-dasharray="4 3"/>`;
+        g2 += `<circle cx="${X(best.s)}" cy="${y}" r="5" fill="${color}"/>`;
+        g2 += `<text x="${X(best.s) - 8}" y="${y + 4}" text-anchor="end" font-size="10" fill="var(--text-secondary)">one draw</text>`;
+      } else if (key === "mean") {
+        g2 += `<line x1="${X(r - m)}" x2="${X(r)}" y1="${y}" y2="${y}" stroke="${color}" stroke-width="2" stroke-dasharray="4 3"/>`;
+        g2 += `<circle cx="${X(r - m)}" cy="${y}" r="5" fill="${color}"/>`;
+      } else {
+        for (const o of onsetW.gen) if (o.w > 0.01) g2 += `<circle cx="${X(o.s)}" cy="${y}" r="${2 + 10 * Math.sqrt(o.w)}" fill="${color}" opacity="0.55"/>`;
+      }
+    }
+  });
+  // lower panel
+  const maxW = Math.max(...(step === 1 ? (key === "gen" || key === "fwd" ? f : g) : onsetW[key].map(o => o.w)), 0.01);
+  const barH = w => (lowBase - lowTop) * w / maxW;
+  if (step === 1) {
+    const dist = key === "fwd" || key === "gen" ? f : g;
+    const label = key === "fwd" || key === "gen" ? "forward delay f(d)" : "pooled delays g(d)";
+    if (key === "mean") {
+      for (let d = 0; d <= dmax; d++) g2 += `<rect x="${X(d) - 9}" y="${lowBase - barH(g[d])}" width="18" height="${barH(g[d])}" fill="var(--grid)"/>`;
+      g2 += `<line x1="${X(m)}" x2="${X(m)}" y1="${lowTop}" y2="${lowBase}" stroke="${color}" stroke-width="3"/>`;
+      g2 += `<text x="${X(m) + 6}" y="${lowTop + 10}" font-size="11" fill="var(--text-secondary)">mean delay ≈ ${m} days</text>`;
+    } else {
+      for (let d = 0; d <= dmax; d++) g2 += `<rect x="${X(d) - 9}" y="${lowBase - barH(dist[d])}" width="18" height="${barH(dist[d])}" fill="${color}" opacity="0.8"/>`;
+      g2 += `<text x="${X(dmax) + 14}" y="${lowTop + 10}" font-size="11" fill="var(--text-secondary)">${label}</text>`;
+    }
+    if (key === "gen") {
+      const lmax = Math.max(...lam);
+      const pts = lam.map((v, s) => `${X(s)},${lowBase - (lowBase - lowTop) * v / lmax}`).join(" ");
+      g2 += `<polyline points="${pts}" fill="none" stroke="var(--text-primary)" stroke-width="2"/>`;
+      g2 += `<text x="${X(TOY.days) - 4}" y="${lowTop + 24}" text-anchor="end" font-size="11" fill="var(--text-secondary)">onset curve λ(s), on the day axis</text>`;
+    }
+    g2 += `<text x="${x0 - 8}" y="${lowBase + 14}" text-anchor="end" font-size="10" fill="var(--text-muted)">delay (days) →</text>`;
+    for (let d = 0; d <= dmax; d++) g2 += `<text x="${X(d)}" y="${lowBase + 14}" text-anchor="middle" font-size="10" fill="var(--text-muted)">${d}</text>`;
+  } else if (step >= 2) {
+    for (const o of onsetW[key]) {
+      if (o.s < 0) continue;
+      g2 += `<rect x="${X(o.s) - 9}" y="${lowBase - barH(o.w)}" width="18" height="${barH(o.w)}" fill="${color}" opacity="0.8"/>`;
+    }
+    g2 += `<text x="${x0 - 8}" y="${lowTop + 10}" text-anchor="end" font-size="10" fill="var(--text-muted)">P(onset)</text>`;
+    g2 += `<line x1="${X(TOY.t)}" x2="${X(TOY.t)}" y1="${lowTop}" y2="${lowBase}" stroke="var(--text-muted)" stroke-dasharray="3 3"/>`;
+    g2 += `<text x="${X(TOY.t) + 4}" y="${lowTop + 10}" font-size="10" fill="var(--text-muted)">report day 17</text>`;
+  }
+  g2 += `<line x1="${x0 - 20}" x2="${X(TOY.days)}" y1="${lowBase}" y2="${lowBase}" stroke="var(--text-muted)"/>`;
+  g2 += `</svg>`;
+  el.innerHTML = g2;
+  document.getElementById("stepTitle").textContent = `Step ${step + 1} of 4: ${STEP_TITLES[step]}`;
+  document.getElementById("stepText").textContent = STEP_TEXT[key][step];
+  document.getElementById("stepPrev").disabled = step === 0;
+  document.getElementById("stepNext").disabled = step === 3;
+  for (const b of document.querySelectorAll("#stepMethods .mtab")) b.classList.toggle("active", b.dataset.m === key);
+}
+function wireSteps() {
+  const host = document.getElementById("stepMethods");
+  host.innerHTML = METHODS.map(m => `<button type="button" class="mtab" data-m="${m.key}">${m.name}</button>`).join("");
+  for (const b of host.querySelectorAll(".mtab")) b.addEventListener("click", () => { STEP.method = b.dataset.m; drawSteps(); });
+  document.getElementById("stepPrev").addEventListener("click", () => { STEP.step = Math.max(0, STEP.step - 1); drawSteps(); });
+  document.getElementById("stepNext").addEventListener("click", () => { STEP.step = Math.min(3, STEP.step + 1); drawSteps(); });
+  drawSteps();
+}
+
 buildControls();
 wireEditor();
+wireSteps();
 render();
 </script>
 </body>
