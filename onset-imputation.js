@@ -229,7 +229,7 @@
   const DEFAULTS = {
     days: 180, O0: 1, knots: knotsFrom([[0, 0.05], [60, 0.05], [110, -0.01], [140, -0.01], [175, 0.03]]), rwSd: 0, seed: 1,
     mu0: 6.6, mu1: 6.6, cv: 0.92, pi0: 0.15, pi1: 0.15, beta: 0,
-    asc: KNOTS.map(() => 1), retro: false, cutoff: 179, nowcast: true,
+    asc: KNOTS.map(() => 1), retro: false, cutoff: null, nowcast: true,
     stoch: false, reps: 30, ended: false
   };
   const LONG8 = { mu0: 8, mu1: 8, cv: 1, pi0: 0.4, pi1: 0.4 };
@@ -445,7 +445,11 @@
     // Internal day index i = display day + B. The burn-in of B days at the
     // initial growth rate avoids an artificial start at day 0.
     const N = p.days, B = D;
-    const Td = p.retro ? N - 1 + D : Math.min(p.cutoff, N - 1);
+    const cut = p.cutoff === null || p.cutoff === undefined ? N - 1 : p.cutoff;
+    const Td = p.retro ? N - 1 + D : Math.min(cut, N - 1);
+    // weeks are counted back from the last day shown, so the final week
+    // ends on the cut-off in real time
+    const wk0 = Math.min(N, Td + 1) % 7;
     const T = Td + B;
     const S = T + 1;
     const r = new Float64Array(S), C = new Float64Array(S);
@@ -513,7 +517,7 @@
     // expected fraction of each onset day's cases reported by the cut-off
     const cover = new Float64Array(S);
     for (let i = 0; i < S; i++) cover[i] = F[i][Math.min(T - i, D)];
-    return { N, B, T, Td, S, r, C, f, F, pim, fbar, cover };
+    return { N, B, T, Td, S, r, C, f, F, pim, fbar, cover, wk0 };
   }
 
   // ---------- expected-value data ----------
@@ -833,11 +837,11 @@
       res.mean = shiftImpute(comp, miss, Math.round(pmfMean(g)), S);
       res.gen = emImpute(comp, miss, sc, res.hub);
       if (nowcast) for (const k of Object.keys(res)) res[k] = correctTruncation(res[k], sc);
-      const tw = weekly(truth, W, sc.B);
+      const tw = weekly(truth, W, sc.B + sc.wk0);
       const gtw = growth(tw, 0.5);
       grTruth.push(gtw);
       for (const M of METHODS) {
-        const mw = weekly(res[M.key], W, sc.B);
+        const mw = weekly(res[M.key], W, sc.B + sc.wk0);
         relErr[M.key].push(Array.from(mw, (v, w) => tw[w] >= 5 ? v / tw[w] - 1 : null));
         const gmw = growth(mw, 0.5);
         gr[M.key].push(gmw);
@@ -855,17 +859,17 @@
       bands[M.key] = []; gbands[M.key] = []; ebands[M.key] = [];
       for (let w = 0; w < W; w++) {
         const lo = q(relErr[M.key], w, 0.05), hi = q(relErr[M.key], w, 0.95);
-        if (lo !== null) bands[M.key].push({ x: 7 * w + 3.5, lo, hi });
+        if (lo !== null) bands[M.key].push({ x: sc.wk0 + 7 * w + 3.5, lo, hi });
         const glo = q(gr[M.key], w, 0.05), ghi = q(gr[M.key], w, 0.95);
-        if (glo !== null) gbands[M.key].push({ x: 7 * w + 3.5, lo: glo, hi: ghi });
+        if (glo !== null) gbands[M.key].push({ x: sc.wk0 + 7 * w + 3.5, lo: glo, hi: ghi });
         const elo = q(gerr[M.key], w, 0.05), ehi = q(gerr[M.key], w, 0.95);
-        if (elo !== null) ebands[M.key].push({ x: 7 * w + 3.5, lo: elo, hi: ehi });
+        if (elo !== null) ebands[M.key].push({ x: sc.wk0 + 7 * w + 3.5, lo: elo, hi: ehi });
       }
     }
     const tb = [];
     for (let w = 0; w < W; w++) {
       const lo = q(grTruth, w, 0.05), hi = q(grTruth, w, 0.95);
-      if (lo !== null) tb.push({ x: 7 * w + 3.5, lo, hi });
+      if (lo !== null) tb.push({ x: sc.wk0 + 7 * w + 3.5, lo, hi });
     }
     return { bands, gbands, ebands, truthBand: tb };
   }
@@ -974,7 +978,7 @@
     return Array.from({ length: W }, (_, w) => {
       let num = 0, den = 0;
       for (let d = 0; d < 7; d++) {
-        const i = sc.B + 7 * w + d;
+        const i = sc.B + sc.wk0 + 7 * w + d;
         num += sc.C[i] * sc.cover[i]; den += sc.C[i];
       }
       return den > 0 ? num / den >= threshold : true;
@@ -1074,14 +1078,14 @@
     const W = Math.floor(Math.min(sc.N, sc.Td + 1) / 7);
     const cs = comparisonSeries(p, sc, ex, R);
     const ok = completeWeeks(sc, W, cs.nowcast ? 0.3 : 0.8);
-    const truth = weekly(cs.truth, W, sc.B);
+    const truth = weekly(cs.truth, W, sc.B + sc.wk0);
     const gT = growth(truth);
     const out = {
       params: p,
-      weekStart: Array.from({ length: W }, (_, w) => 7 * w),
+      weekStart: Array.from({ length: W }, (_, w) => sc.wk0 + 7 * w),
       complete: ok,
       truth: Array.from(truth),
-      reported: Array.from(weekly(ex.rep, W, sc.B)),
+      reported: Array.from(weekly(ex.rep, W, sc.B + sc.wk0)),
       growth: { truth: gT },
       rt: { truth: gT.map(rToR) },
       imputed: {},
@@ -1090,7 +1094,7 @@
       forwardDelay: Array.from(sc.fbar)
     };
     for (const m of METHODS) {
-      const mw = weekly(cs.methods[m.key], W, sc.B);
+      const mw = weekly(cs.methods[m.key], W, sc.B + sc.wk0);
       const gM = growth(mw);
       out.imputed[m.key] = Array.from(mw);
       out.growth[m.key] = gM;

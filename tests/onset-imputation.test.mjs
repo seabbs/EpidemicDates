@@ -12,9 +12,9 @@ function run(set) {
   const ex = M.expectedData(sc);
   const R = M.runMethods(sc, ex.comp, ex.miss, ex.empCounts);
   const W = Math.floor(Math.min(sc.N, sc.Td + 1) / 7);
-  const tw = M.weekly(ex.truth, W, sc.B);
+  const tw = M.weekly(ex.truth, W, sc.B + sc.wk0);
   const mw = {};
-  for (const m of M.METHODS) mw[m.key] = M.weekly(R[m.key], W, sc.B);
+  for (const m of M.METHODS) mw[m.key] = M.weekly(R[m.key], W, sc.B + sc.wk0);
   return { p, sc, ex, R, W, tw, mw };
 }
 const maxRelErr = (mw, tw) => Math.max(...Array.from(mw, (v, w) =>
@@ -79,7 +79,7 @@ test("expected hub error lies inside the stochastic 90% band", () => {
   const st = M.stochastic(sc, W, 60);
   let inside = 0, n = 0;
   for (const b of st.bands.hub) {
-    const w = (b.x - 3.5) / 7;
+    const w = (b.x - 3.5 - sc.wk0) / 7;
     if (tw[w] < 50) continue;
     const e = mw.hub[w] / tw[w] - 1;
     n++;
@@ -92,8 +92,8 @@ test("run() matches the lower-level pipeline", () => {
   const res = M.run(bvd);
   const { p, sc, ex, R, W } = run(bvd);
   const cs = M.comparisonSeries(p, sc, ex, R);
-  assert.deepEqual(res.truth, Array.from(M.weekly(cs.truth, W, sc.B)));
-  assert.deepEqual(res.imputed.hub, Array.from(M.weekly(cs.methods.hub, W, sc.B)));
+  assert.deepEqual(res.truth, Array.from(M.weekly(cs.truth, W, sc.B + sc.wk0)));
+  assert.deepEqual(res.imputed.hub, Array.from(M.weekly(cs.methods.hub, W, sc.B + sc.wk0)));
   assert.ok(Math.abs(res.metrics.gen.maxRel) < 1e-6);
 });
 

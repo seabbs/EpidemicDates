@@ -41,7 +41,8 @@ const CONTROLS = [
     { id: "retro", type: "check", label: "Retrospective (all cases eventually reported)" },
     { id: "nowcast", type: "check", label: "Correct for right truncation (nowcast with the true delay)" },
     { id: "ended", type: "check", label: "Outbreak over (no onsets after the days shown)" },
-    { id: "cutoff", label: "Real-time cut-off (day)", min: 40, max: 240, step: 1, fmt: v => v }
+    { id: "cutoff", label: "Real-time cut-off (day)", min: 40, max: 238, step: 1, fmt: v => v,
+      hint: "At the far right, the cut-off is the last day shown." }
   ]},
   { group: "Noise", items: [
     { id: "stoch", type: "check", label: "Add stochastic replicates (Poisson)" },
@@ -247,21 +248,21 @@ function compute() {
 function render() {
   const t0 = performance.now();
   const { sc, ex, R, W, st, stochMsg } = compute();
-  const xw = w => 7 * w + 3.5;
+  const xw = w => sc.wk0 + 7 * w + 3.5, x0w = sc.wk0, x1w = sc.wk0 + 7 * W;
   const cs = comparisonSeries(P, sc, ex, R);
-  const tw = weekly(cs.truth, W, sc.B), rw = weekly(ex.rep, W, sc.B);
-  const mw = {}; for (const M of METHODS) mw[M.key] = weekly(cs.methods[M.key], W, sc.B);
+  const tw = weekly(cs.truth, W, sc.B + sc.wk0), rw = weekly(ex.rep, W, sc.B + sc.wk0);
+  const mw = {}; for (const M of METHODS) mw[M.key] = weekly(cs.methods[M.key], W, sc.B + sc.wk0);
   const gT = growth(tw), gM = {}; for (const M of METHODS) gM[M.key] = growth(mw[M.key]);
-  const rIn = Array.from({ length: W }, (_, w) => { let s = 0; for (let d = 0; d < 7; d++) s += sc.r[sc.B + 7 * w + d] ?? 0; return s / 7; });
+  const rIn = Array.from({ length: W }, (_, w) => { let s = 0; for (let d = 0; d < 7; d++) s += sc.r[sc.B + sc.wk0 + 7 * w + d] ?? 0; return s / 7; });
   const col = {}; for (const M of METHODS) col[M.key] = css(M.col);
   const ink = css("--text-primary"), grey = css("--reports");
   const shade = null;
   // weeks less than 80% reported by the cut-off
   const ok = completeWeeks(sc, W, cs.nowcast ? 0.3 : 0.8);
   const firstBad = ok.indexOf(false);
-  const shades = firstBad >= 0 ? [{ from: 7 * firstBad, to: 7 * W, fill: "var(--grid)", label: cs.nowcast ? "under 30% reported" : "under 80% reported" }] : [];
+  const shades = firstBad >= 0 ? [{ from: sc.wk0 + 7 * firstBad, to: x1w, fill: "var(--grid)", label: cs.nowcast ? "under 30% reported" : "under 80% reported" }] : [];
   const vline = P.retro ? undefined : sc.Td;
-  const xtip = x => `Week starting day ${x - 3.5}`;
+  const xtip = x => `Week of days ${x - 3.5} to ${x + 2.5}`;
 
 
   // chart A
@@ -271,7 +272,7 @@ function render() {
   legend(document.getElementById("legendA"), sA.map(s => ({ name: s.name, color: s.color, dash: !!s.dash })));
   lineChart(document.getElementById("chartA"), { series: sA, log: document.getElementById("logA").checked,
     xlab: "Day (onset or report week)", ylab: "Cases per week", shade, shades, vline, xtip, includeZero: true,
-    xmin: ZOOM ? ZOOM[0] : 0, xmax: ZOOM ? ZOOM[1] : 7 * W, onZoom: setZoom, aria: "Weekly onset counts, true and imputed" });
+    xmin: ZOOM ? ZOOM[0] : x0w, xmax: ZOOM ? ZOOM[1] : x1w, onZoom: setZoom, aria: "Weekly onset counts, true and imputed" });
 
   // chart B
   const sB = METHODS.map(M => ({ name: M.name, color: col[M.key], dash: M.dash, width: M.width,
@@ -279,7 +280,7 @@ function render() {
   const bB = st ? METHODS.map(M => ({ color: col[M.key], data: st.bands[M.key].map(p => ({ x: p.x, lo: p.lo * 100, hi: p.hi * 100 })) })) : [];
   legend(document.getElementById("legendB"), sB.map(s => ({ name: s.name, color: s.color, dash: !!s.dash })));
   lineChart(document.getElementById("chartB"), { series: sB, bands: bB, zero: true, includeZero: true,
-    xlab: "Onset week (day)", ylab: "Error (%)", shade, shades, vline, xtip, xmin: ZOOM ? ZOOM[0] : 0, xmax: ZOOM ? ZOOM[1] : 7 * W, onZoom: setZoom,
+    xlab: "Onset week (day)", ylab: "Error (%)", shade, shades, vline, xtip, xmin: ZOOM ? ZOOM[0] : x0w, xmax: ZOOM ? ZOOM[1] : x1w, onZoom: setZoom,
     yclamp: [-100, 200], vfmt: v => (v >= 0 ? "+" : "") + v.toFixed(1) + "%", yfmt: v => v + "%",
     aria: "Relative error of imputed weekly counts" });
 
@@ -291,7 +292,7 @@ function render() {
   const bC = st ? [{ color: ink, data: toRBand(st.truthBand) }, { color: col.hub, data: toRBand(st.gbands.hub) }] : [];
   legend(document.getElementById("legendC"), sC.map(s => ({ name: s.name, color: s.color, dash: !!s.dash })));
   lineChart(document.getElementById("chartC"), { series: sC, bands: bC, refY: 1,
-    xlab: "Onset week (day)", ylab: "Rt", shade, shades, vline, xtip, xmin: ZOOM ? ZOOM[0] : 0, xmax: ZOOM ? ZOOM[1] : 7 * W, onZoom: setZoom,
+    xlab: "Onset week (day)", ylab: "Rt", shade, shades, vline, xtip, xmin: ZOOM ? ZOOM[0] : x0w, xmax: ZOOM ? ZOOM[1] : x1w, onZoom: setZoom,
     yclamp: [0, 4], vfmt: v => v.toFixed(3), yfmt: v => v.toFixed(1),
     aria: "Reproduction number estimated from weekly counts" });
 
@@ -307,7 +308,7 @@ function render() {
   const bE = st ? METHODS.map(M => ({ color: col[M.key], data: st.ebands[M.key] })) : [];
   legend(document.getElementById("legendE"), sE.map(s => ({ name: s.name, color: s.color, dash: !!s.dash })));
   lineChart(document.getElementById("chartE"), { series: sE, bands: bE, zero: true, includeZero: true, markers: markE,
-    xlab: "Onset week (day)", ylab: "Rt error", shade, shades, vline, xtip, xmin: ZOOM ? ZOOM[0] : 0, xmax: ZOOM ? ZOOM[1] : 7 * W, onZoom: setZoom,
+    xlab: "Onset week (day)", ylab: "Rt error", shade, shades, vline, xtip, xmin: ZOOM ? ZOOM[0] : x0w, xmax: ZOOM ? ZOOM[1] : x1w, onZoom: setZoom,
     yclamp: [-1.5, 1.5], vfmt: v => (v >= 0 ? "+" : "") + v.toFixed(3), yfmt: v => v.toFixed(2),
     aria: "Error in Rt estimated from imputed counts" });
 
@@ -373,6 +374,9 @@ function buildControls() {
     const el = document.getElementById("c_" + c.id);
     el.addEventListener("input", () => {
       P[c.id] = c.type === "check" ? el.checked : +el.value;
+      // a cut-off at or past the last day shown follows the window
+      if (c.id === "cutoff" && P.cutoff >= P.days - 1) P.cutoff = null;
+      if (c.id === "days" || c.id === "cutoff") syncControls();
       syncEnabled();
       if (c.type !== "check") document.getElementById("o_" + c.id).textContent = c.fmt(P[c.id]);
       activePreset = -1; markPreset(); schedule();
@@ -388,7 +392,11 @@ function syncControls() {
   for (const g of CONTROLS) for (const c of g.items) {
     const el = document.getElementById("c_" + c.id);
     if (c.type === "check") el.checked = !!P[c.id];
-    else { el.value = P[c.id]; document.getElementById("o_" + c.id).textContent = c.fmt(P[c.id]); }
+    else if (c.id === "cutoff") {
+      const v = P.cutoff ?? P.days - 1;
+      el.value = v;
+      document.getElementById("o_cutoff").textContent = P.cutoff === null || P.cutoff === undefined ? `${v} (last day)` : v;
+    } else { el.value = P[c.id]; document.getElementById("o_" + c.id).textContent = c.fmt(P[c.id]); }
   }
   syncEnabled();
   drawEditor();
