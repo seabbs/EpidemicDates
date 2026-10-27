@@ -184,6 +184,10 @@ code, .math { font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
 .note { border-left: 3px solid var(--series-4); padding: 6px 10px;
   background: var(--surface-0); border-radius: 4px; }
 .status { font-size: 0.78rem; color: var(--text-muted); }
+.zoombar { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 6px; }
+.zoombar button { font: inherit; font-size: 0.8rem; padding: 3px 8px; border-radius: 6px;
+  border: 1px solid var(--border); background: var(--surface-0); color: var(--text-primary); cursor: pointer; }
+.zoombar button:disabled { opacity: 0.5; cursor: default; }
 .theme-toggle { float: right; font: inherit; font-size: 0.8rem;
   border: 1px solid var(--border); background: var(--surface-1);
   color: var(--text-primary); border-radius: 6px; padding: 4px 8px; cursor: pointer; }
@@ -210,6 +214,7 @@ code, .math { font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
 
     <main class="charts">
       <section class="card">
+        <div class="zoombar"><span class="hint">Drag across any time chart to zoom. Double-click to reset.</span><button type="button" id="zoomReset" disabled>Reset zoom</button></div>
         <h2>Weekly confirmed cases by onset week</h2>
         <p class="sub">Ink is the truth. Grey is by report week.</p>
         <div class="legend" id="legendA"></div>
@@ -814,11 +819,15 @@ function lineChart(el, o) {
   const height = o.height || 260;
   const m = { l: 52, r: 14, t: 10, b: 36 };
   const iw = width - m.l - m.r, ih = height - m.t - m.b;
-  let xs = [], ys = [];
-  for (const s of o.series) for (const p of s.data) if (p.y !== null && isFinite(p.y)) { xs.push(p.x); ys.push(p.y); }
-  for (const b of (o.bands || [])) for (const p of b.data) { ys.push(p.lo, p.hi); xs.push(p.x); }
+  let xs = [];
+  for (const s of o.series) for (const p of s.data) if (p.y !== null && isFinite(p.y)) xs.push(p.x);
   if (!xs.length) { el.innerHTML = "<p class='sub'>No data.</p>"; return; }
   const x0 = o.xmin ?? Math.min(...xs), x1 = o.xmax ?? Math.max(...xs);
+  // y range from the points in view, so zooming rescales the y-axis
+  const ys = [];
+  for (const s of o.series) for (const p of s.data) if (p.y !== null && isFinite(p.y) && p.x >= x0 && p.x <= x1) ys.push(p.y);
+  for (const b of (o.bands || [])) for (const p of b.data) if (p.x >= x0 && p.x <= x1) ys.push(p.lo, p.hi);
+  if (!ys.length) ys.push(0, 1);
   let y0, y1;
   if (o.log) {
     const pos = ys.filter(v => v > 0);
@@ -898,6 +907,40 @@ function lineChart(el, o) {
   hit.addEventListener("touchstart", e => move(e.touches[0]), { passive: true });
   hit.addEventListener("touchmove", e => move(e.touches[0]), { passive: true });
   hit.addEventListener("mouseleave", () => { tip.style.display = "none"; xh.style.display = "none"; });
+  if (o.onZoom) {
+    const svgEl = el.querySelector("svg");
+    const toX = ev => {
+      const rect = svgEl.getBoundingClientRect();
+      const px = clamp((ev.clientX - rect.left) * width / rect.width, m.l, m.l + iw);
+      return { px, x: x0 + (px - m.l) / iw * (x1 - x0) };
+    };
+    let start = null, brush = null;
+    hit.addEventListener("mousedown", ev => {
+      ev.preventDefault();
+      start = toX(ev);
+      brush = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+      brush.setAttribute("y", m.t); brush.setAttribute("height", ih);
+      brush.setAttribute("fill", "var(--text-muted)"); brush.setAttribute("opacity", "0.15");
+      brush.setAttribute("pointer-events", "none");
+      svgEl.appendChild(brush);
+      const onMove = e => {
+        const cur = toX(e);
+        brush.setAttribute("x", Math.min(start.px, cur.px));
+        brush.setAttribute("width", Math.abs(cur.px - start.px));
+      };
+      const onUp = e => {
+        window.removeEventListener("mousemove", onMove);
+        window.removeEventListener("mouseup", onUp);
+        const end = toX(e);
+        brush.remove();
+        if (Math.abs(end.px - start.px) > 6) o.onZoom([Math.min(start.x, end.x), Math.max(start.x, end.x)]);
+        start = null;
+      };
+      window.addEventListener("mousemove", onMove);
+      window.addEventListener("mouseup", onUp);
+    });
+    hit.addEventListener("dblclick", () => o.onZoom(null));
+  }
 }
 function legend(el, items) {
   el.innerHTML = items.map(i => `<span><i class="${i.dash ? "dash" : ""}" style="border-color:${i.color}"></i>${i.name}</span>`).join("");
@@ -917,6 +960,9 @@ function verdict(met) {
 
 // ---------- main render ----------
 let cache = { key: null };
+// shared x range for the time-series charts, null when zoomed out
+let ZOOM = null;
+const setZoom = z => { ZOOM = z; document.getElementById("zoomReset").disabled = !z; schedule(); };
 function compute() {
   const key = JSON.stringify(P);
   if (cache.key === key) return cache;
@@ -958,7 +1004,7 @@ function render() {
   legend(document.getElementById("legendA"), sA.map(s => ({ name: s.name, color: s.color, dash: !!s.dash })));
   lineChart(document.getElementById("chartA"), { series: sA, log: document.getElementById("logA").checked,
     xlab: "Day (onset or report week)", ylab: "Cases per week", shade, shades, vline, xtip, includeZero: true,
-    xmin: 0, xmax: 7 * W, aria: "Weekly onset counts, true and imputed" });
+    xmin: ZOOM ? ZOOM[0] : 0, xmax: ZOOM ? ZOOM[1] : 7 * W, onZoom: setZoom, aria: "Weekly onset counts, true and imputed" });
 
   // chart B
   const sB = METHODS.map(M => ({ name: M.name, color: col[M.key], dash: M.dash, width: M.width,
@@ -966,7 +1012,7 @@ function render() {
   const bB = st ? METHODS.map(M => ({ color: col[M.key], data: st.bands[M.key].map(p => ({ x: p.x, lo: p.lo * 100, hi: p.hi * 100 })) })) : [];
   legend(document.getElementById("legendB"), sB.map(s => ({ name: s.name, color: s.color, dash: !!s.dash })));
   lineChart(document.getElementById("chartB"), { series: sB, bands: bB, zero: true, includeZero: true,
-    xlab: "Onset week (day)", ylab: "Error (%)", shade, shades, vline, xtip, xmin: 0, xmax: 7 * W,
+    xlab: "Onset week (day)", ylab: "Error (%)", shade, shades, vline, xtip, xmin: ZOOM ? ZOOM[0] : 0, xmax: ZOOM ? ZOOM[1] : 7 * W, onZoom: setZoom,
     yclamp: [-100, 200], vfmt: v => (v >= 0 ? "+" : "") + v.toFixed(1) + "%", yfmt: v => v + "%",
     aria: "Relative error of imputed weekly counts" });
 
@@ -978,7 +1024,7 @@ function render() {
   const bC = st ? [{ color: ink, data: toRBand(st.truthBand) }, { color: col.hub, data: toRBand(st.gbands.hub) }] : [];
   legend(document.getElementById("legendC"), sC.map(s => ({ name: s.name, color: s.color, dash: !!s.dash })));
   lineChart(document.getElementById("chartC"), { series: sC, bands: bC, refY: 1,
-    xlab: "Onset week (day)", ylab: "Rt", shade, shades, vline, xtip, xmin: 0, xmax: 7 * W,
+    xlab: "Onset week (day)", ylab: "Rt", shade, shades, vline, xtip, xmin: ZOOM ? ZOOM[0] : 0, xmax: ZOOM ? ZOOM[1] : 7 * W, onZoom: setZoom,
     yclamp: [0, 4], vfmt: v => v.toFixed(3), yfmt: v => v.toFixed(1),
     aria: "Reproduction number estimated from weekly counts" });
 
@@ -994,7 +1040,7 @@ function render() {
   const bE = st ? METHODS.map(M => ({ color: col[M.key], data: st.ebands[M.key] })) : [];
   legend(document.getElementById("legendE"), sE.map(s => ({ name: s.name, color: s.color, dash: !!s.dash })));
   lineChart(document.getElementById("chartE"), { series: sE, bands: bE, zero: true, includeZero: true, markers: markE,
-    xlab: "Onset week (day)", ylab: "Rt error", shade, shades, vline, xtip, xmin: 0, xmax: 7 * W,
+    xlab: "Onset week (day)", ylab: "Rt error", shade, shades, vline, xtip, xmin: ZOOM ? ZOOM[0] : 0, xmax: ZOOM ? ZOOM[1] : 7 * W, onZoom: setZoom,
     yclamp: [-1.5, 1.5], vfmt: v => (v >= 0 ? "+" : "") + v.toFixed(3), yfmt: v => v.toFixed(2),
     aria: "Error in Rt estimated from imputed counts" });
 
@@ -1050,7 +1096,7 @@ function buildControls() {
   PRESETS.forEach((p, i) => {
     const b = document.createElement("button");
     b.type = "button"; b.textContent = p.name;
-    b.addEventListener("click", () => { activePreset = i; P = { ...DEFAULTS, ...p.set }; P.knots = P.knots.slice(); P.asc = P.asc.slice(); syncControls(); schedule(); });
+    b.addEventListener("click", () => { activePreset = i; ZOOM = null; document.getElementById("zoomReset").disabled = true; P = { ...DEFAULTS, ...p.set }; P.knots = P.knots.slice(); P.asc = P.asc.slice(); syncControls(); schedule(); });
     pre.appendChild(b);
   });
   for (const g of CONTROLS) {
@@ -1162,6 +1208,7 @@ function syncEnabled() {
 let timer = null;
 function schedule() { clearTimeout(timer); timer = setTimeout(render, 40); }
 document.getElementById("tSel").addEventListener("input", schedule);
+document.getElementById("zoomReset").addEventListener("click", () => setZoom(null));
 document.getElementById("logA").addEventListener("change", schedule);
 document.getElementById("themeToggle").addEventListener("click", () => {
   const cur = document.documentElement.getAttribute("data-theme");
