@@ -1,7 +1,8 @@
+# Copyright (c) 2026 Sam Abbott. MIT licence, see LICENSE.
 import numpy as np
 
-import imputation_sim as sim
-from imputation_sim.simulation import DMAX
+import onset_imputation as sim
+from onset_imputation.simulation import DMAX
 
 
 def test_gamma_pmf_sums_to_one():

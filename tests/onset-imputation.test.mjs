@@ -1,9 +1,10 @@
-// Tests of the maths in imputation.js, run with `node --test "tests/*.test.mjs"`.
+// Copyright (c) 2026 Sam Abbott. MIT licence, see LICENSE.
+// Tests of the maths in onset-imputation.js, run with `node --test "tests/*.test.mjs"`.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 
-const M = createRequire(import.meta.url)("../imputation.js");
+const M = createRequire(import.meta.url)("../onset-imputation.js");
 
 function run(set) {
   const p = { ...M.DEFAULTS, ...set };
@@ -89,9 +90,10 @@ test("expected hub error lies inside the stochastic 90% band", () => {
 
 test("run() matches the lower-level pipeline", () => {
   const res = M.run(bvd);
-  const { mw, tw } = run(bvd);
-  assert.deepEqual(res.truth, Array.from(tw));
-  assert.deepEqual(res.imputed.hub, Array.from(mw.hub));
+  const { p, sc, ex, R, W } = run(bvd);
+  const cs = M.comparisonSeries(p, sc, ex, R);
+  assert.deepEqual(res.truth, Array.from(M.weekly(cs.truth, W, sc.B)));
+  assert.deepEqual(res.imputed.hub, Array.from(M.weekly(cs.methods.hub, W, sc.B)));
   assert.ok(Math.abs(res.metrics.gen.maxRel) < 1e-6);
 });
 
@@ -164,4 +166,18 @@ test("imputeLinelist: short maxDelay, short delay and null reports stay finite",
   assert.equal(a.cutoff, 8);
   const b = M.imputeLinelist({ onset, report, delay: [0.2, 0.3, 0.5] });
   assert.ok(finite(b) && b.imputed.fwd.every(Number.isFinite));
+});
+
+test("nowcast: corrected generative method recovers all eventual onsets", () => {
+  const res = M.run({ ...bvd, retro: false, nowcast: true, cutoff: 150 });
+  res.truth.forEach((t, w) => {
+    if (t >= 10 && res.complete[w]) assert.ok(Math.abs(res.imputed.gen[w] / t - 1) < 1e-6);
+  });
+});
+
+test("nowcast: hub method is unbiased in steady growth", () => {
+  const res = M.run({ ...steady(0.05), retro: false, nowcast: true, cutoff: 150 });
+  res.truth.forEach((t, w) => {
+    if (t >= 10 && res.complete[w]) assert.ok(Math.abs(res.imputed.hub[w] / t - 1) < 0.005);
+  });
 });

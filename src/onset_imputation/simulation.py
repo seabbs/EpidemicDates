@@ -1,3 +1,4 @@
+# Copyright (c) 2026 Sam Abbott. MIT licence, see LICENSE.
 """Simulation study: bias of onset-date imputation for missing onsets.
 
 Methods for cases with a missing onset (complete cases keep their true
@@ -12,7 +13,7 @@ onset):
   from all cases with right truncation at T. Imputed counts are the
   expected allocation.
 
-Command line: `uv run imputation-sim --reps 200 --out output`.
+Command line: `uv run onset-imputation --reps 200 --out output`.
 From Python: see `run_scenario` and `run_study`.
 
 Days are integers. Day 0 is the first possible onset in a scenario.
@@ -746,7 +747,7 @@ def write_results(rows, out):
 
 
 def main(argv=None):
-    """Command-line entry point (`imputation-sim`).
+    """Command-line entry point (`onset-imputation`).
 
     Runs `run_study`, writes results with `write_results` and prints the
     analytic checks.

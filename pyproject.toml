@@ -1,13 +1,16 @@
 [project]
 name = "epidemic-imputation-demonstration"
 version = "0.1.0"
-description = "Simulation cross-check for onset-date imputation by back-sampling reporting delays"
+description = "Comparing methods for imputing missing symptom onsets: simulation and imputation for line lists"
 readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "Sam Abbott", email = "sam.abbott@lshtm.ac.uk" }]
 requires-python = ">=3.11"
 dependencies = ["numpy>=1.26", "scipy>=1.11"]
 
 [project.scripts]
-imputation-sim = "imputation_sim:main"
+onset-imputation = "onset_imputation:main"
 
 [build-system]
 requires = ["uv_build>=0.8,<0.14"]
@@ -20,4 +23,4 @@ dev = ["ruff>=0.6", "pytest>=8"]
 line-length = 80
 
 [tool.uv.build-backend]
-module-name = "imputation_sim"
+module-name = "onset_imputation"

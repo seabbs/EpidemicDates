@@ -1,12 +1,13 @@
+# Copyright (c) 2026 Sam Abbott. MIT licence, see LICENSE.
 r"""Simulation study of bias from imputing missing symptom-onset dates.
 
 Some line lists fill a missing onset date with the report date minus a
 delay drawn from the pooled empirical onset-to-report delays of cases
 with both dates.
-`imputation_sim` is a stochastic simulation that measures the bias of this
+`onset_imputation` is a stochastic simulation that measures the bias of this
 approach and of three alternatives.
 It is an independent cross-check of the expected-value maths in
-`imputation.js`, which drives the interactive page.
+`onset-imputation.js`, which drives the interactive page.
 It also provides `impute_linelist` to apply the methods to a real line
 list.
 
@@ -19,6 +20,55 @@ list.
 - Repository: <https://github.com/seabbs/epidemic-imputation-demonstration>
 - Interactive page:
   <https://seabbs.github.io/epidemic-imputation-demonstration/>
+
+Usage
+-----
+Install from GitHub with `pip` or `uv`:
+
+```bash
+pip install git+https://github.com/seabbs/epidemic-imputation-demonstration
+```
+
+**Run the simulation study** from the command line.
+Results go to `output/results.csv`:
+
+```bash
+onset-imputation --reps 200 --out output
+onset-imputation --reps 50 --scenarios C W
+```
+
+**Run one scenario** from Python and look at the bias of each method:
+
+```python
+import onset_imputation as oi
+
+oi.DESC                                  # what each scenario does
+rows = oi.run_scenario("W", reps=100)    # one row per cut-off and method
+for r in rows:
+    print(r["cutoff"], r["method"], r["relbias_mean"], r["relbias_maxabs"])
+```
+
+**Impute a real line list.**
+Pass one onset day (NaN where missing) and one report day per case, as
+whole numbers such as days since the first report:
+
+```python
+import numpy as np
+import onset_imputation as oi
+
+onset = np.array([0, 2, np.nan, 5, np.nan])
+report = np.array([3, 6, 7, 9, 12])
+res = oi.impute_linelist(onset, report, cutoff=12)
+
+res["imputed"]["hub"]    # daily onset counts, pooled empirical delays
+res["imputed"]["mean"]   # daily onset counts, mean shift
+res["imputed"]["em"]     # daily onset counts, EM back-projection
+res["empirical_delay"]   # pooled delay pmf of cases with both dates
+```
+
+Day `i` of each output is onset day `i`.
+Methods assume onsets are missing at random given the report day.
+See `impute_linelist` for details and the README for what to check first.
 
 Methods
 -------
@@ -107,13 +157,13 @@ From the command line, run two scenarios with 50 replicates each.
 Results go to `output/results.csv` and `output/analytic.txt`.
 
 ```bash
-uv run imputation-sim --reps 50 --scenarios C W
+uv run onset-imputation --reps 50 --scenarios C W
 ```
 
 From Python:
 
 ```python
-import imputation_sim as sim
+import onset_imputation as sim
 
 sim.DESC["W"]
 rows = sim.run_scenario("W", reps=100)
