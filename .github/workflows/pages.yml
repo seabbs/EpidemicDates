@@ -1,8 +1,31 @@
+# Builds the docs and the interactive page and deploys them to GitHub Pages.
+# Runs on main when the docs or any source they render from change.
+# Run by hand with workflow_dispatch to redeploy.
+# Not cancelled by the test concurrency rule; the pages group below
+# keeps one deploy at a time.
 name: pages
 
 on:
   push:
     branches: [main]
+    paths:
+      - "docs/**"
+      - "mkdocs.yml"
+      - "src/**"
+      - "pyproject.toml"
+      - "uv.lock"
+      - "epidemic-dates.js"
+      - "page.js"
+      - "index.html"
+      - "assets/**"
+      - "r/R/**"
+      - "r/man/**"
+      - "r/DESCRIPTION"
+      - "julia/src/**"
+      - "julia/Project.toml"
+      - "package.json"
+      - "package-lock.json"
+      - ".github/workflows/pages.yml"
   workflow_dispatch:
 
 permissions:
@@ -25,7 +48,10 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+          cache: npm
       - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
       - name: Generate the JavaScript reference
         run: >-
           npx --yes jsdoc-to-markdown@9 --no-cache -c docs/jsdoc/jsdoc.json

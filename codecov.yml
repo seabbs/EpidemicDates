@@ -1,0 +1,45 @@
+# Coverage for the four packages, one flag each.
+# Each language's workflow uploads only its own flag and runs only when its
+# files change, so carryforward keeps the last result for the others.
+codecov:
+  require_ci_to_pass: false
+
+coverage:
+  precision: 1
+  round: down
+  status:
+    project:
+      default:
+        target: auto
+        threshold: 1%
+    patch:
+      default:
+        target: 90%
+        threshold: 5%
+
+flags:
+  python:
+    paths:
+      - src/
+    carryforward: true
+  javascript:
+    paths:
+      - epidemic-dates.js
+      - page.js
+    carryforward: true
+  r:
+    paths:
+      - r/R/
+    carryforward: true
+  julia:
+    paths:
+      - julia/src/
+    carryforward: true
+
+comment:
+  layout: "header, diff, flags, files"
+  behavior: default
+  require_changes: false
+  # Comment on pull requests only; pushes to main get no comment.
+  require_base: false
+  require_head: true

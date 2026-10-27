@@ -1,0 +1,44 @@
+# JavaScript module and interactive page: tests with coverage.
+# Runs when the module, the page, their tests, the shared fixtures or the
+# npm set-up change. Run by hand with workflow_dispatch.
+name: JavaScript package
+
+on:
+  push:
+    branches: [main]
+    paths: &paths
+      - "epidemic-dates.js"
+      - "page.js"
+      - "index.html"
+      - "tests/**"
+      - "package.json"
+      - "package-lock.json"
+      - ".github/workflows/javascript.yml"
+  pull_request:
+    paths: *paths
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Tests (module and page) with coverage
+        # Writes lcov.info and fails below the thresholds in package.json.
+        # page.js runs in a vm from a string, so V8 does not count it.
+        run: npm run coverage
+      - uses: codecov/codecov-action@v5
+        with:
+          files: lcov.info
+          flags: javascript
+          token: ${{ secrets.CODECOV_TOKEN }}
+          fail_ci_if_error: false

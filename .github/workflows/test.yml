@@ -1,9 +1,29 @@
-name: Tests (Python and JavaScript)
+# Python package: tests with coverage, the JavaScript cross-check, the CLI
+# smoke test and the optional JAX layer.
+# Runs when the Python package, its tests, the shared fixtures or the
+# JavaScript module it cross-checks change. Run by hand with
+# workflow_dispatch.
+name: Python package
 
 on:
   push:
     branches: [main]
+    paths: &paths
+      - "src/**"
+      - "tests/**"
+      - "epidemic-dates.js"
+      - "pyproject.toml"
+      - "uv.lock"
+      - "package.json"
+      - "package-lock.json"
+      - ".github/workflows/test.yml"
   pull_request:
+    paths: *paths
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   test:
@@ -15,14 +35,25 @@ jobs:
           node-version: 22
           cache: npm
       - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
       - run: npm ci
-      - name: JavaScript tests (module and page)
-        run: npm test
       - name: Python tests, with the JavaScript cross-check
-        run: uv run pytest -q --cov=epidemic_dates --cov-report=term-missing
+        run: uv run pytest -q --cov=epidemic_dates --cov-report=
       - name: Command line smoke test
         run: uv run epidemic-dates --reps 2 --scenarios A W --out output
       - name: Python JAX layer, including a NumPyro fit
+        # Appends to the coverage of the main run, so the threshold and the
+        # report cover the whole package.
         run: |
           uv sync --extra jax
-          uv run --extra jax pytest -q tests/test_jax.py tests/test_jax_import.py
+          uv run --extra jax pytest -q tests/test_jax.py tests/test_jax_import.py \
+            --cov=epidemic_dates --cov-append \
+            --cov-report=term-missing --cov-report=xml \
+            --cov-fail-under=97
+      - uses: codecov/codecov-action@v5
+        with:
+          files: coverage.xml
+          flags: python
+          token: ${{ secrets.CODECOV_TOKEN }}
+          fail_ci_if_error: false

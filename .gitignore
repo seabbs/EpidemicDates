@@ -12,3 +12,7 @@ r/*.Rcheck/
 r/*.tar.gz
 docs/julia/reference.md
 julia/Manifest.toml
+coverage.xml
+lcov.info
+cobertura.xml
+julia/src/*.cov

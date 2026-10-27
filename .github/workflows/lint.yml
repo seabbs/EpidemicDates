@@ -1,12 +1,67 @@
+# Lint for the JavaScript and Python code, one job each.
+# The workflow runs when either language's sources or lint config change.
+# Each job then runs only if its own files changed (dorny/paths-filter),
+# or always on workflow_dispatch.
 name: Lint
 
 on:
   push:
     branches: [main]
+    paths: &paths
+      - "src/**"
+      - "tests/**"
+      - "pyproject.toml"
+      - "uv.lock"
+      - "epidemic-dates.js"
+      - "page.js"
+      - "eslint.config.mjs"
+      - "jsconfig.json"
+      - ".prettierrc"
+      - "package.json"
+      - "package-lock.json"
+      - ".github/workflows/lint.yml"
   pull_request:
+    paths: *paths
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  lint:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      javascript: ${{ steps.filter.outputs.javascript }}
+      python: ${{ steps.filter.outputs.python }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            javascript:
+              - "epidemic-dates.js"
+              - "page.js"
+              - "tests/*.mjs"
+              - "eslint.config.mjs"
+              - "jsconfig.json"
+              - ".prettierrc"
+              - "package.json"
+              - "package-lock.json"
+              - ".github/workflows/lint.yml"
+            python:
+              - "src/**"
+              - "tests/**/*.py"
+              - "pyproject.toml"
+              - "uv.lock"
+              - ".github/workflows/lint.yml"
+
+  javascript:
+    needs: changes
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      needs.changes.outputs.javascript == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -14,13 +69,24 @@ jobs:
         with:
           node-version: 22
           cache: npm
-      - uses: astral-sh/setup-uv@v6
       - run: npm ci
       - name: JavaScript (ESLint, prettier, type-check)
         run: |
           npm run lint
           npm run format:check
           npm run typecheck
+
+  python:
+    needs: changes
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      needs.changes.outputs.python == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
       - name: Python (ruff, mypy)
         run: |
           uv run ruff check src tests

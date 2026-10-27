@@ -1,9 +1,22 @@
+# R package: tests with coverage, lint and style, and R CMD check.
+# Runs when the R package or the shared cross-language fixtures change.
+# Run by hand with workflow_dispatch.
 name: R package
 
 on:
   push:
     branches: [main]
+    paths: &paths
+      - "r/**"
+      - "tests/fixtures/**"
+      - ".github/workflows/r.yml"
   pull_request:
+    paths: *paths
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   r:
@@ -16,10 +29,24 @@ jobs:
       - uses: r-lib/actions/setup-r-dependencies@v2
         with:
           working-directory: r
-          extra-packages: any::rcmdcheck, any::lintr, any::styler, any::devtools, any::jsonlite
+          extra-packages: >-
+            any::rcmdcheck, any::lintr, any::styler, any::devtools,
+            any::jsonlite, any::covr, any::xml2
           needs: check
       - name: Tests, including the cross-language fixtures
         run: Rscript -e 'devtools::test("r", stop_on_failure = TRUE)'
+      - name: Coverage
+        # covr names files relative to the package (R/x.R); prefix them
+        # with r/ so Codecov matches them to the repository.
+        run: |
+          Rscript -e 'cov <- covr::package_coverage("r"); print(cov); covr::to_cobertura(cov, "cobertura.xml")'
+          sed -i 's#filename="R/#filename="r/R/#g' cobertura.xml
+      - uses: codecov/codecov-action@v5
+        with:
+          files: cobertura.xml
+          flags: r
+          token: ${{ secrets.CODECOV_TOKEN }}
+          fail_ci_if_error: false
       - name: Lint and style check
         run: |
           Rscript -e 'pkgload::load_all("r"); l <- lintr::lint_package("r"); print(l); if (length(l)) quit(status = 1)'

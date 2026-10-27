@@ -12,6 +12,29 @@ tasks:
     cmds:
       - npm test
       - uv run pytest -q --cov=epidemic_dates
+  coverage:
+    desc: >-
+      Coverage for all four packages, with the CI thresholds for Python and
+      JavaScript; writes coverage.xml, lcov.info, r/cobertura.xml and
+      julia/lcov.info
+    cmds:
+      - npm run coverage
+      - uv run pytest -q --cov=epidemic_dates --cov-report=
+      - uv sync --extra jax
+      - >-
+        uv run --extra jax pytest -q tests/test_jax.py tests/test_jax_import.py
+        --cov=epidemic_dates --cov-append --cov-report=term-missing
+        --cov-report=xml --cov-fail-under=97
+      - >-
+        Rscript -e 'cov <- covr::package_coverage("r"); print(cov);
+        covr::to_cobertura(cov, "r/cobertura.xml")'
+      - julia --project=julia -e 'using Pkg; Pkg.test(coverage = true)'
+      - >-
+        julia -e 'using Pkg; Pkg.activate(temp = true);
+        Pkg.add("CoverageTools"); using CoverageTools;
+        c = process_folder("julia/src"); LCOV.writefile("julia/lcov.info", c);
+        clean_folder("julia/src"); h, t = get_summary(c);
+        println("Julia line coverage: ", round(100h / t; digits = 1), "%")'
   test-jax:
     desc: Test the optional JAX layer, including a NumPyro fit
     cmds:

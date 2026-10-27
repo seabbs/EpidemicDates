@@ -1,9 +1,22 @@
+# Julia package: tests with coverage.
+# Runs when the Julia package or the shared cross-language fixtures change.
+# Run by hand with workflow_dispatch.
 name: Julia package
 
 on:
   push:
     branches: [main]
+    paths: &paths
+      - "julia/**"
+      - "tests/fixtures/**"
+      - ".github/workflows/julia.yml"
   pull_request:
+    paths: *paths
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   julia:
@@ -20,3 +33,13 @@ jobs:
       - uses: julia-actions/julia-runtest@v1
         with:
           project: julia
+          coverage: true
+      - uses: julia-actions/julia-processcoverage@v1
+        with:
+          directories: julia/src
+      - uses: codecov/codecov-action@v5
+        with:
+          files: lcov.info
+          flags: julia
+          token: ${{ secrets.CODECOV_TOKEN }}
+          fail_ci_if_error: false

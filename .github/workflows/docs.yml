@@ -1,9 +1,37 @@
+# Docs build check for pull requests and main.
+# Runs when the docs or any source they render from change: the Python,
+# JavaScript, R and Julia sources, the interactive page and the figures.
+# Run by hand with workflow_dispatch.
 name: Docs build
 
 on:
   push:
     branches: [main]
+    paths: &paths
+      - "docs/**"
+      - "mkdocs.yml"
+      - "src/**"
+      - "pyproject.toml"
+      - "uv.lock"
+      - "epidemic-dates.js"
+      - "page.js"
+      - "index.html"
+      - "assets/**"
+      - "r/R/**"
+      - "r/man/**"
+      - "r/DESCRIPTION"
+      - "julia/src/**"
+      - "julia/Project.toml"
+      - "package.json"
+      - "package-lock.json"
+      - ".github/workflows/docs.yml"
   pull_request:
+    paths: *paths
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   docs:
@@ -13,7 +41,10 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+          cache: npm
       - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
       - uses: r-lib/actions/setup-r@v2
       - name: R API reference
         run: Rscript docs/r/make_reference.R
