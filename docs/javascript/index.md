@@ -96,6 +96,45 @@ It returns a [`LinelistResult`](reference.md#module_epidemic-dates.LinelistResul
 `fwd` is `null` without `delay`.
 `generativeDelay` is the delay used or estimated by EM.
 
+## Nowcast with uncertainty
+
+[`nowcastLinelist`](reference.md#module_epidemic-dates.nowcastLinelist) imputes the missing onsets, corrects for right truncation and samples to give quantiles.
+This continues the quick start above.
+
+```js
+const { nowcastLinelist } = require("./epidemic-dates.js");
+
+const nc = nowcastLinelist({
+  onset,
+  report,
+  method: "gen",
+  seed: 1,
+  origin: "2026-05-08"
+});
+for (const r of nc.weeklyQuantiles.slice(-7)) {
+  console.log(r.week_start, r.target_end_date, r.quantile, r.value);
+}
+```
+
+```text
+2026-08-18 2026-08-24 0.025 39
+2026-08-18 2026-08-24 0.1 42
+2026-08-18 2026-08-24 0.25 45
+2026-08-18 2026-08-24 0.5 48
+2026-08-18 2026-08-24 0.75 51
+2026-08-18 2026-08-24 0.9 55
+2026-08-18 2026-08-24 0.975 58
+```
+
+The table is in the long format forecast hubs use, one row per week and quantile.
+Weeks end on the cut-off.
+The week ending on the cut-off has no estimate, because under 5% of the cases with onset that day are reported (`minReported`).
+`method` can also be `backsampling`, `mean` or `fwd`, and `delay` holds the delay fixed.
+The point nowcast matches Python's `nowcast_linelist`, but the random draws differ.
+The bands include the draw of missing onsets, the cases not yet reported and, by resampling, uncertainty in the delay.
+They do not include a delay that changes over time.
+See [Step 6 of the worked example](../real-linelist.md#step-6-nowcast-the-recent-weeks) and the [Methods](../methods.md#nowcast-with-uncertainty).
+
 ## Simulate a scenario and compare the methods
 
 `run()` simulates an epidemic, imputes the missing onsets four ways and compares each with the truth.

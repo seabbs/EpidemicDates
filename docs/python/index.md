@@ -83,6 +83,37 @@ It returns a dict.
 `complete` holds the cases with a known onset, `missing_by_report` the missing-onset cases by report day, and `empirical_delay` the pooled delay pmf.
 `dropped` counts cases that could not be used.
 
+## Nowcast with uncertainty
+
+`nowcast_linelist` imputes the missing onsets, corrects for right truncation and samples to give quantiles.
+This continues the quick start above.
+
+```python
+nc = ed.nowcast_linelist(onset, report, method="em", seed=1, origin=day0)
+for r in nc["weekly_quantiles"][-7:]:
+    print(r["week_start"], r["target_end_date"], r["quantile"], r["value"])
+ed.write_nowcast_csv(nc, "nowcast.csv")
+```
+
+```text
+2026-08-18 2026-08-24 0.025 39.0
+2026-08-18 2026-08-24 0.1 42.0
+2026-08-18 2026-08-24 0.25 44.0
+2026-08-18 2026-08-24 0.5 48.0
+2026-08-18 2026-08-24 0.75 51.0
+2026-08-18 2026-08-24 0.9 55.0
+2026-08-18 2026-08-24 0.975 60.0
+```
+
+The table is in the long format forecast hubs use, one row per week and quantile.
+Weeks end on the cut-off.
+The week ending on the cut-off has no estimate, because under 5% of the cases with onset that day are reported (`min_reported`).
+`write_nowcast_csv` writes the table to CSV.
+`method` can also be `backsampling`, `mean` or `forward`, and `delay` holds the delay fixed.
+The bands include the draw of missing onsets, the cases not yet reported and, by resampling, uncertainty in the delay.
+They do not include a delay that changes over time.
+See [Step 6 of the worked example](../real-linelist.md#step-6-nowcast-the-recent-weeks) and the [Methods](../methods.md#nowcast-with-uncertainty).
+
 ## Run the simulation study
 
 The study simulates each scenario many times and measures the bias of each method.
@@ -152,6 +183,7 @@ onset, report, missing = ed.simulate("C", sp, np.random.default_rng(1))
 
 - `gamma_pmf(mean, sd)` gives a double interval censored daily Gamma delay pmf on `0..DMAX`.
 - `em_backproject` runs EM back-projection on complete and missing-onset cases.
+  `em_fit` returns the delay and onset curve too, and can hold a given delay fixed.
 - `METHODS` lists the methods compared and `DMAX` the maximum delay.
 
 ## See also

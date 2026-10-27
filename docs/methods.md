@@ -32,6 +32,41 @@ $$
 It depends on how many onsets there were on each earlier day.
 A method is unbiased when it reproduces this distribution.
 
+## Assumptions of each method
+
+Every method keeps known onsets and only imputes the missing ones.
+Each relies on more than it seems.
+The rest of this page gives the maths and shows where each assumption breaks.
+
+**Back-sampling** (`backsampling`) assumes:
+
+- onsets are missing at random given the report day;
+- delays are the same over time and place;
+- growth is steady over the span of the delay, so the pooled empirical delay matches the backward delay;
+- the cut-off is well after the start of the epidemic.
+
+It breaks when growth turns, when delays shorten or lengthen, and when cases with long delays are more likely to miss an onset.
+
+**Mean shift** (`mean`) assumes all of the above and that every case has the same delay.
+It breaks whenever delays vary, which they always do.
+Near the cut-off it leaves the last few days with no imputed cases.
+
+**Forward draw** (`fwd`, `forward`) assumes:
+
+- onsets are missing at random given the report day;
+- the forward delay is known, or estimated with a correction for right truncation;
+- onsets are flat over the span of the delay, since it ignores how many onsets there were on each day.
+
+It breaks when the epidemic grows or declines.
+
+**Generative method** (`gen`, `em`) assumes:
+
+- onsets are missing at random given the report day;
+- the delay is known, or is static over time and estimated jointly with the onset curve, allowing for right truncation;
+- counts are large enough, as there is no smoothing.
+
+It breaks when delays change over time but are estimated as static, when missingness depends on the delay, and gives noisy output with small counts.
+
 ## Back-sampling: pooled empirical delays
 
 The back-sampling method (`backsampling`) subtracts a delay drawn from the pooled empirical delays of complete cases reported by the cut-off:
@@ -234,6 +269,64 @@ The back-sampling draw and EM back-projection keep the right shape near the cut-
 The generative method has the same correction built in.
 Its onset curve $\lambda(s) = \big(n_c(s) + n_a(s)\big) / F_s\big(\min(T - s, D)\big)$ divides by the fraction reported in the same way.
 
+## Nowcast with uncertainty
+
+`nowcast_linelist` in Python and `nowcastLinelist` in JavaScript turn a line list into a nowcast with quantiles.
+They impute, correct for right truncation and then sample.
+
+**Point nowcast.**
+Impute the missing onsets with the chosen method, giving $\hat n(s) = n_c(s) + n_i(s)$.
+The default is EM back-projection.
+The delay $f$ is the given one, or the static delay estimated by EM allowing for right truncation.
+Then
+
+$$
+\hat C(s) = \frac{\hat n(s)}{F\big(\min(T - s, D)\big)}.
+$$
+
+Days with $F(T - s)$ below a minimum (5% by default) get no estimate.
+A week with any such day has no estimate either.
+Weeks end on the cut-off.
+
+**Samples.**
+Each sample $b$ does three things.
+
+1. **Delay.** Resample the complete cases with replacement.
+   Recompute the pooled empirical delay $g_b$.
+   Refit EM to the resampled complete cases and all missing cases, starting from the point fit, to get $f_b$ and $\lambda_b$.
+   With a given delay, $f_b = f$ and only $\lambda_b$ is refitted.
+   This step is optional.
+2. **Missing onsets.** For the $m(t)$ missing cases reported on day $t$, draw onsets from
+
+    $$
+    (m_{t,s})_s \sim \operatorname{Multinomial}\big(m(t), P_b(s \mid t)\big),
+    $$
+
+    with $P_b(s \mid t) = g_b(t - s)$ for back-sampling, $f_b(t - s)$ for the forward draw and $\propto \lambda_b(s) f_b(t - s)$ for EM.
+    The mean shift moves every case back by the rounded mean of $g_b$, with no draw.
+    Then $n_b(s) = n_c(s) + \sum_t m_{t,s}$.
+3. **Not yet reported.** Draw the cases with onset $s$ still to be reported,
+
+    $$
+    U_b(s) \sim \operatorname{NegBin}\big(n_b(s), F_b(T - s)\big),
+    \qquad
+    C_b(s) = n_b(s) + U_b(s).
+    $$
+
+    $U_b(s)$ counts failures before $n_b(s)$ successes with success probability $F_b(T - s)$.
+    Its mean is $n_b(s) \big(1 - F_b(T - s)\big) / F_b(T - s)$, so $E[C_b(s)] = n_b(s) / F_b(T - s)$, the same correction as the point nowcast.
+    It is the posterior for the eventual total when each case is reported by $T$ with probability $F_b(T - s)$ and the prior on the total is proportional to $1 / C(s)$.
+
+Weekly samples sum the daily samples.
+Quantiles at 0.025, 0.1, 0.25, 0.5, 0.75, 0.9 and 0.975 come from the samples by linear interpolation.
+They are returned in long format, one row per target date and quantile, as forecast hubs use.
+
+**Captured:** the random placement of missing onsets; the binomial reporting of recent onsets; and, with resampling, sampling uncertainty in the delay and in the EM onset curve.
+
+**Not captured:** a delay that changes over time; missingness that depends on the delay or on anything other than the report day; dependence between cases; uncertainty in a given delay; and noise in the onset process itself, since the target is the onsets that will eventually be reported.
+A day with no reported onsets gets 0 in every sample.
+With small counts the median is below the mean, so medians can sit low.
+
 ## Delay distribution
 
 Delays are double interval censored daily Gamma pmfs, in the form used by [primarycensored](https://primarycensored.epinowcast.org).
@@ -275,3 +368,15 @@ k_g = \left(\frac{m_g}{s_g}\right)^2,
 $$
 
 The generation interval has mean $m_g = 15$ days and standard deviation $s_g = 9$ days, an Ebola-like value.
+
+
+## Related tools
+
+[backcalc](https://github.com/epiforecasts/backcalc) and [EpiNow2](https://epiforecasts.io/EpiNow2/) work on a related problem.
+There no reference dates (such as onsets) are reported at all.
+Back-sampling from report dates must then reconstruct the whole onset curve, not only the missing part.
+The same bias at turns in growth applies, and to every case rather than a fraction.
+EpiNow2 also has a generative model that convolves an infection curve with the delays instead.
+
+[epinowcast](https://package.epinowcast.org) nowcasts jointly with missing reference dates.
+It treats cases without a reference date as part of the observation process, rather than imputing them first.

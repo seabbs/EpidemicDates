@@ -13,6 +13,7 @@ MODULES = [
     "epidemic_dates.delays",
     "epidemic_dates.linelist",
     "epidemic_dates.methods",
+    "epidemic_dates.nowcast",
     "epidemic_dates.scenarios",
     "epidemic_dates.study",
 ]

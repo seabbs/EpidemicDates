@@ -77,7 +77,10 @@
  * ```
  *
  * For a real line list use
- * {@link module:epidemic-dates.imputeLinelist imputeLinelist}.
+ * {@link module:epidemic-dates.imputeLinelist imputeLinelist}, or
+ * {@link module:epidemic-dates.nowcastLinelist nowcastLinelist} for a nowcast
+ * corrected for right truncation, with quantiles in the long format
+ * forecast hubs use.
  * {@link module:epidemic-dates.DEFAULTS DEFAULTS} lists every scenario
  * parameter and {@link module:epidemic-dates.PRESETS PRESETS} holds the
  * scenarios on the page.
@@ -2003,6 +2006,604 @@
     };
   }
 
+  // ---------- nowcast with uncertainty ----------
+  /**
+   * Default quantile levels for
+   * {@link module:epidemic-dates.nowcastLinelist nowcastLinelist}: the
+   * median and the 50%, 80% and 95% intervals.
+   * @type {ReadonlyArray<number>}
+   * @constant
+   * @alias module:epidemic-dates.QUANTILES
+   */
+  const QUANTILES = deepFreeze([0.025, 0.1, 0.25, 0.5, 0.75, 0.9, 0.975]);
+  /**
+   * Imputation methods
+   * {@link module:epidemic-dates.nowcastLinelist nowcastLinelist} accepts.
+   * `gen` (EM back-projection) is the default.
+   * @type {ReadonlyArray<string>}
+   * @constant
+   * @alias module:epidemic-dates.NOWCAST_METHODS
+   */
+  const NOWCAST_METHODS = deepFreeze(["gen", "backsampling", "mean", "fwd"]);
+
+  /**
+   * Gamma draw with shape `a` and scale 1 (Marsaglia and Tsang).
+   * @param {number} a Shape, positive.
+   * @param {Rng} rng Uniform generator.
+   * @returns {number}
+   * @private
+   */
+  function rgamma(a, rng) {
+    if (a < 1) {
+      let u = 0;
+      while (u === 0) u = rng();
+      return rgamma(a + 1, rng) * Math.pow(u, 1 / a);
+    }
+    const d = a - 1 / 3,
+      c = 1 / Math.sqrt(9 * d);
+    for (;;) {
+      const x = randn(rng),
+        v = Math.pow(1 + c * x, 3);
+      if (v <= 0) continue;
+      const u = rng();
+      if (u > 0 && Math.log(u) < 0.5 * x * x + d - d * v + d * Math.log(v))
+        return d * v;
+    }
+  }
+  /**
+   * Negative binomial draw: failures before `size` successes with success
+   * probability `p`, as a Gamma–Poisson mixture.
+   * @param {number} size Number of successes, positive.
+   * @param {number} p Success probability in `(0, 1]`.
+   * @param {Rng} rng Uniform generator.
+   * @returns {number}
+   * @private
+   */
+  function rnbinom(size, p, rng) {
+    if (size <= 0 || p >= 1) return 0;
+    return rpois((rgamma(size, rng) * (1 - p)) / p, rng);
+  }
+
+  /**
+   * Result of the EM fit used by
+   * {@link module:epidemic-dates.nowcastLinelist nowcastLinelist}.
+   * @typedef {Object} EMFit
+   * @property {Float64Array} allocation Expected missing-onset cases by
+   *   onset day.
+   * @property {Float64Array} onsets Onset curve `λ(s)`.
+   * @property {Float64Array} delay Delay pmf `f(d)`.
+   * @private
+   */
+  /**
+   * EM back-projection from given starting values, as `em_fit` in the
+   * Python package. Each iteration allocates missing cases by
+   * `λ(s) f(t − s)`, then alternates three times between
+   * `λ(s) = n(s) / F(min(T − s, L))` and
+   * `f(d) ∝ n(d) / Σ_{s ≤ T − d} λ(s)` (once, updating only `λ`, if the
+   * delay is fixed). `F` is floored at 1e-12 and `f` at 1e-12.
+   * @param {Float64Array[]} Nc Complete cases by onset day then delay.
+   * @param {Float64Array} miss Missing-onset cases by report day.
+   * @param {number} T Cut-off.
+   * @param {number} L Maximum delay.
+   * @param {ArrayLike<number>} lam0 Starting onset curve.
+   * @param {ArrayLike<number>} f0 Starting (or fixed) delay pmf.
+   * @param {number} iterations Number of iterations.
+   * @param {boolean} fixDelay Hold the delay fixed.
+   * @returns {EMFit}
+   * @private
+   */
+  function emFit(Nc, miss, T, L, lam0, f0, iterations, fixDelay) {
+    const S = T + 1;
+    /** @type {Float64Array} */
+    let lam = Float64Array.from(lam0);
+    /** @type {Float64Array} */
+    let f = Float64Array.from(f0);
+    let A = Array.from({ length: S }, () => new Float64Array(L + 1));
+    const ns = new Float64Array(S),
+      nd = new Float64Array(L + 1);
+    for (let it = 0; it < iterations; it++) {
+      const den = new Float64Array(S);
+      for (let s = 0; s < S; s++)
+        for (let d = 0; d <= L && s + d <= T; d++) den[s + d] += lam[s] * f[d];
+      A = Array.from({ length: S }, () => new Float64Array(L + 1));
+      ns.fill(0);
+      nd.fill(0);
+      for (let s = 0; s < S; s++) {
+        for (let d = 0; d <= L; d++) {
+          if (s + d <= T) {
+            const t = s + d;
+            A[s][d] = lam[s] * f[d] * (miss[t] / Math.max(den[t], 1e-300));
+          }
+          const n = Nc[s][d] + A[s][d];
+          ns[s] += n;
+          nd[d] += n;
+        }
+      }
+      for (let k = 0; k < (fixDelay ? 1 : 3); k++) {
+        const Fc = cumsum(f);
+        lam = Float64Array.from(
+          ns,
+          (n, s) => n / Math.max(Fc[Math.min(T - s, L)], 1e-12)
+        );
+        if (fixDelay) continue;
+        const cl = cumsum(lam);
+        const nf = Float64Array.from(nd, (n, d) =>
+          Math.max(n / Math.max(T - d >= 0 ? cl[T - d] : 0, 1e-300), 1e-12)
+        );
+        f = normalise(nf);
+      }
+    }
+    const allocation = Float64Array.from(A, row => {
+      let x = 0;
+      for (let d = 0; d <= L; d++) x += row[d];
+      return x;
+    });
+    return { allocation, onsets: lam, delay: f };
+  }
+
+  /**
+   * Input to {@link module:epidemic-dates.nowcastLinelist nowcastLinelist}.
+   * Days are whole numbers, for example days since the first report.
+   * @typedef {Object} NowcastInput
+   * @property {Array<?number>} onset Onset day per case, null or undefined
+   *   where missing.
+   * @property {Array<?number>} report Report day per case.
+   * @property {?number} [cutoff=null] Data cut-off `T`. Defaults to the
+   *   latest report day.
+   * @property {string} [method="gen"] Imputation method, one of
+   *   {@link module:epidemic-dates.NOWCAST_METHODS NOWCAST_METHODS}.
+   * @property {?ArrayLike<number>} [delay=null] Forward delay pmf indexed
+   *   by delay in days. Used for the truncation correction, for `fwd`, and
+   *   held fixed by `gen`. If null it is estimated by EM. Entries beyond
+   *   `maxDelay` are dropped and the rest renormalised.
+   * @property {number} [maxDelay=60] Longest delay kept, as `DMAX` in the
+   *   Python package. Complete cases with longer delays are dropped.
+   * @property {number} [iterations=150] EM iterations for the point fit.
+   * @property {number} [nSamples=1000] Number of samples.
+   * @property {number} [seed=1] Integer seed for
+   *   {@link module:epidemic-dates.makeRng makeRng}.
+   * @property {ArrayLike<number>} [quantiles=QUANTILES] Quantile levels in
+   *   `[0, 1]`.
+   * @property {number} [minReported=0.05] Smallest fraction reported,
+   *   `F(T − s)`, for a day to get an estimate. In `(0, 1]`.
+   * @property {boolean} [bootstrap=true] Resample complete cases to include
+   *   delay uncertainty.
+   * @property {?string} [origin=null] ISO date of day 0. If given, dates in
+   *   the quantile tables are ISO strings, otherwise day numbers.
+   * @memberof module:epidemic-dates
+   */
+  /**
+   * One row of a daily quantile table.
+   * @typedef {Object} DailyQuantileRow
+   * @property {number|string} target_end_date Onset day, or its ISO date.
+   * @property {number} quantile Quantile level.
+   * @property {number} value Quantile of the nowcast.
+   * @memberof module:epidemic-dates
+   */
+  /**
+   * One row of a weekly quantile table.
+   * @typedef {Object} WeeklyQuantileRow
+   * @property {number|string} week_start First onset day of the week.
+   * @property {number|string} target_end_date Last onset day of the week.
+   * @property {number} quantile Quantile level.
+   * @property {number} value Quantile of the nowcast.
+   * @memberof module:epidemic-dates
+   */
+  /**
+   * Output of {@link module:epidemic-dates.nowcastLinelist nowcastLinelist}.
+   * Daily arrays are indexed by onset day `0..cutoff`. Weekly arrays have
+   * one entry per full week ending on the cut-off. Days and weeks without
+   * an estimate hold NaN.
+   * @typedef {Object} NowcastResult
+   * @property {string} method Imputation method used.
+   * @property {number} cutoff Cut-off `T`.
+   * @property {number} dropped Cases dropped, as in
+   *   {@link module:epidemic-dates.imputeLinelist imputeLinelist}.
+   * @property {number[]} delay Delay pmf used for the point nowcast: the
+   *   given `delay` or the EM estimate.
+   * @property {number[]} reported Fraction reported by the cut-off,
+   *   `F(T − s)`.
+   * @property {number[]} point Point nowcast by onset day.
+   * @property {number[]} pointWeekly Point nowcast by week.
+   * @property {number[]} weekStart First onset day of each week.
+   * @property {number[][]} samples Sampled nowcasts, one array per sample.
+   * @property {number[][]} weeklySamples Sampled weekly nowcasts.
+   * @property {number[]} quantiles Quantile levels.
+   * @property {DailyQuantileRow[]} dailyQuantiles Long quantile table by
+   *   day.
+   * @property {WeeklyQuantileRow[]} weeklyQuantiles Long quantile table by
+   *   week.
+   * @memberof module:epidemic-dates
+   */
+  /**
+   * Nowcast onsets from a line list, with uncertainty. Matches
+   * `nowcast_linelist` in the Python package, except that method `em` is
+   * `gen` and `forward` is `fwd` here, and random draws differ.
+   *
+   * **1. Impute.** Complete cases keep their onset. Missing onsets are
+   * imputed by `method`: `gen` (default), EM back-projection with
+   * `P(s | t) ∝ λ(s) f(t − s)`; `backsampling`, `P(s | t) = g(t − s)` with
+   * `g` the pooled empirical delay; `mean`, `s = t − round(Σ_d d g(d))`;
+   * `fwd`, `P(s | t) = f(t − s)`. `f` is `delay` if given, otherwise the
+   * static delay estimated by EM, allowing for right truncation. This gives
+   * `n̂(s) = n_c(s) + n_i(s)`, onsets of cases reported by `T`.
+   *
+   * **2. Correct for right truncation.** The point nowcast is
+   * `Ĉ(s) = n̂(s) / F(min(T − s, D))`, with `F` the CDF of `f`. Days with
+   * `F(T − s) < minReported` get no estimate (NaN).
+   *
+   * **3. Sample.** Each sample, with a generator seeded by `seed`:
+   *
+   * - if `bootstrap`, resamples the complete cases with replacement,
+   *   recomputes `g`, and refits EM to them and the missing cases,
+   *   warm-started from the point fit for `max(10, floor(iterations / 5))`
+   *   iterations, giving `f_b` and `λ_b` (with a given `delay`, only `λ_b`
+   *   is refitted);
+   * - draws the missing onsets: `backsampling` and `fwd` as a multinomial
+   *   over delays with `g` or `f_b`, `gen` as a multinomial over onset days
+   *   with `P(s | t) ∝ λ_b(s) f_b(t − s)`, and `mean` by a fixed shift of
+   *   the rounded mean of `g`; with the complete cases this gives `n_b(s)`;
+   * - draws the cases not yet reported,
+   *   `U(s) ~ NegBin(n_b(s), F_b(T − s))` (failures before `n_b(s)`
+   *   successes, mean `n_b(s)(1 − F_b)/F_b`), the posterior for the total
+   *   under a prior proportional to `1 / C(s)`, and returns
+   *   `n_b(s) + U(s)`.
+   *
+   * Weekly samples sum the daily samples over full weeks ending on the
+   * cut-off. A week with any day without an estimate has none. Quantiles
+   * use linear interpolation between order statistics.
+   *
+   * **Captured:** the draw of missing onsets given the delay and onset
+   * curve; the binomial reporting of recent onsets given the delay; with
+   * `bootstrap`, sampling uncertainty in the delay (and in the onset curve
+   * used by `gen`). **Not captured:** a delay that changes over time,
+   * onsets missing other than at random given report day, dependence
+   * between cases, uncertainty in a given `delay`, and noise in the onset
+   * process itself. Days with no reported onsets get 0 in every sample.
+   *
+   * Cases are dropped as by
+   * {@link module:epidemic-dates.imputeLinelist imputeLinelist}.
+   * @param {NowcastInput} input Line list and options.
+   * @returns {NowcastResult}
+   * @throws {Error} If `onset` and `report` differ in length, there is no
+   *   valid report day or complete case, `method` is unknown, `delay` is
+   *   not a valid pmf, or `nSamples`, `quantiles`, `minReported`,
+   *   `iterations`, `maxDelay` or `seed` are out of range.
+   * @example
+   * const { nowcastLinelist } = require("./epidemic-dates.js");
+   * const res = nowcastLinelist({
+   *   onset: [0, 1, null, 3, 4, null, 6, 8, null, 9],
+   *   report: [2, 4, 5, 6, 7, 8, 9, 10, 11, 12],
+   *   nSamples: 200,
+   *   origin: "2026-05-08"
+   * });
+   * res.point; // point nowcast by onset day
+   * res.weeklyQuantiles; // [{ week_start, target_end_date, quantile, value }]
+   * @alias module:epidemic-dates.nowcastLinelist
+   */
+  function nowcastLinelist({
+    onset,
+    report,
+    cutoff = null,
+    method = "gen",
+    delay = null,
+    maxDelay = 60,
+    iterations = 150,
+    nSamples = 1000,
+    seed = 1,
+    quantiles = QUANTILES,
+    minReported = 0.05,
+    bootstrap = true,
+    origin = null
+  }) {
+    if (onset.length !== report.length)
+      throw new Error("onset and report must have the same length");
+    if (!NOWCAST_METHODS.includes(method))
+      throw new Error(
+        `method must be one of ${NOWCAST_METHODS.join(", ")}, got ${method}`
+      );
+    if (!Number.isInteger(nSamples) || nSamples < 1)
+      throw new Error("nSamples must be a whole number of at least 1");
+    if (!Number.isInteger(iterations) || iterations < 1)
+      throw new Error("iterations must be a whole number of at least 1");
+    if (!Number.isInteger(maxDelay) || maxDelay < 0)
+      throw new Error("maxDelay must be a non-negative whole number");
+    if (!Number.isInteger(seed)) throw new Error("seed must be a whole number");
+    if (!(minReported > 0 && minReported <= 1))
+      throw new Error("minReported must be in (0, 1]");
+    const levels = Array.from(quantiles, Number);
+    if (!levels.length || levels.some(q => !(q >= 0 && q <= 1)))
+      throw new Error("quantiles must be a non-empty list in [0, 1]");
+    const L = maxDelay;
+    /** @type {?Float64Array} */
+    let fixed = null;
+    if (delay !== null && delay !== undefined) {
+      const raw = Array.from(delay);
+      if (raw.some(x => !Number.isFinite(x) || x < 0))
+        throw new Error("delay must be finite and non-negative");
+      fixed = normalise(
+        Float64Array.from({ length: L + 1 }, (_, d) => raw[d] ?? 0)
+      );
+      if (!fixed.some(x => x > 0))
+        throw new Error(`delay must have positive mass on 0..${L}`);
+    }
+    const t0 = origin === null ? null : Date.parse(origin);
+    if (t0 !== null && !Number.isFinite(t0))
+      throw new Error(`origin must be an ISO date, got ${origin}`);
+
+    let last = -1;
+    for (const r of report)
+      if (typeof r === "number" && Number.isInteger(r) && r > last) last = r;
+    const T = cutoff === null || cutoff === undefined ? last : cutoff;
+    if (T < 0 && (cutoff === null || cutoff === undefined))
+      throw new Error("no valid report days");
+    if (!Number.isInteger(T) || T < 0)
+      throw new Error("cutoff must be a non-negative whole number");
+    const S = T + 1;
+    const comp = new Float64Array(S),
+      miss = new Float64Array(S);
+    /** @type {number[]} */
+    const onsetC = [];
+    /** @type {number[]} */
+    const delayC = [];
+    let dropped = 0;
+    for (let i = 0; i < report.length; i++) {
+      const t = report[i],
+        o = onset[i];
+      if (t === null || t === undefined || !Number.isInteger(t) || t < 0) {
+        dropped++;
+        continue;
+      }
+      if (t > T) {
+        dropped++;
+        continue;
+      }
+      if (o === null || o === undefined) {
+        miss[t]++;
+        continue;
+      }
+      const d = t - o;
+      if (!Number.isInteger(o) || o < 0 || d < 0 || d > L) {
+        dropped++;
+        continue;
+      }
+      comp[o]++;
+      onsetC.push(o);
+      delayC.push(d);
+    }
+    const nC = onsetC.length;
+    if (nC === 0)
+      throw new Error(
+        "no complete cases are left, so the delay cannot be estimated"
+      );
+    /**
+     * Complete cases by onset day and delay, for the cases in `idx`.
+     * @param {ArrayLike<number>} idx Case indices.
+     */
+    const matrix = idx => {
+      const Nc = Array.from({ length: S }, () => new Float64Array(L + 1));
+      for (let k = 0; k < idx.length; k++) Nc[onsetC[idx[k]]][delayC[idx[k]]]++;
+      return Nc;
+    };
+    /**
+     * Pooled empirical delay pmf of the cases in `idx`.
+     * @param {ArrayLike<number>} idx Case indices.
+     */
+    const empirical = idx => {
+      const e = new Float64Array(L + 1);
+      for (let k = 0; k < idx.length; k++) e[delayC[idx[k]]]++;
+      return normalise(e);
+    };
+    const all = Array.from({ length: nC }, (_, k) => k);
+    const needEm = method === "gen" || fixed === null;
+    /** @type {?EMFit} */
+    let fit = null;
+    if (needEm) {
+      const Nc = matrix(all);
+      let nMiss = 0;
+      for (let t = 0; t < S; t++) nMiss += miss[t];
+      const nd = new Float64Array(L + 1);
+      for (const d of delayC) nd[d]++;
+      const start = fixed ?? normalise(Float64Array.from(nd, x => x + 0.5));
+      const frac = nMiss / (nMiss + nC);
+      const lam0 = Float64Array.from(
+        comp,
+        n => n / Math.max(1e-9, 1 - frac) + 0.1
+      );
+      fit = emFit(Nc, miss, T, L, lam0, start, iterations, fixed !== null);
+    }
+    const f = fixed ?? /** @type {EMFit} */ (fit).delay;
+    const g = empirical(all);
+    const Fc = cumsum(f);
+    const reported = Array.from(
+      { length: S },
+      (_, s) => Fc[Math.min(T - s, L)]
+    );
+    const ok = reported.map(x => x >= minReported);
+    /**
+     * Rounded mean of a pmf, the mean shift.
+     * @param {ArrayLike<number>} pmf Delay pmf.
+     */
+    const shiftOf = pmf => Math.round(pmfMean(pmf));
+    let imputed;
+    if (method === "gen") {
+      const a = /** @type {EMFit} */ (fit).allocation;
+      imputed = Float64Array.from(comp, (v, s) => v + a[s]);
+    } else if (method === "backsampling") {
+      imputed = convImpute(comp, miss, g, S);
+    } else if (method === "fwd") {
+      imputed = convImpute(comp, miss, f, S);
+    } else {
+      imputed = shiftImpute(comp, miss, shiftOf(g), S);
+    }
+    const point = Array.from(imputed, (v, s) =>
+      ok[s] ? v / Math.max(reported[s], 1e-12) : NaN
+    );
+
+    /**
+     * Draw onsets back from report day with a delay pmf.
+     * @param {Float64Array} pmf Normalised delay pmf.
+     * @param {Rng} rng Generator.
+     */
+    const drawBack = (pmf, rng) => {
+      const out = new Float64Array(S);
+      if (!pmf.some(x => x > 0)) return out;
+      for (let t = 0; t < S; t++) {
+        if (!miss[t]) continue;
+        const x = rmultinom(miss[t], pmf, rng);
+        for (let d = 0; d <= Math.min(L, t); d++) out[t - d] += x[d];
+      }
+      return out;
+    };
+    /**
+     * Draw onsets from the EM posterior `λ(s) f(t − s)`.
+     * @param {Float64Array} lam Onset curve.
+     * @param {Float64Array} fb Delay pmf.
+     * @param {Rng} rng Generator.
+     */
+    const drawEm = (lam, fb, rng) => {
+      const out = new Float64Array(S);
+      for (let t = 0; t < S; t++) {
+        if (!miss[t]) continue;
+        const n = Math.min(L, t) + 1;
+        const w = normalise(
+          Float64Array.from({ length: n }, (_, d) => lam[t - d] * fb[d])
+        );
+        if (!w.some(x => x > 0)) continue;
+        const x = rmultinom(miss[t], w, rng);
+        for (let d = 0; d < n; d++) out[t - d] += x[d];
+      }
+      return out;
+    };
+
+    const rng = makeRng(seed, 2);
+    const bootIter = Math.max(10, Math.floor(iterations / 5));
+    /** @type {number[][]} */
+    const samples = [];
+    for (let b = 0; b < nSamples; b++) {
+      let fb = f,
+        gb = g,
+        lamb = fit ? fit.onsets : null;
+      if (bootstrap) {
+        const idx = Array.from({ length: nC }, () =>
+          Math.min(nC - 1, Math.floor(rng() * nC))
+        );
+        gb = empirical(idx);
+        if (needEm) {
+          const pf = /** @type {EMFit} */ (fit);
+          const refit = emFit(
+            matrix(idx),
+            miss,
+            T,
+            L,
+            pf.onsets,
+            pf.delay,
+            bootIter,
+            fixed !== null
+          );
+          lamb = refit.onsets;
+          if (fixed === null) fb = refit.delay;
+        }
+      }
+      let drawn;
+      if (method === "gen")
+        drawn = drawEm(/** @type {Float64Array} */ (lamb), fb, rng);
+      else if (method === "backsampling") drawn = drawBack(gb, rng);
+      else if (method === "fwd") drawn = drawBack(fb, rng);
+      else
+        drawn = Float64Array.from(
+          shiftImpute(new Float64Array(S), miss, shiftOf(gb), S)
+        );
+      const Fb = cumsum(fb);
+      samples.push(
+        Array.from({ length: S }, (_, s) => {
+          if (!ok[s]) return NaN;
+          const n = comp[s] + drawn[s];
+          const p = clamp(Fb[Math.min(T - s, L)], 1e-12, 1);
+          return n + (n > 0 && p < 1 ? rnbinom(n, p, rng) : 0);
+        })
+      );
+    }
+
+    const nWeeks = Math.floor(S / 7);
+    const weekStart = Array.from(
+      { length: nWeeks },
+      (_, w) => S - 7 * (nWeeks - w)
+    );
+    /** @param {number[]} daily Daily values. */
+    const toWeeks = daily =>
+      weekStart.map(s0 => {
+        let x = 0;
+        for (let d = 0; d < 7; d++) x += daily[s0 + d];
+        return x;
+      });
+    const weeklySamples = samples.map(toWeeks);
+    /** @param {number} day Day number. */
+    const label = day =>
+      t0 === null
+        ? day
+        : new Date(t0 + day * 86400000).toISOString().slice(0, 10);
+    /**
+     * Quantiles over samples of column `j`, or null if any is not finite.
+     * @param {number[][]} rows Samples.
+     * @param {number} j Column.
+     * @returns {?number[]}
+     */
+    const qcol = (rows, j) => {
+      const v = rows.map(r => r[j]);
+      if (!v.every(Number.isFinite)) return null;
+      v.sort((a, b) => a - b);
+      return levels.map(p => {
+        const i = (v.length - 1) * p,
+          lo = Math.floor(i),
+          hi = Math.ceil(i);
+        return v[lo] + (v[hi] - v[lo]) * (i - lo);
+      });
+    };
+    /** @type {DailyQuantileRow[]} */
+    const dailyQuantiles = [];
+    for (let s = 0; s < S; s++) {
+      const q = qcol(samples, s);
+      if (q)
+        levels.forEach((p, k) =>
+          dailyQuantiles.push({
+            target_end_date: label(s),
+            quantile: p,
+            value: q[k]
+          })
+        );
+    }
+    /** @type {WeeklyQuantileRow[]} */
+    const weeklyQuantiles = [];
+    weekStart.forEach((s0, w) => {
+      const q = qcol(weeklySamples, w);
+      if (q)
+        levels.forEach((p, k) =>
+          weeklyQuantiles.push({
+            week_start: label(s0),
+            target_end_date: label(s0 + 6),
+            quantile: p,
+            value: q[k]
+          })
+        );
+    });
+    return {
+      method,
+      cutoff: T,
+      dropped,
+      delay: Array.from(f),
+      reported,
+      point,
+      pointWeekly: toWeeks(point),
+      weekStart,
+      samples,
+      weeklySamples,
+      quantiles: levels,
+      dailyQuantiles,
+      weeklyQuantiles
+    };
+  }
+
   return Object.freeze({
     D,
     KNOTS,
@@ -2036,6 +2637,9 @@
     maskWeeks,
     run,
     imputeLinelist,
+    nowcastLinelist,
+    NOWCAST_METHODS,
+    QUANTILES,
     makeRng
   });
 });

@@ -93,3 +93,47 @@ def test_linelist_em_agrees(linelist):
     py_w = np.add.reduceat(py["em"], np.arange(0, 140, 7))
     busy = py_w >= 50
     assert np.allclose(js_w[busy], py_w[busy], rtol=0.02)
+
+
+@pytest.mark.parametrize("given", [True, False])
+def test_nowcast_point_matches(linelist, given):
+    delay = ed.F_DEFAULT.tolist() if given else None
+    js = run_js(
+        "M.nowcastLinelist({...input, nSamples: 1, bootstrap: false})"
+        ".point.map(x => (Number.isFinite(x) ? x : null))",
+        {**linelist, "delay": delay},
+    )
+    js = np.array([np.nan if x is None else x for x in js], dtype=float)
+    obs = np.array(
+        [np.nan if o is None else o for o in linelist["onset"]], dtype=float
+    )
+    py = ed.nowcast_linelist(
+        obs,
+        linelist["report"],
+        cutoff=linelist["cutoff"],
+        delay=delay,
+        n_samples=1,
+        bootstrap=False,
+    )["point"]
+    assert np.array_equal(np.isnan(js), np.isnan(py))
+    ok = np.isfinite(py)
+    assert np.allclose(js[ok], py[ok], rtol=1e-9, atol=1e-9)
+
+
+def test_nowcast_quantiles_agree_roughly(linelist):
+    js = run_js(
+        "M.nowcastLinelist({...input, nSamples: 400}).weeklyQuantiles",
+        linelist,
+    )
+    obs = np.array(
+        [np.nan if o is None else o for o in linelist["onset"]], dtype=float
+    )
+    py = ed.nowcast_linelist(
+        obs, linelist["report"], cutoff=linelist["cutoff"], n_samples=400
+    )["weekly_quantiles"]
+    assert [r["target_end_date"] for r in js] == [
+        r["target_end_date"] for r in py
+    ]
+    for a, b in zip(js, py, strict=True):
+        if b["quantile"] == 0.5 and b["value"] > 50:
+            assert abs(a["value"] / b["value"] - 1) < 0.05

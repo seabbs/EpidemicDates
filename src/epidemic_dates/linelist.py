@@ -3,7 +3,7 @@
 
 from __future__ import annotations
 
-from typing import TypedDict
+from typing import NamedTuple, TypedDict
 
 import numpy as np
 from numpy.typing import ArrayLike, NDArray
@@ -58,6 +58,75 @@ def _check_whole(values: NDArray[np.float64], what: str) -> None:
     finite = values[np.isfinite(values)]
     if not np.all(finite == np.round(finite)):
         raise ValueError(f"{what} must be whole numbers of days")
+
+
+class _Prepared(NamedTuple):
+    """A validated line list, split into complete and missing cases."""
+
+    onset: NDArray[np.int64]
+    delay: NDArray[np.int64]
+    missing_report: NDArray[np.int64]
+    cutoff: int
+    dropped: int
+
+
+def _prepare(
+    onset: ArrayLike, report: ArrayLike, cutoff: int | None
+) -> _Prepared:
+    """Validate a line list and drop cases that cannot be used.
+
+    Shared by `impute_linelist` and `nowcast_linelist`. See
+    `impute_linelist` for the checks and the cases dropped.
+    """
+    onset_days = np.asarray(onset, dtype=np.float64)
+    report_days = np.asarray(report, dtype=np.float64)
+    if onset_days.ndim != 1 or report_days.ndim != 1:
+        raise ValueError("onset and report must be one-dimensional")
+    if onset_days.size != report_days.size:
+        raise ValueError(
+            "onset and report must have the same length, got "
+            f"{onset_days.size} and {report_days.size}"
+        )
+    if report_days.size == 0:
+        raise ValueError("the line list is empty")
+    bad_report = ~np.isfinite(report_days)
+    if bad_report.any():
+        raise ValueError(
+            f"report day is missing or infinite for {int(bad_report.sum())} "
+            "case(s); every case needs a report day"
+        )
+    if np.isinf(onset_days).any():
+        raise ValueError("onset days must not be infinite; use NaN if missing")
+    _check_whole(report_days, "report days")
+    _check_whole(onset_days, "onset days")
+    if cutoff is None:
+        cutoff = int(np.max(report_days))
+    elif cutoff != int(cutoff):
+        raise ValueError(f"cutoff must be a whole number, got {cutoff}")
+    cutoff = int(cutoff)
+    if cutoff < 0:
+        raise ValueError(f"cutoff must be non-negative, got {cutoff}")
+
+    report_int = report_days.astype(np.int64)
+    keep = (report_int >= 0) & (report_int <= cutoff)
+    onset_days, report_int = onset_days[keep], report_int[keep]
+    missing = np.isnan(onset_days)
+    onset_c = onset_days[~missing].astype(np.int64)
+    delay_c = report_int[~missing] - onset_c
+    ok = (onset_c >= 0) & (delay_c >= 0) & (delay_c <= DMAX)
+    onset_c, delay_c = onset_c[ok], delay_c[ok]
+    if onset_c.size == 0:
+        raise ValueError(
+            "no complete cases (cases with both an onset and a report day "
+            "in range) are left, so the delay cannot be estimated"
+        )
+    return _Prepared(
+        onset_c,
+        delay_c,
+        report_int[missing],
+        cutoff,
+        int((~keep).sum() + (~ok).sum()),
+    )
 
 
 def impute_linelist(
@@ -135,49 +204,9 @@ def impute_linelist(
     >>> res["imputed"]["backsampling"].shape
     (13,)
     """
-    onset_days = np.asarray(onset, dtype=np.float64)
-    report_days = np.asarray(report, dtype=np.float64)
-    if onset_days.ndim != 1 or report_days.ndim != 1:
-        raise ValueError("onset and report must be one-dimensional")
-    if onset_days.size != report_days.size:
-        raise ValueError(
-            "onset and report must have the same length, got "
-            f"{onset_days.size} and {report_days.size}"
-        )
-    if report_days.size == 0:
-        raise ValueError("the line list is empty")
-    bad_report = ~np.isfinite(report_days)
-    if bad_report.any():
-        raise ValueError(
-            f"report day is missing or infinite for {int(bad_report.sum())} "
-            "case(s); every case needs a report day"
-        )
-    if np.isinf(onset_days).any():
-        raise ValueError("onset days must not be infinite; use NaN if missing")
-    _check_whole(report_days, "report days")
-    _check_whole(onset_days, "onset days")
-    if cutoff is None:
-        cutoff = int(np.max(report_days))
-    elif cutoff != int(cutoff):
-        raise ValueError(f"cutoff must be a whole number, got {cutoff}")
-    cutoff = int(cutoff)
-    if cutoff < 0:
-        raise ValueError(f"cutoff must be non-negative, got {cutoff}")
-
-    report_int = report_days.astype(np.int64)
-    keep = (report_int >= 0) & (report_int <= cutoff)
-    onset_days, report_int = onset_days[keep], report_int[keep]
-    missing = np.isnan(onset_days)
-    onset_c = onset_days[~missing].astype(np.int64)
-    delay_c = report_int[~missing] - onset_c
-    ok = (onset_c >= 0) & (delay_c >= 0) & (delay_c <= DMAX)
-    onset_c, delay_c = onset_c[ok], delay_c[ok]
-    if onset_c.size == 0:
-        raise ValueError(
-            "no complete cases (cases with both an onset and a report day "
-            "in range) are left, so the delay cannot be estimated"
-        )
-    report_m = report_int[missing]
+    prep = _prepare(onset, report, cutoff)
+    onset_c, delay_c, report_m = prep.onset, prep.delay, prep.missing_report
+    cutoff = prep.cutoff
     n_days = cutoff + 1
     complete = np.bincount(onset_c, minlength=n_days)[:n_days].astype(
         np.float64
@@ -207,5 +236,5 @@ def impute_linelist(
             "backsampling": max(n_missing - float(backsampled.sum()), 0.0),
             "mean": n_missing - float(mean.sum()),
         },
-        "dropped": int((~keep).sum() + (~ok).sum()),
+        "dropped": prep.dropped,
     }

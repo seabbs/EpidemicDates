@@ -10,7 +10,8 @@ draws. They are computed here from the scenario settings in
 functions (`backsampling_allocate`, `mean_shift_allocate`).
 The generative method is EM back-projection with the true delay,
 run on the expected counts.
-The worked example uses `impute_linelist` on the example line list.
+The worked example uses `impute_linelist` and `nowcast_linelist` on the
+example line list.
 
 Run from the repository root:
 
@@ -564,10 +565,79 @@ def fig_linelist(theme):
     save(fig, "linelist", theme)
 
 
+def fig_nowcast(theme):
+    """Weekly nowcast of the example line list, with 50% and 95% bands."""
+    th = style(theme)
+    day0, onset, report = read_linelist()
+    cutoff = int(report.max())
+    nc = ed.nowcast_linelist(onset, report, cutoff=cutoff, seed=1)
+    res = ed.impute_linelist(onset, report, cutoff=cutoff)
+    n_weeks = nc["week_start"].size
+    first = cutoff + 1 - 7 * n_weeks
+
+    def weeks(daily):
+        return daily[first:].reshape(n_weeks, 7).sum(1)
+
+    q = np.quantile(nc["weekly_samples"], [0.025, 0.25, 0.5, 0.75, 0.975], 0)
+    mid = [day0 + dt.timedelta(days=int(s) + 3) for s in nc["week_start"]]
+    fig, ax = plt.subplots(figsize=(8, 3.4))
+    ax.fill_between(
+        mid, q[0], q[4], color=COL["gen"], alpha=0.18, lw=0, label="95%"
+    )
+    ax.fill_between(
+        mid, q[1], q[3], color=COL["gen"], alpha=0.38, lw=0, label="50%"
+    )
+    ax.plot(
+        mid,
+        q[2],
+        color=COL["gen"],
+        marker="o",
+        ms=3,
+        label="Nowcast median",
+    )
+    ax.plot(
+        mid,
+        weeks(res["imputed"]["em"]),
+        color=COL["gen"],
+        lw=1.2,
+        ls=(0, (1, 1.5)),
+        label="Onsets after imputation (EM), not corrected",
+    )
+    ax.plot(
+        mid,
+        weeks(res["complete"]),
+        color=th["truth"],
+        lw=1.2,
+        ls=(0, (3, 2)),
+        label="Complete onsets only",
+    )
+    cut = day0 + dt.timedelta(days=cutoff)
+    ax.axvline(cut, color=th["muted"], lw=0.8)
+    ax.text(
+        cut,
+        0.98,
+        "cut-off ",
+        color=th["muted"],
+        ha="right",
+        va="top",
+        transform=ax.get_xaxis_transform(),
+        fontsize=9,
+    )
+    ax.xaxis.set_major_locator(mdates.WeekdayLocator(byweekday=1, interval=2))
+    ax.xaxis.set_major_formatter(mdates.DateFormatter("%-d %b"))
+    ax.set_ylabel("Onsets per week")
+    ax.set_xlabel("Onset week (the last week ends on the cut-off)")
+    ax.set_ylim(0, None)
+    ax.legend(loc="upper left")
+    fig.tight_layout()
+    save(fig, "nowcast", theme)
+
+
 def main():
     """Write every figure in both themes and print key numbers."""
     for theme in THEMES:
         fig_linelist(theme)
+        fig_nowcast(theme)
         fig_delays(theme)
         fig_placement(theme)
         cols = fig_changepoint(theme)

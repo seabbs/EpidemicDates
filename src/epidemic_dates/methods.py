@@ -176,6 +176,7 @@ def em_fit(
     missing_report: ArrayLike,
     cutoff: int,
     n_iter: int = 150,
+    delay: ArrayLike | None = None,
 ) -> EMFit:
     r"""Back-project missing-onset cases by EM, returning all estimates.
 
@@ -204,6 +205,9 @@ def em_fit(
     where $F$ is the delay CDF and $D$ = `DMAX`.
     $f$ is floored at $10^{-12}$ and renormalised.
 
+    If `delay` is given, $f$ is held fixed at it and only $\lambda$ is
+    updated in the M-step.
+
     The delay is static over time.
     The method assumes onsets are missing at random given the report
     day.
@@ -222,6 +226,12 @@ def em_fit(
     n_iter : int, optional
         Number of EM iterations. Must be at least 1. No convergence
         check is made.
+    delay : array_like of float, optional
+        Forward delay pmf indexed by delay in days, to hold fixed instead
+        of estimating it. Entries beyond `DMAX` are dropped, missing
+        entries up to `DMAX` are taken as 0 and the result is
+        renormalised. Values must be finite and non-negative with a
+        positive sum.
 
     Returns
     -------
@@ -236,7 +246,8 @@ def em_fit(
     ------
     ValueError
         If the inputs are out of range, not whole numbers, or of
-        mismatched length, or if `n_iter` is below 1.
+        mismatched length, if `n_iter` is below 1, or if `delay` is not
+        a valid pmf.
     """
     if cutoff < 0:
         raise ValueError(f"cutoff must be non-negative, got {cutoff}")
@@ -259,23 +270,109 @@ def em_fit(
     if np.any((report_m < 0) | (report_m > cutoff)):
         raise ValueError("missing_report days must lie in 0..cutoff")
 
+    fixed = None if delay is None else _as_delay_pmf(delay)
     n_days = cutoff + 1
     n_complete = np.zeros((n_days, DMAX + 1))
     np.add.at(n_complete, (onset_c, delay_c), 1.0)
     missing = np.bincount(report_m, minlength=n_days)[:n_days].astype(
         np.float64
     )
+    if fixed is None:
+        start = n_complete.sum(0) + 0.5
+        start /= start.sum()
+    else:
+        start = fixed
+    n_cases = missing.sum() + n_complete.sum()
+    missing_frac = missing.sum() / n_cases if n_cases > 0 else 0.0
+    onsets = n_complete.sum(1) / max(1e-9, 1 - missing_frac) + 0.1
+    return _em_iterate(
+        n_complete, missing, cutoff, onsets, start, n_iter, fixed is not None
+    )
+
+
+def _as_delay_pmf(delay: ArrayLike) -> NDArray[np.float64]:
+    """Check a delay pmf and return it on 0..DMAX, renormalised.
+
+    Entries beyond `DMAX` are dropped and missing entries are taken as 0.
+
+    Parameters
+    ----------
+    delay : array_like of float
+        Delay pmf indexed by delay in days.
+
+    Returns
+    -------
+    numpy.ndarray of float
+        The pmf on 0..DMAX, summing to 1.
+
+    Raises
+    ------
+    ValueError
+        If `delay` is not one-dimensional, has a non-finite or negative
+        value, or has no mass on 0..DMAX.
+    """
+    arr = np.asarray(delay, dtype=np.float64)
+    if arr.ndim != 1:
+        raise ValueError("delay must be one-dimensional")
+    if not np.all(np.isfinite(arr)) or np.any(arr < 0):
+        raise ValueError("delay must be finite and non-negative")
+    out = np.zeros(DMAX + 1)
+    n = min(arr.size, DMAX + 1)
+    out[:n] = arr[:n]
+    total = float(out.sum())
+    if total <= 0:
+        raise ValueError(f"delay must have positive mass on 0..{DMAX}")
+    out /= total
+    return out
+
+
+def _em_iterate(
+    n_complete: NDArray[np.float64],
+    missing: NDArray[np.float64],
+    cutoff: int,
+    onsets: NDArray[np.float64],
+    delay: NDArray[np.float64],
+    n_iter: int,
+    fix_delay: bool = False,
+) -> EMFit:
+    r"""Run EM iterations from given starting values.
+
+    The engine behind `em_fit`, exposed so a fit can be warm-started.
+    See `em_fit` for the E-step and M-step.
+    $F$ is floored at $10^{-12}$ before dividing.
+
+    Parameters
+    ----------
+    n_complete : numpy.ndarray of float
+        Complete-case counts by onset day (rows, 0..cutoff) and delay
+        (columns, 0..DMAX).
+    missing : numpy.ndarray of float
+        Missing-onset cases by report day 0..cutoff.
+    cutoff : int
+        Data cut-off day T.
+    onsets : numpy.ndarray of float
+        Starting onset curve $\lambda$ on 0..cutoff.
+    delay : numpy.ndarray of float
+        Starting (or fixed) delay pmf on 0..DMAX.
+    n_iter : int
+        Number of EM iterations.
+    fix_delay : bool, optional
+        Hold the delay fixed and update only $\lambda$.
+
+    Returns
+    -------
+    EMFit
+        As for `em_fit`.
+    """
+    n_days = cutoff + 1
+    onsets = np.array(onsets, dtype=np.float64)
+    delay = np.array(delay, dtype=np.float64)
     onset_grid, delay_grid = np.meshgrid(
         np.arange(n_days), np.arange(DMAX + 1), indexing="ij"
     )
     report_grid = onset_grid + delay_grid
     observed = report_grid <= cutoff
     report_idx = np.where(observed, report_grid, 0)
-    delay = n_complete.sum(0) + 0.5
-    delay /= delay.sum()
-    n_cases = missing.sum() + n_complete.sum()
-    missing_frac = missing.sum() / n_cases if n_cases > 0 else 0.0
-    onsets = n_complete.sum(1) / max(1e-9, 1 - missing_frac) + 0.1
     allocated = np.zeros_like(n_complete)
     days_left = np.minimum(cutoff - np.arange(n_days), DMAX)
     delays = np.arange(DMAX + 1)
@@ -291,9 +388,11 @@ def em_fit(
         )
         total = n_complete + allocated
         # M-step: right-truncated triangle (alternating updates)
-        for _ in range(3):
-            delay_cdf = np.cumsum(delay)
+        for _ in range(1 if fix_delay else 3):
+            delay_cdf = np.maximum(np.cumsum(delay), 1e-12)
             onsets = total.sum(1) / delay_cdf[days_left]
+            if fix_delay:
+                continue
             cum_onsets = np.cumsum(onsets)
             exposure = np.where(
                 cutoff - delays >= 0,

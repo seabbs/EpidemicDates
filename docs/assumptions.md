@@ -63,6 +63,33 @@ The [worked example](real-linelist.md) shows how.
 !!! note "Recent days"
     Onsets in the last weeks before the cut-off are incomplete under every method.
     Cases with those onsets are still being reported.
+    `nowcast_linelist` and `nowcastLinelist` correct for this.
 
 For production use, a model that treats missing onsets as part of the observation process is the better option.
 An example is [epinowcast](https://package.epinowcast.org/articles/model.html#accounting-for-reported-cases-with-a-missing-reference-date).
+
+## In the nowcast
+
+These apply when you use `nowcast_linelist` in Python or `nowcastLinelist` in JavaScript.
+The maths is under [Nowcast with uncertainty](methods.md#nowcast-with-uncertainty).
+
+!!! note "The delay for the correction"
+    The truncation correction divides by $F(T - s)$ from one static delay.
+    The delay is estimated by EM with right truncation, or given.
+    If delays change over the data vintage, recent days are over- or under-corrected.
+
+!!! note "Reporting"
+    Each case with onset on day $s$ is reported by the cut-off with the same probability $F(T - s)$, independently of other cases.
+    The cases not yet reported are then negative binomial given those reported.
+    Batches of late reports or backlogs break this, and the bands are then too narrow.
+
+!!! note "Days with little reported"
+    Days with under 5% of cases reported get no estimate, and nor do weeks that contain them.
+    Change this with `min_reported` (`minReported` in JavaScript).
+    A day with no reported onsets gets 0 in every sample.
+    With small counts the median sits below the mean.
+
+!!! note "What the bands leave out"
+    The bands include the draw of missing onsets, the cases not yet reported and, by resampling cases with both dates, uncertainty in the delay.
+    They leave out changes in the delay over time, missingness that is not at random given the report day, uncertainty in a given delay, and noise in the onset process itself.
+    Treat them as a lower bound on the uncertainty.
