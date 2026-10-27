@@ -3,3 +3,6 @@ __pycache__/
 output/
 .DS_Store
 _site/
+docs/javascript/reference.md
+node_modules/
+.coverage

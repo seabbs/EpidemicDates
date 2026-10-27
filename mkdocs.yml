@@ -1,0 +1,125 @@
+site_name: Comparing methods for imputing missing symptom onsets
+site_description: >-
+  Comparing methods for imputing missing symptom-onset dates, with a
+  JavaScript module and a Python package.
+site_author: Sam Abbott
+site_url: https://seabbs.github.io/epidemic-imputation-demonstration/docs/
+repo_url: https://github.com/seabbs/epidemic-imputation-demonstration
+repo_name: seabbs/epidemic-imputation-demonstration
+edit_uri: edit/main/docs/
+copyright: Copyright &copy; 2026 Sam Abbott. MIT licence.
+
+docs_dir: docs
+site_dir: _site/docs
+
+exclude_docs: |
+  data/*.py
+
+nav:
+  - Home: index.md
+  - Getting started: getting-started.md
+  - Methods: methods.md
+  - Assumptions: assumptions.md
+  - Using it on a real line list: real-linelist.md
+  - Python:
+      - Guide: python/index.md
+      - API reference: python/reference.md
+  - JavaScript:
+      - Guide: javascript/index.md
+      - API reference: javascript/reference.md
+  - Citation and licence: citation.md
+
+theme:
+  name: material
+  language: en
+  icon:
+    repo: fontawesome/brands/github
+    edit: material/pencil
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.top
+    - navigation.indexes
+    - navigation.footer
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+    - content.action.edit
+    - content.tabs.link
+    - toc.follow
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      accent: teal
+      toggle:
+        icon: material/weather-night
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      accent: teal
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to light mode
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/seabbs/epidemic-imputation-demonstration
+      name: Source on GitHub
+    - icon: material/chart-line
+      link: https://seabbs.github.io/epidemic-imputation-demonstration/
+      name: Interactive page
+    - icon: material/bug-outline
+      link: https://github.com/seabbs/epidemic-imputation-demonstration/issues
+      name: Issue tracker
+
+extra_css:
+  - stylesheets/extra.css
+
+extra_javascript:
+  - javascripts/mathjax.js
+  - https://unpkg.com/mathjax@3.2.2/es5/tex-mml-chtml.js
+
+markdown_extensions:
+  - abbr
+  - admonition
+  - attr_list
+  - def_list
+  - footnotes
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.arithmatex:
+      generic: true
+  - pymdownx.details
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+
+plugins:
+  - search
+  - mkdocstrings:
+      default_handler: python
+      handlers:
+        python:
+          paths: [src]
+          options:
+            docstring_style: numpy
+            docstring_section_style: table
+            show_root_heading: false
+            show_root_toc_entry: false
+            show_source: true
+            show_signature_annotations: true
+            separate_signature: true
+            members_order: source
+            heading_level: 2
+            show_symbol_type_heading: true
+            show_symbol_type_toc: true
+            filters: ["!^_"]

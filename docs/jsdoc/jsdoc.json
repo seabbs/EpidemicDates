@@ -1,0 +1,6 @@
+{
+  "plugins": ["docs/jsdoc/ts-types.cjs"],
+  "opts": {
+    "encoding": "utf8"
+  }
+}
