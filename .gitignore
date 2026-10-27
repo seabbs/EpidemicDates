@@ -1,0 +1,4 @@
+.venv/
+__pycache__/
+sim/output/
+.DS_Store

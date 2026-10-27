@@ -1,0 +1,16 @@
+[project]
+name = "epidemic-imputation-demonstration"
+version = "0.1.0"
+description = "Simulation cross-check for onset-date imputation by back-sampling reporting delays"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = ["numpy>=1.26", "scipy>=1.11"]
+
+[tool.uv]
+package = false
+
+[dependency-groups]
+dev = ["ruff>=0.6"]
+
+[tool.ruff]
+line-length = 80

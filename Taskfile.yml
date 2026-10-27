@@ -1,0 +1,20 @@
+version: "3"
+
+tasks:
+  test:
+    desc: Test the page's maths
+    cmds:
+      - node --test tests/
+  sim:
+    desc: Run the independent stochastic simulation
+    cmds:
+      - uv run sim/sim_onset_imputation.py {{.CLI_ARGS | default "200"}}
+  lint:
+    desc: Lint and format-check the simulation
+    cmds:
+      - uv run ruff check sim
+      - uv run ruff format --check sim
+  serve:
+    desc: Serve the page locally
+    cmds:
+      - python3 -m http.server 8000
