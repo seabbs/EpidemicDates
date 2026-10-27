@@ -34,7 +34,8 @@ render <- function(x) {
   inner <- function(node = x) {
     paste(vapply(node, render, character(1)), collapse = "")
   }
-  switch(t,
+  switch(
+    t,
     "\\code" = code_link(inner()),
     "\\verb" = ,
     "\\samp" = paste0("`", inner(), "`"),
@@ -63,7 +64,11 @@ render <- function(x) {
     "\\cr" = "  \n",
     "\\url" = paste0("<", inner(), ">"),
     "\\href" = paste0(
-      "[", render_list(x[[2]]), "](", render_list(x[[1]]), ")"
+      "[",
+      render_list(x[[2]]),
+      "](",
+      render_list(x[[1]]),
+      ")"
     ),
     "\\eqn" = paste0("$", trimws(render_list(x[[1]])), "$"),
     "\\deqn" = paste0("\n\n$$\n", trimws(render_list(x[[1]])), "\n$$\n\n"),
@@ -103,19 +108,29 @@ render_items <- function(x, bullet) {
   current <- NULL
   for (node in x) {
     if (tag(node) == "\\item") {
-      if (!is.null(current)) items[[length(items) + 1]] <- current
+      if (!is.null(current)) {
+        items[[length(items) + 1]] <- current
+      }
       current <- list()
     } else if (!is.null(current)) {
       current[[length(current) + 1]] <- node
     }
   }
-  if (!is.null(current)) items[[length(items) + 1]] <- current
-  lines <- vapply(items, function(item) {
-    text <- squash(render_list(item))
-    # a display equation must be followed by a blank line
-    if (endsWith(text, "$$")) text <- paste0(text, "\n")
-    paste0(bullet, gsub("\n", paste0("\n", indent), text))
-  }, character(1))
+  if (!is.null(current)) {
+    items[[length(items) + 1]] <- current
+  }
+  lines <- vapply(
+    items,
+    function(item) {
+      text <- squash(render_list(item))
+      # a display equation must be followed by a blank line
+      if (endsWith(text, "$$")) {
+        text <- paste0(text, "\n")
+      }
+      paste0(bullet, gsub("\n", paste0("\n", indent), text))
+    },
+    character(1)
+  )
   paste0("\n\n", paste(lines, collapse = "\n"), "\n\n")
 }
 
@@ -149,48 +164,75 @@ render_topic <- function(rd) {
   name <- render_list(section(rd, "\\name")[[1]])
   title <- squash(render_list(section(rd, "\\title")[[1]]))
   out <- c(paste0("## `", name, "` {#", name, "}"), "", paste0("*", title, "*"))
-  add <- function(heading, body) {
-    if (nzchar(body)) out <<- c(out, "", paste0("### ", heading), "", body)
+  heading_md <- function(heading, body) {
+    if (nzchar(body)) c("", paste0("### ", heading), "", body)
   }
   desc <- section(rd, "\\description")
-  if (length(desc)) out <- c(out, "", squash(render_list(desc[[1]])))
+  if (length(desc)) {
+    out <- c(out, "", squash(render_list(desc[[1]])))
+  }
   usage <- section(rd, "\\usage")
-  if (length(usage)) add("Usage", code_block(usage[[1]]))
+  if (length(usage)) {
+    out <- c(out, heading_md("Usage", code_block(usage[[1]])))
+  }
   arguments <- section(rd, "\\arguments")
   if (length(arguments)) {
     rows <- c()
     for (node in arguments[[1]]) {
-      if (tag(node) != "\\item") next
+      if (tag(node) != "\\item") {
+        next
+      }
       arg <- squash(render_list(node[[1]]))
       text <- squash(render_list(node[[2]]))
       rows <- c(rows, paste0("`", arg, "`\n:   ", gsub("\n", "\n    ", text)))
     }
-    add("Arguments", paste(rows, collapse = "\n\n"))
+    out <- c(out, heading_md("Arguments", paste(rows, collapse = "\n\n")))
   }
   details <- section(rd, "\\details")
-  if (length(details)) add("Details", squash(render_list(details[[1]])))
+  if (length(details)) {
+    out <- c(out, heading_md("Details", squash(render_list(details[[1]]))))
+  }
   value <- section(rd, "\\value")
-  if (length(value)) add("Value", squash(render_list(value[[1]])))
+  if (length(value)) {
+    out <- c(out, heading_md("Value", squash(render_list(value[[1]]))))
+  }
   for (sec in section(rd, "\\section")) {
-    add(squash(render_list(sec[[1]])), squash(render_list(sec[[2]])))
+    out <- c(
+      out,
+      heading_md(squash(render_list(sec[[1]])), squash(render_list(sec[[2]])))
+    )
   }
   refs <- section(rd, "\\references")
-  if (length(refs)) add("References", squash(render_list(refs[[1]])))
+  if (length(refs)) {
+    out <- c(out, heading_md("References", squash(render_list(refs[[1]]))))
+  }
   examples <- section(rd, "\\examples")
-  if (length(examples)) add("Examples", code_block(examples[[1]]))
+  if (length(examples)) {
+    out <- c(out, heading_md("Examples", code_block(examples[[1]])))
+  }
   seealso <- section(rd, "\\seealso")
-  if (length(seealso)) add("See also", squash(render_list(seealso[[1]])))
+  if (length(seealso)) {
+    out <- c(out, heading_md("See also", squash(render_list(seealso[[1]]))))
+  }
   author <- section(rd, "\\author")
-  if (length(author)) add("Author", squash(render_list(author[[1]])))
+  if (length(author)) {
+    out <- c(out, heading_md("Author", squash(render_list(author[[1]]))))
+  }
   out
 }
 
 files <- list.files(man_dir, pattern = "\\.Rd$", full.names = TRUE)
-if (length(files) == 0) stop("no Rd files in ", man_dir)
+if (length(files) == 0) {
+  stop("no Rd files in ", man_dir)
+}
 rds <- lapply(files, tools::parse_Rd)
-names(rds) <- vapply(rds, function(rd) {
-  render_list(section(rd, "\\name")[[1]])
-}, character(1))
+names(rds) <- vapply(
+  rds,
+  function(rd) {
+    render_list(section(rd, "\\name")[[1]])
+  },
+  character(1)
+)
 topics <- names(rds)
 # package overview first, then the main function, then the rest
 first <- c(grep("-package$", topics, value = TRUE), "impute_linelist")
