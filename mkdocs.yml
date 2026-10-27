@@ -32,6 +32,8 @@ nav:
 theme:
   name: material
   language: en
+  logo: assets/logo-mark-inverse.svg
+  favicon: assets/favicon.svg
   icon:
     repo: fontawesome/brands/github
     edit: material/pencil

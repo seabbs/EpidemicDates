@@ -1,3 +1,6 @@
+![EpidemicDates Python package logo](../assets/logo-python.svg#only-light){ width="96" }
+![EpidemicDates Python package logo](../assets/logo-python-dark.svg#only-dark){ width="96" }
+
 # Python guide
 
 The Python package `epidemic_dates` is an independent stochastic simulation.

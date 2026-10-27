@@ -1,3 +1,6 @@
+![EpidemicDates JavaScript module logo](../assets/logo-js.svg#only-light){ width="96" }
+![EpidemicDates JavaScript module logo](../assets/logo-js-dark.svg#only-dark){ width="96" }
+
 # JavaScript guide
 
 The JavaScript module `epidemic-dates.js` holds the maths behind the [interactive page](https://seabbs.github.io/epidemic-imputation-demonstration/).

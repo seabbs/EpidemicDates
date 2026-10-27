@@ -1,3 +1,6 @@
+![EpidemicDates logo](assets/logo.svg#only-light){ width="320" }
+![EpidemicDates logo](assets/logo-dark.svg#only-dark){ width="320" }
+
 # Comparing methods for imputing missing symptom onsets
 
 Line lists often lack an earlier event date for some cases, such as the date of symptom onset, infection or sampling.

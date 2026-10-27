@@ -1,3 +1,11 @@
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/logo-dark.svg">
+    <source media="(prefers-color-scheme: light)" srcset="assets/logo.svg">
+    <img src="assets/logo.svg" alt="EpidemicDates logo" width="360">
+  </picture>
+</p>
+
 # Comparing methods for imputing missing symptom onsets
 
 > [!WARNING]
